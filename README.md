@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.2.1 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.3.0 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -103,6 +103,8 @@ aiplus status
 aiplus refresh
 aiplus doctor
 aiplus update
+aiplus compact savings
+aiplus pricing status
 aiplus uninstall --dry-run
 ```
 
@@ -173,6 +175,7 @@ aiplus compact prepare
 aiplus compact score
 aiplus compact checkpoint --level standard
 aiplus compact resume
+aiplus compact savings
 ```
 
 If `aiplus` is not found, install AiPlus or fix PATH instead of falling back to
@@ -184,13 +187,76 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 
 Then reopen the terminal or ensure `~/.local/bin` is on PATH.
 
+## Compact Savings Estimate
+
+AiPlus estimates compact savings from local aggregate compact metadata. It does
+not require pricing setup, model setup, provider account connection, billing API
+access, or manual model price input.
+
+Ask in the agent session:
+
+```text
+show compact savings
+```
+
+or run:
+
+```bash
+aiplus compact savings
+```
+
+The short report includes this compact and all-time totals:
+
+```text
+Compact savings estimate
+
+This compact:
+- Tokens saved: ~18k
+- Token reduction: ~41%
+- Estimated cost saved: ~$0.05
+- Recovery confidence: HIGH
+
+All time:
+- Tokens saved: ~184k
+- Average reduction: ~38%
+- Estimated cost saved: ~$0.46
+- Pricing coverage: 8/10 compacts
+
+Estimate only, not billing data.
+```
+
+All-time reduction is weighted:
+`totalEstimatedTokensSaved / totalEstimatedBaselineTokens * 100`. It is not a
+simple average of per-compact percentages.
+
+AiPlus stores aggregate savings events in
+`.codex/compact/savings-ledger.jsonl`. The ledger must not store prompts,
+transcripts, project file contents, raw checkpoint text, billing data, or usage
+history. If pricing for a detected model is unavailable, AiPlus still reports
+token savings and reduction percentage; USD savings are shown as unavailable or
+partial.
+
+Pricing cache policy:
+
+```bash
+aiplus pricing status
+aiplus pricing update
+```
+
+AiPlus uses fresh cached pricing when available. If the cache is missing or
+stale, AiPlus may refresh public pricing automatically; network failure never
+blocks compact, checkpoint, resume, or token savings reporting. `aiplus pricing
+update` explicitly refreshes public pricing data and writes the cache to the
+user cache directory, normally `~/.cache/aiplus/pricing-cache.json`. The default
+cache TTL is 7 days.
+
 ## Installer Safety
 
 `install.sh` downloads a GitHub Release asset, verifies `checksums.txt`, and
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.2.1 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.3.0 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -228,7 +294,7 @@ AiPlus repo." Do not type angle-bracket placeholders literally.
 
 ## Node Reference Status
 
-The legacy Node CLI is archived/reference-only at v0.2.1 and is not included in
+The legacy Node CLI is archived/reference-only and is not included in
 this public source package. It is retained in the private/local AiPlus workspace
 for behavior audits and emergency reference fixes. New CLI work should target
 Rust.
@@ -238,10 +304,11 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 ## Safety Boundary
 
-The AiPlus CLI does not implement publish, push, tag, release creation,
-system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.2.1 installer writes only the user-level
-`~/.local/bin/aiplus` command.
+The AiPlus CLI does not implement package publish, system/global install, global
+config edits, telemetry, auto-update callbacks, provider account access, or user
+data upload. `aiplus pricing update` may fetch public release/pricing metadata
+and cache it locally. It does not upload prompts, project files, checkpoints,
+savings ledgers, secrets, billing data, or usage history.
 
 Validation is structural and heuristic. It is not a safety, privacy,
 compliance, correctness, or release certification.

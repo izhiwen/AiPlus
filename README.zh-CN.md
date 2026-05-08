@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.2.1 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.3.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -93,6 +93,8 @@ aiplus status
 aiplus refresh
 aiplus doctor
 aiplus update
+aiplus compact savings
+aiplus pricing status
 aiplus uninstall --dry-run
 ```
 
@@ -159,6 +161,7 @@ aiplus compact prepare
 aiplus compact score
 aiplus compact checkpoint --level standard
 aiplus compact resume
+aiplus compact savings
 ```
 
 如果找不到 `aiplus`，请安装 AiPlus 或修复 PATH，不要 fallback 到 Node：
@@ -169,12 +172,72 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 
 然后重新打开 terminal，或确认 `~/.local/bin` 已在 PATH 中。
 
+## Compact Savings Estimate
+
+AiPlus 会用本地 aggregate compact metadata 估算 compact 节省。它不要求配置价格、
+配置模型、连接 provider account、读取 billing API，也不要求用户手动输入模型价格。
+
+在 agent 对话里说：
+
+```text
+看一下 compact 收益
+```
+
+或者运行：
+
+```bash
+aiplus compact savings
+```
+
+默认报告会同时显示本次 compact 和累计：
+
+```text
+Auto Compact 节省估算
+
+本次 compact：
+- 节约 tokens：约 18k
+- token 减少比例：约 41%
+- 估算节约成本：约 $0.05
+- 恢复信心：HIGH
+
+累计：
+- 节约 tokens：约 184k
+- 平均减少比例：约 38%
+- 估算节约成本：约 $0.46
+- pricing 覆盖：8/10 次 compact
+
+仅为估算，不是账单数据。
+```
+
+累计减少比例使用 weighted average：
+`totalEstimatedTokensSaved / totalEstimatedBaselineTokens * 100`，不是每次
+compact percentage 的简单平均。
+
+AiPlus 会把 aggregate savings events 写到
+`.codex/compact/savings-ledger.jsonl`。ledger 不应保存 prompts、transcripts、
+project file contents、raw checkpoint text、billing data 或 usage history。如果
+检测到模型但没有对应价格，AiPlus 仍会报告 token savings 和 reduction percentage；
+USD savings 会显示 unavailable 或 partial。
+
+Pricing cache policy：
+
+```bash
+aiplus pricing status
+aiplus pricing update
+```
+
+AiPlus 会优先使用 fresh cached pricing。如果 cache 缺失或过期，AiPlus 可能自动刷新
+public pricing；network failure 不会阻塞 compact、checkpoint、resume 或 token
+savings reporting。`aiplus pricing update` 会显式刷新 public pricing data，并把
+cache 写到 user cache directory，通常是 `~/.cache/aiplus/pricing-cache.json`。默认
+cache TTL 是 7 天。
+
 ## Installer Safety
 
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.2.1 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.3.0 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和
@@ -212,7 +275,7 @@ placeholder 原样输入 terminal。
 
 ## Node Reference Status
 
-legacy Node CLI 是 archived/reference-only v0.2.1，不包含在本 public source
+legacy Node CLI 是 archived/reference-only，不包含在本 public source
 package 中。它保留在 private/local AiPlus workspace，用于 behavior audit 和
 emergency reference fixes。新的 CLI work 应进入 Rust。
 
@@ -221,9 +284,11 @@ compact commands 已是 Rust-native。Rust runtime assets 不再 install 或 che
 
 ## Safety Boundary
 
-AiPlus CLI 不实现 publish、push、tag、release creation、system/global install、
-global config edit、telemetry、auto-update 或 runtime network fetch。v0.2.1
-installer 只写 user-level `~/.local/bin/aiplus` command。
+AiPlus CLI 不实现 package publish、system/global install、global config edit、
+telemetry、auto-update callback、provider account access 或 user data upload。
+`aiplus pricing update` 可能获取 public release/pricing metadata 并缓存到本地。它
+不上传 prompts、project files、checkpoints、savings ledgers、secrets、billing data
+或 usage history。
 
 validation 是 structural 和 heuristic，不是 safety、privacy、compliance、
 correctness 或 release certification。

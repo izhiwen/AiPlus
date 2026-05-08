@@ -3,17 +3,20 @@ use clap::{ArgAction, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, Command};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.2.1";
+const VERSION: &str = "0.3.0";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
+const SAVINGS_LEDGER_REL: &str = "savings-ledger.jsonl";
+const PRICING_CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/izhiwen/aiplus/main/assets/pricing/public-model-pricing.json";
 const MANAGED_BEGIN: &str = "<!-- BEGIN AIPLUS MANAGED BLOCK -->";
 const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
@@ -23,7 +26,7 @@ const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
     name = "aiplus",
     version = VERSION,
     disable_version_flag = true,
-    after_help = "Safety:\n  Project-local only. Writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. No npm publish, global install,\n  telemetry, network calls, or global config edits are implemented."
+    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` may fetch public\n  pricing data. No npm publish, global install, telemetry, user-data upload, or\n  global config edits are implemented."
 )]
 struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue)]
@@ -83,7 +86,12 @@ enum Commands {
         #[arg(long, default_value = "standard", value_parser = ["light", "standard", "full"])]
         level: String,
         #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
+    },
+    Pricing {
+        subcommand: Option<String>,
     },
 }
 
@@ -131,7 +139,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.2.1",
+        version: "0.3.0",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -142,7 +150,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.2.1",
+        version: "0.3.0",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -224,6 +232,76 @@ struct CompactReadiness {
     next_action: String,
     manual_compact_recommended: bool,
     reasons: Vec<String>,
+}
+
+struct SavingsEstimate {
+    input_before: u64,
+    handoff_after: u64,
+    resume_tokens: u64,
+    tokens_saved: u64,
+    reduction_percent: f64,
+    cost_saved_usd: Option<f64>,
+    pricing_model: String,
+    pricing_source: String,
+    pricing_fetched_at: Option<String>,
+    model_detected: Option<String>,
+    model_detection_confidence: String,
+    confidence: String,
+    notes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SavingsEvent {
+    schema_version: String,
+    timestamp: String,
+    event: String,
+    checkpoint_id: Option<String>,
+    checkpoint_level: String,
+    readiness_state: String,
+    compact_pressure: String,
+    session_role: String,
+    workflow_level: String,
+    estimated_input_tokens_before: u64,
+    estimated_handoff_tokens_after: u64,
+    estimated_resume_tokens: u64,
+    estimated_tokens_saved: u64,
+    estimated_token_reduction_percent: f64,
+    estimated_cost_saved_usd: Option<f64>,
+    pricing_model: String,
+    pricing_status: String,
+    pricing_source: String,
+    pricing_fetched_at: Option<String>,
+    pricing_age_days: Option<u64>,
+    input_price_usd_per_1m_tokens: Option<f64>,
+    model_detected: Option<String>,
+    model_detection_confidence: String,
+    cost_estimate_available: bool,
+    cost_estimate_reason: String,
+    billing_data: bool,
+    method: String,
+    confidence: String,
+    notes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PricingCatalog {
+    schema_version: String,
+    fetched_at: Option<String>,
+    source_url: String,
+    source: String,
+    models: Vec<PricingModel>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PricingModel {
+    provider: String,
+    model: String,
+    input_usd_per_1m_tokens: f64,
+    source: String,
+    source_url: String,
 }
 
 #[derive(Serialize)]
@@ -374,14 +452,16 @@ fn run(command: Commands) -> Result<()> {
         Commands::Compact {
             subcommand,
             level,
+            json,
             force,
-        } => command_compact(subcommand, &level, force),
+        } => command_compact(subcommand, &level, json, force),
+        Commands::Pricing { subcommand } => command_pricing(subcommand),
     }
 }
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume [--level light|standard|full]\n\nSafety:\n  Project-local only. Writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. No npm publish, global install,\n  telemetry, network calls, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` may fetch public\n  pricing data. No npm publish, global install, telemetry, user-data upload, or\n  global config edits are implemented."
     );
 }
 
@@ -738,6 +818,9 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!(
             "- 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。"
         );
+        println!(
+            "- 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。"
+        );
         println!("- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。");
         println!("- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant");
         println!();
@@ -758,6 +841,7 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!("How I will use it:");
         println!("- Prepare checkpoints before long tasks or compact-worthy moments.");
         println!("- If you say \"prepare compact\", \"save progress\", or \"checkpoint this\", I will run aiplus compact prepare.");
+        println!("- If you ask \"show compact savings\" or \"how many tokens did compact save?\", I will run aiplus compact savings.");
         println!("- After compact, if I do not reply, send: continue");
         println!("- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.");
         println!();
@@ -1028,7 +1112,7 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn command_compact(subcommand: Option<String>, level: &str, force: bool) -> Result<()> {
+fn command_compact(subcommand: Option<String>, level: &str, json: bool, force: bool) -> Result<()> {
     let Some(subcommand) = subcommand else {
         print_usage();
         process::exit(2);
@@ -1040,6 +1124,7 @@ fn command_compact(subcommand: Option<String>, level: &str, force: bool) -> Resu
         "resume",
         "prepare",
         "score",
+        "savings",
     ]
     .contains(&subcommand.as_str())
     {
@@ -1110,7 +1195,19 @@ fn command_compact(subcommand: Option<String>, level: &str, force: bool) -> Resu
                 process::exit(exit_code);
             }
         }
+        "savings" => compact_savings(&root, json),
         _ => unreachable!(),
+    }
+}
+
+fn command_pricing(subcommand: Option<String>) -> Result<()> {
+    match subcommand.as_deref() {
+        Some("update") => pricing_update(),
+        Some("status") => pricing_status(),
+        _ => {
+            println!("Usage: aiplus pricing update|status");
+            process::exit(2);
+        }
     }
 }
 
@@ -2087,6 +2184,7 @@ fn compact_checkpoint_with_options(
         println!("CHECKPOINT_CREATED={rel}");
         println!("checkpoint={rel}");
     }
+    append_savings_event(root, "checkpoint", Some(&rel), level, &readiness).ok();
     Ok((exit_code, rel))
 }
 
@@ -2098,6 +2196,7 @@ fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
     print_readiness(&readiness);
     if readiness.state == "READY_TO_COMPACT" {
         let (_, checkpoint) = compact_checkpoint_with_options(root, level, false)?;
+        append_savings_event(root, "prepare", Some(&checkpoint), level, &readiness).ok();
         println!("CHECKPOINT_LEVEL={level}");
         println!("CHECKPOINT_CREATED={checkpoint}");
         println!();
@@ -2143,7 +2242,7 @@ fn compact_resume(root: &Path) -> Result<i32> {
     println!("RESUME_READY");
     println!(
         "latest_checkpoint={}",
-        latest.unwrap_or_else(|| "missing".to_string())
+        latest.as_deref().unwrap_or("missing")
     );
     println!(
         "session_role={}",
@@ -2172,6 +2271,8 @@ fn compact_resume(root: &Path) -> Result<i32> {
     println!("next_safe_action={}", single_line(&result.next_safe_action));
     println!("read_only_recovery_guidance=yes");
     println!("high_risk_actions=manual_owner_approval_required");
+    let readiness = compact_readiness(&result, root);
+    append_savings_event(root, "resume", latest.as_deref(), "standard", &readiness).ok();
     Ok(0)
 }
 
@@ -2374,6 +2475,578 @@ fn latest_checkpoint(root: &Path) -> Result<Option<String>> {
         .map(path_slash))
 }
 
+fn append_savings_event(
+    root: &Path,
+    event: &str,
+    checkpoint_id: Option<&str>,
+    level: &str,
+    readiness: &CompactReadiness,
+) -> Result<()> {
+    let estimate = estimate_savings(root)?;
+    let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
+    let savings_event = SavingsEvent {
+        schema_version: VERSION.to_string(),
+        timestamp: timestamp(),
+        event: event.to_string(),
+        checkpoint_id: checkpoint_id.map(str::to_string),
+        checkpoint_level: level.to_string(),
+        readiness_state: readiness.state.to_string(),
+        compact_pressure: readiness.pressure.to_string(),
+        session_role: compact_section_or_unknown(&handoff, "Session Role"),
+        workflow_level: compact_section_or_unknown(&handoff, "Workflow Level"),
+        estimated_input_tokens_before: estimate.input_before,
+        estimated_handoff_tokens_after: estimate.handoff_after,
+        estimated_resume_tokens: estimate.resume_tokens,
+        estimated_tokens_saved: estimate.tokens_saved,
+        estimated_token_reduction_percent: estimate.reduction_percent,
+        estimated_cost_saved_usd: estimate.cost_saved_usd,
+        pricing_model: estimate.pricing_model.clone(),
+        pricing_status: if estimate.cost_saved_usd.is_some() {
+            if estimate.pricing_model == "generic_default" {
+                "generic_fallback".to_string()
+            } else {
+                "matched".to_string()
+            }
+        } else {
+            "unavailable".to_string()
+        },
+        pricing_source: estimate.pricing_source.clone(),
+        pricing_fetched_at: estimate.pricing_fetched_at.clone(),
+        pricing_age_days: pricing_cache_age_days().ok().flatten(),
+        input_price_usd_per_1m_tokens: pricing_input_price(&estimate),
+        model_detected: estimate.model_detected,
+        model_detection_confidence: estimate.model_detection_confidence,
+        cost_estimate_available: estimate.cost_saved_usd.is_some(),
+        cost_estimate_reason: if estimate.cost_saved_usd.is_some() {
+            if estimate.pricing_model == "generic_default" {
+                "generic conservative fallback pricing; not model-specific".to_string()
+            } else {
+                "matched cached public pricing".to_string()
+            }
+        } else {
+            "pricing for detected model is not available".to_string()
+        },
+        billing_data: false,
+        method: "local_estimate_v1".to_string(),
+        confidence: estimate.confidence,
+        notes: estimate.notes,
+    };
+    let ledger = compact_file(root, SAVINGS_LEDGER_REL)?;
+    if let Some(parent) = ledger.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ledger)?;
+    writeln!(file, "{}", serde_json::to_string(&savings_event)?)?;
+    Ok(())
+}
+
+fn compact_savings(root: &Path, json: bool) -> Result<()> {
+    let (events, malformed) = read_savings_events(root)?;
+    if events.is_empty() {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "schemaVersion": VERSION,
+                    "status": "NO_SAVINGS_DATA",
+                    "billingData": false,
+                    "events": 0,
+                    "malformedLines": malformed
+                })
+            );
+        } else {
+            println!("Compact savings estimate");
+            println!("No savings data yet.");
+            println!("Run compact prepare/checkpoint/resume first.");
+            println!("Estimate only, not billing data.");
+        }
+        return Ok(());
+    }
+
+    let latest = events.last().expect("events not empty");
+    let total_saved: u64 = events
+        .iter()
+        .map(|event| event.estimated_tokens_saved)
+        .sum();
+    let total_baseline: u64 = events
+        .iter()
+        .map(|event| event.estimated_input_tokens_before)
+        .sum();
+    let cumulative_reduction = if total_baseline == 0 {
+        0.0
+    } else {
+        (total_saved as f64 / total_baseline as f64) * 100.0
+    };
+    let priced_events = events
+        .iter()
+        .filter(|event| event.cost_estimate_available)
+        .count();
+    let unpriced_events = events.len().saturating_sub(priced_events);
+    let total_cost: f64 = events
+        .iter()
+        .filter_map(|event| event.estimated_cost_saved_usd)
+        .sum();
+    let latest_cost = latest.estimated_cost_saved_usd;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "schemaVersion": VERSION,
+                "status": "PASS",
+                "latest": latest,
+                "allTime": {
+                    "events": events.len(),
+                    "estimatedTokensSaved": total_saved,
+                    "estimatedBaselineTokens": total_baseline,
+                    "weightedReductionPercent": round1(cumulative_reduction),
+                    "estimatedCostSavedUsd": if priced_events > 0 { Some(round4(total_cost)) } else { None },
+                    "pricedEvents": priced_events,
+                    "unpricedEvents": unpriced_events
+                },
+                "malformedLines": malformed,
+                "billingData": false,
+                "method": "local_estimate_v1"
+            })
+        );
+        return Ok(());
+    }
+
+    println!("Compact savings estimate");
+    println!();
+    println!("This compact:");
+    println!(
+        "- Tokens saved: ~{} input tokens",
+        format_tokens(latest.estimated_tokens_saved)
+    );
+    println!(
+        "- Token reduction: ~{}%",
+        round1(latest.estimated_token_reduction_percent)
+    );
+    match latest_cost {
+        Some(cost) => println!("- Estimated cost saved: ~${:.4}", round4(cost)),
+        None => {
+            println!("- Estimated cost saved: unavailable");
+            println!("  Reason: {}", latest.cost_estimate_reason);
+        }
+    }
+    println!(
+        "- Recovery confidence: {}",
+        latest.confidence.to_ascii_uppercase()
+    );
+    println!();
+    println!("All time:");
+    println!(
+        "- Tokens saved: ~{} input tokens",
+        format_tokens(total_saved)
+    );
+    println!("- Average reduction: ~{}%", round1(cumulative_reduction));
+    if priced_events > 0 {
+        println!(
+            "- Estimated cost saved: ~${:.4} from {} priced compacts",
+            round4(total_cost),
+            priced_events
+        );
+        if unpriced_events > 0 {
+            println!("- Unpriced compacts: {unpriced_events}");
+        }
+    } else {
+        println!("- Estimated cost saved: unavailable");
+    }
+    println!(
+        "- Pricing coverage: {}/{} compacts",
+        priced_events,
+        events.len()
+    );
+    println!();
+    println!("pricing_source={}", latest.pricing_source);
+    println!(
+        "pricing_cached_at={}",
+        latest
+            .pricing_fetched_at
+            .as_deref()
+            .unwrap_or("unavailable")
+    );
+    println!(
+        "pricing_age_days={}",
+        latest
+            .pricing_age_days
+            .map(|days| days.to_string())
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!("billing_data=no");
+    if malformed > 0 {
+        println!("WARNING malformed ledger lines ignored: {malformed}");
+    }
+    println!("Estimate only, not billing data.");
+    Ok(())
+}
+
+fn estimate_savings(root: &Path) -> Result<SavingsEstimate> {
+    let handoff_tokens = estimate_compact_tokens(root)?;
+    let resume_tokens = 600;
+    let input_before =
+        (handoff_tokens.saturating_mul(4)).max(handoff_tokens + resume_tokens + 1000);
+    let handoff_after = handoff_tokens + resume_tokens;
+    let tokens_saved = input_before.saturating_sub(handoff_after);
+    let reduction_percent = if input_before == 0 {
+        0.0
+    } else {
+        (tokens_saved as f64 / input_before as f64) * 100.0
+    };
+    let (model_detected, confidence) = detect_model_hint();
+    let (pricing_model, pricing_source, pricing_fetched_at, price) =
+        match load_pricing_catalog_for_savings() {
+            Ok(catalog) => choose_pricing_model(&catalog, model_detected.as_deref(), &confidence),
+            Err(_) => (
+                "unavailable".to_string(),
+                "unavailable".to_string(),
+                None,
+                None,
+            ),
+        };
+    let cost_saved_usd = price.map(|price| (tokens_saved as f64 / 1_000_000.0) * price);
+    Ok(SavingsEstimate {
+        input_before,
+        handoff_after,
+        resume_tokens,
+        tokens_saved,
+        reduction_percent: round1(reduction_percent),
+        cost_saved_usd: cost_saved_usd.map(round4),
+        pricing_model,
+        pricing_source,
+        pricing_fetched_at,
+        model_detected,
+        model_detection_confidence: confidence,
+        confidence: "low".to_string(),
+        notes: vec![
+            "local aggregate estimate only".to_string(),
+            "no prompt text, transcript text, file contents, raw checkpoint text, billing data, or usage history is stored".to_string(),
+        ],
+    })
+}
+
+fn estimate_compact_tokens(root: &Path) -> Result<u64> {
+    let mut chars = 0usize;
+    for file in COMPACT_REQUIRED_FILES {
+        if let Ok(text) = read_compact_text(root, file) {
+            chars = chars.saturating_add(text.chars().count());
+        }
+    }
+    Ok(((chars as f64) / 4.0).ceil() as u64)
+}
+
+fn read_savings_events(root: &Path) -> Result<(Vec<SavingsEvent>, usize)> {
+    let ledger = compact_file(root, SAVINGS_LEDGER_REL)?;
+    if !ledger.exists() {
+        return Ok((Vec::new(), 0));
+    }
+    let text = fs::read_to_string(ledger)?;
+    let mut events = Vec::new();
+    let mut malformed = 0;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        match serde_json::from_str::<SavingsEvent>(line) {
+            Ok(event) => events.push(event),
+            Err(_) => malformed += 1,
+        }
+    }
+    Ok((events, malformed))
+}
+
+fn pricing_update() -> Result<()> {
+    let catalog = fetch_pricing_catalog().unwrap_or_else(|error| {
+        eprintln!("WARNING pricing fetch failed; using bundled catalog: {error}");
+        bundled_pricing_catalog()
+    });
+    let cache = pricing_cache_file()?;
+    if let Some(parent) = cache.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&cache, serde_json::to_string_pretty(&catalog)?)?;
+    println!("AIPLUS_PRICING_UPDATE");
+    println!("PRICING_UPDATE_STATUS=PASS");
+    println!("cache_path={}", cache.display());
+    println!("source={}", catalog.source);
+    println!("source_url={}", catalog.source_url);
+    println!("models={}", catalog.models.len());
+    println!("billing_data=no");
+    println!("uploads=none");
+    Ok(())
+}
+
+fn pricing_status() -> Result<()> {
+    let cache = pricing_cache_file()?;
+    let (catalog, status) = if cache.exists() {
+        (load_pricing_catalog(true)?, "cached")
+    } else {
+        (bundled_pricing_catalog(), "bundled")
+    };
+    println!("AIPLUS_PRICING_STATUS");
+    println!("PRICING_STATUS=PASS");
+    println!("status={status}");
+    println!("cache_path={}", cache.display());
+    println!("source={}", catalog.source);
+    println!("source_url={}", catalog.source_url);
+    println!(
+        "pricing_cached_at={}",
+        catalog.fetched_at.as_deref().unwrap_or("unavailable")
+    );
+    println!(
+        "pricing_age_days={}",
+        pricing_cache_age_days()?
+            .map(|days| days.to_string())
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!("pricing_cache_ttl_days=7");
+    println!(
+        "pricing_cache_fresh={}",
+        pricing_cache_age_days()?
+            .map(|days| if days <= 7 { "yes" } else { "no" })
+            .unwrap_or("unavailable")
+    );
+    println!("models={}", catalog.models.len());
+    println!("billing_data=no");
+    println!("uploads=none");
+    Ok(())
+}
+
+fn fetch_pricing_catalog() -> Result<PricingCatalog> {
+    let url =
+        std::env::var("AIPLUS_PRICING_URL").unwrap_or_else(|_| PRICING_CATALOG_URL.to_string());
+    let text = if let Some(path) = url.strip_prefix("file://") {
+        fs::read_to_string(path)?
+    } else if command_exists("curl") {
+        let output = Command::new("curl").args(["-fsSL", &url]).output()?;
+        if !output.status.success() {
+            return Err(anyhow!("curl failed"));
+        }
+        String::from_utf8(output.stdout)?
+    } else if command_exists("wget") {
+        let output = Command::new("wget")
+            .args(["-q", "-O", "-", &url])
+            .output()?;
+        if !output.status.success() {
+            return Err(anyhow!("wget failed"));
+        }
+        String::from_utf8(output.stdout)?
+    } else {
+        return Err(anyhow!("curl or wget is required for pricing update"));
+    };
+    let mut catalog: PricingCatalog = serde_json::from_str(&text)?;
+    catalog.fetched_at = Some(timestamp());
+    if catalog.source.is_empty() {
+        catalog.source = "official".to_string();
+    }
+    if catalog.source_url.is_empty() {
+        catalog.source_url = url;
+    }
+    Ok(catalog)
+}
+
+fn load_pricing_catalog(allow_bundled: bool) -> Result<PricingCatalog> {
+    let cache = pricing_cache_file()?;
+    if cache.exists() {
+        let text = fs::read_to_string(cache)?;
+        return Ok(serde_json::from_str(&text)?);
+    }
+    if allow_bundled {
+        Ok(bundled_pricing_catalog())
+    } else {
+        Err(anyhow!("pricing cache is missing"))
+    }
+}
+
+fn load_pricing_catalog_for_savings() -> Result<PricingCatalog> {
+    let cache = pricing_cache_file()?;
+    let fresh = pricing_cache_age_days()?.is_some_and(|days| days <= 7);
+    if cache.exists() && fresh {
+        let text = fs::read_to_string(cache)?;
+        return Ok(serde_json::from_str(&text)?);
+    }
+    if let Ok(catalog) = fetch_pricing_catalog() {
+        if let Some(parent) = cache.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let _ = fs::write(&cache, serde_json::to_string_pretty(&catalog)?);
+        return Ok(catalog);
+    }
+    if cache.exists() {
+        let text = fs::read_to_string(cache)?;
+        return Ok(serde_json::from_str(&text)?);
+    }
+    Ok(bundled_pricing_catalog())
+}
+
+fn bundled_pricing_catalog() -> PricingCatalog {
+    embedded_asset_text("pricing/public-model-pricing.json")
+        .ok()
+        .and_then(|text| serde_json::from_str::<PricingCatalog>(&text).ok())
+        .unwrap_or_else(|| PricingCatalog {
+            schema_version: VERSION.to_string(),
+            fetched_at: None,
+            source_url: "bundled".to_string(),
+            source: "bundled".to_string(),
+            models: vec![PricingModel {
+                provider: "generic".to_string(),
+                model: "generic_default".to_string(),
+                input_usd_per_1m_tokens: 2.50,
+                source: "generic_default".to_string(),
+                source_url: "bundled".to_string(),
+            }],
+        })
+}
+
+fn choose_pricing_model(
+    catalog: &PricingCatalog,
+    model: Option<&str>,
+    confidence: &str,
+) -> (String, String, Option<String>, Option<f64>) {
+    let Some(model) = model.filter(|_| confidence != "unknown") else {
+        if let Some(generic) = catalog
+            .models
+            .iter()
+            .find(|entry| entry.model == "generic_default")
+        {
+            return (
+                "generic_default".to_string(),
+                "generic_default".to_string(),
+                catalog.fetched_at.clone(),
+                Some(generic.input_usd_per_1m_tokens),
+            );
+        }
+        return (
+            "unavailable".to_string(),
+            "unavailable".to_string(),
+            None,
+            None,
+        );
+    };
+    let normalized = normalize_model_id(model);
+    for entry in &catalog.models {
+        if normalize_model_id(&entry.model) == normalized {
+            let source = if catalog.source == "official" {
+                "official_public".to_string()
+            } else if catalog.source == "cached" {
+                if pricing_cache_age_days()
+                    .ok()
+                    .flatten()
+                    .is_some_and(|days| days > 7)
+                {
+                    "stale_cache".to_string()
+                } else {
+                    "cached".to_string()
+                }
+            } else {
+                catalog.source.clone()
+            };
+            return (
+                entry.model.clone(),
+                source,
+                catalog.fetched_at.clone(),
+                Some(entry.input_usd_per_1m_tokens),
+            );
+        }
+    }
+    (
+        "unavailable".to_string(),
+        "unavailable".to_string(),
+        catalog.fetched_at.clone(),
+        None,
+    )
+}
+
+fn detect_model_hint() -> (Option<String>, String) {
+    for key in ["AIPLUS_MODEL", "CODEX_MODEL", "OPENAI_MODEL", "AI_MODEL"] {
+        if let Ok(value) = std::env::var(key) {
+            if looks_non_secret_model_hint(&value) {
+                return (Some(value), "medium".to_string());
+            }
+        }
+    }
+    (None, "unknown".to_string())
+}
+
+fn looks_non_secret_model_hint(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() < 120
+        && !value.contains("sk-")
+        && !value.contains("token")
+        && !value.contains("secret")
+        && !value.contains('\n')
+}
+
+fn pricing_cache_file() -> Result<PathBuf> {
+    if let Ok(base) = std::env::var("XDG_CACHE_HOME") {
+        return Ok(PathBuf::from(base).join("aiplus/pricing-cache.json"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return Ok(PathBuf::from(home).join(".cache/aiplus/pricing-cache.json"));
+    }
+    Ok(PathBuf::from(".cache/aiplus/pricing-cache.json"))
+}
+
+fn pricing_cache_age_days() -> Result<Option<u64>> {
+    let cache = pricing_cache_file()?;
+    if !cache.exists() {
+        return Ok(None);
+    }
+    let modified = fs::metadata(cache)?.modified()?;
+    let age = SystemTime::now()
+        .duration_since(modified)
+        .map(|duration| duration.as_secs() / 86_400)
+        .unwrap_or(0);
+    Ok(Some(age))
+}
+
+fn pricing_input_price(estimate: &SavingsEstimate) -> Option<f64> {
+    estimate.cost_saved_usd.and_then(|cost| {
+        if estimate.tokens_saved == 0 {
+            None
+        } else {
+            Some(round4(cost * 1_000_000.0 / estimate.tokens_saved as f64))
+        }
+    })
+}
+
+fn normalize_model_id(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['_', ' ', '.'], "-")
+}
+
+fn command_exists(name: &str) -> bool {
+    Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|output| {
+            output.status.success() || !output.stdout.is_empty() || !output.stderr.is_empty()
+        })
+        .unwrap_or(false)
+}
+
+fn format_tokens(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{:.0}k", tokens as f64 / 1_000.0)
+    } else {
+        tokens.to_string()
+    }
+}
+
+fn round1(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
+fn round4(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
+}
+
 fn print_compact_diagnostics(result: &CompactValidation) {
     for warning in &result.warnings {
         eprintln!("WARNING {warning}");
@@ -2443,7 +3116,7 @@ fn collect_version_review_items(
 
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
-    if !["0.1.0", "0.2.0", "0.2.1"].contains(&version) {
+    if !["0.1.0", "0.2.0", "0.2.1", "0.3.0"].contains(&version) {
         review_items.push(format!(
             "{label} unsupported or unknown: {}",
             if version.is_empty() {
@@ -2456,7 +3129,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 }
 
 fn is_supported_manifest_schema(version: &str) -> bool {
-    matches!(version, "0.1.3" | "0.2.0" | "0.2.1")
+    matches!(version, "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0")
 }
 
 fn check_policy_array(
@@ -2845,6 +3518,7 @@ Current project AiPlus status:
 How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", "checkpoint this", "帮我准备 compact", or "保存进度", I will run aiplus compact prepare.
+- If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -2865,6 +3539,7 @@ Chinese response shape when the user uses Chinese such as `刷新` or `AiPlus �
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
+- 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
@@ -2927,6 +3602,15 @@ After context compaction:
 2. If the user sends a continuation message, accept natural phrasing:
    continue, resume, go on, 继续, 刷新, 接着.
 3. Continue from the reported next safe action.
+
+Savings requests:
+1. If the user asks "show compact savings", "how many tokens did compact save?",
+   "compact 帮我省了多少？", or "看一下 compact 收益", run `aiplus compact savings`.
+2. Treat savings as local estimates only, not billing data and not quality proof.
+3. Do not ask the user to enter model prices. Do not upload prompts, project
+   files, checkpoints, savings ledgers, secrets, billing data, or usage history.
+4. If pricing is missing, still report token savings and reduction percentage;
+   USD savings may be unavailable or partial.
 
 Beginner UX rule:
 - Do not ask ordinary users to memorize compact CLI commands.
@@ -2998,6 +3682,7 @@ Current project AiPlus status:
 How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", or "checkpoint this", I will run aiplus compact prepare.
+- If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -3018,6 +3703,7 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
+- 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 

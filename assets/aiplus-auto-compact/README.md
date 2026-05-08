@@ -132,6 +132,43 @@ This is best-effort automatic resume. AiPlus Auto Compact can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime
 that is waiting for the user.
 
+## Compact Savings Estimate
+
+AiPlus Auto Compact supports the AiPlus v0.3 savings estimate flow. Ordinary
+users can ask:
+
+```text
+show compact savings
+```
+
+or:
+
+```text
+how many tokens did compact save?
+```
+
+Agents should map those requests to:
+
+```bash
+aiplus compact savings
+```
+
+Savings are local estimates. AiPlus stores aggregate events in
+`.codex/compact/savings-ledger.jsonl`, reports latest compact and all-time
+totals, and calculates all-time reduction with a weighted formula:
+`totalEstimatedTokensSaved / totalEstimatedBaselineTokens * 100`.
+
+Pricing is cache-first. `aiplus compact savings`, `prepare`, `checkpoint`, and
+`resume` use fresh cached public pricing when available. If the cache is missing
+or stale, AiPlus may refresh public pricing automatically; network failure never
+blocks compact. `aiplus pricing update` explicitly refreshes public pricing data.
+If a detected model has no pricing, token savings and reduction still report,
+while USD savings are unavailable or partial.
+
+Savings reports are estimates only, not billing data. AiPlus does not upload
+prompts, project files, checkpoints, savings ledgers, secrets, billing data, or
+usage history.
+
 Existing projects with older `.codex/compact/current-handoff.md` files are
 upgraded conservatively by `aiplus install ...` and `aiplus update`: AiPlus backs
 up the old handoff, preserves user content, and adds missing role-aware sections

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+- Added Compact Savings Estimate with project-local
+  `.codex/compact/savings-ledger.jsonl` aggregate events.
+- Added `aiplus compact savings` and `aiplus compact savings --json`.
+- Added `aiplus pricing status` and `aiplus pricing update`; savings reports
+  read cached pricing by default, while explicit pricing update fetches public
+  pricing data.
+- Added conservative local token savings, weighted reduction percentage, and
+  estimated USD savings reporting. Reports are estimates only, not billing data.
+- Added safe unknown-model behavior: token savings and reduction still report,
+  while USD savings become unavailable or partial when pricing is missing.
+- Documented that AiPlus does not upload prompts, project files, checkpoints,
+  savings ledgers, secrets, billing data, or usage history.
+
 ## 0.2.1
 
 - Fixed dogfood upgrade behavior for legacy compact handoffs by adding missing

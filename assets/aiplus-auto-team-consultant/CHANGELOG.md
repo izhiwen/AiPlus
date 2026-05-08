@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3 compact savings alignment
+
+- Documented compact savings requests for team/advisor workflows.
+- Clarified that savings reports are estimates only, not billing data and not
+  proof of review, CEO plan, or release-gate quality.
+
 ## v0.2 compact readiness alignment
 
 - Added v0.2.1 dogfood-fix notes for legacy compact handoff migration and

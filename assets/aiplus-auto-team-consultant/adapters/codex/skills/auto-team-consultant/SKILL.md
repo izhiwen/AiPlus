@@ -91,6 +91,13 @@ Routing triggers:
 - pricing, distribution, adoption: Market / Positioning
 - unclear or conflicting advice: Strategic Critic
 
+Compact savings requests such as "show compact savings", "how many tokens did
+compact save?", "compact 帮我省了多少？", or "看一下 compact 收益" should route to
+the AiPlus backend command `aiplus compact savings` when available. Treat the
+result as an estimate and operating signal only. It is not billing data,
+guaranteed savings, precise cost measurement, or proof that a review, CEO plan,
+or release gate is correct.
+
 QA means Process / Orchestration QA for prompt, routing, handoff, and governance-like process questions.
 
 Use QA / Regression for tests, bugs, behavior regressions, or verification evidence.

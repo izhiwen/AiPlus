@@ -25,7 +25,14 @@ Date: 2026-05-08
   - Rust-native `compact score`
   - Rust-native `compact checkpoint --level`
   - Rust-native `compact resume`
+  - `compact savings` and `compact savings --json`
+  - `pricing status` and `pricing update`
+  - cached-pricing-only savings reports
+  - unknown-model USD unavailable behavior
+  - weighted all-time reduction calculation
+  - malformed savings-ledger line warning without crash
   - compact commands with `PATH` excluding Node
+  - pricing update fallback when public pricing fetch fails
   - static source scan for no `Command::new("node")`
   - dangling `AGENTS.md` symlink rejection
 

@@ -160,6 +160,18 @@ user content, and adds missing role-aware fields. If compact readiness is blocke
 by a real safety issue or denied Owner gate, AiPlus should report
 `BLOCKED_DO_NOT_COMPACT` rather than creating an ordinary checkpoint.
 
+For compact savings, users can ask:
+
+```text
+show compact savings
+how many tokens did compact save?
+```
+
+The agent should map that to `aiplus compact savings`. Savings are estimates
+only, not billing data and not proof of workflow quality. Auto Team Consultant
+may use savings as operating context, but it must not treat savings as evidence
+that a review, CEO plan, or release gate is correct.
+
 ## Roles In Plain Language
 
 - `Advisor`: gives direct advice, prompt review, strategy, or CEO-ready handoff

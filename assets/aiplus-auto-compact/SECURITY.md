@@ -2,6 +2,23 @@
 
 AiPlus Auto Compact stores compact/resume state in local project files. Treat those files as potentially sensitive project records.
 
+## Compact Savings Estimate
+
+AiPlus v0.3 can store aggregate savings events under
+`<TARGET_PROJECT>/.codex/compact/savings-ledger.jsonl`. These events are
+estimates only and must not contain prompt text, transcript text, project file
+contents, raw checkpoint text, secrets, billing data, provider account data, or
+usage history.
+
+`aiplus compact savings` reads local ledger data and uses fresh cached public
+pricing when available. If cache is missing or stale, AiPlus may refresh public
+pricing automatically. `aiplus pricing update` may fetch public pricing metadata
+and cache it locally. It does not upload prompts, project files, checkpoints,
+savings ledgers, billing data, secrets, or usage history.
+
+Savings reports are not billing data, guaranteed savings, precise cost
+measurement, compliance evidence, or quality proof.
+
 ## Supported Versions
 
 This repository is public on GitHub and versioned `0.1.0` in `package.json`. It

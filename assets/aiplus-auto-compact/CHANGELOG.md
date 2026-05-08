@@ -4,6 +4,13 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added AiPlus v0.3 Compact Savings Estimate guidance for natural-language
+  savings requests.
+- Clarified cache-first pricing behavior, weighted all-time reduction, unknown
+  model USD-unavailable behavior, and estimate-only/not-billing-data wording.
+- Added security wording that savings ledgers must remain aggregate and must not
+  include prompts, project files, raw checkpoint text, billing data, or usage
+  history.
 - Added v0.2.1 dogfood-fix guidance for legacy compact handoff migration:
   install/update should back up old handoffs, preserve user content, and add
   missing `Session Role`, `Workflow Level`, and `Output Contract` sections.

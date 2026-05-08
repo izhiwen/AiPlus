@@ -1,0 +1,30 @@
+# Security And Privacy
+
+AiPlus is project-local by default. It writes project install state under
+`.aiplus/` and compact state under `.codex/compact/`.
+
+## Compact Savings Estimate
+
+AiPlus may fetch public release metadata and public model pricing information to
+estimate compact savings. It caches pricing data locally, normally under
+`~/.cache/aiplus/pricing-cache.json`, with a default 7-day TTL. If the cache is
+missing or stale, AiPlus may refresh public pricing automatically. Network
+failure does not block compact, checkpoint, resume, or token savings reporting.
+
+AiPlus does not upload prompts, transcripts, project files, checkpoints, savings
+ledgers, secrets, billing data, provider account data, or usage history. It does
+not connect to provider billing APIs and does not require manual model price
+input.
+
+Savings reports are estimates based on local aggregate metrics and cached public
+pricing. They are not billing data, invoices, guaranteed savings, precise cost
+measurements, or quality proof.
+
+## Sensitive Local Files
+
+Do not place secrets, API keys, private keys, raw transcripts, provider request
+or response bodies, account identifiers, personal data, screenshots with secrets,
+or exact private paths in compact files.
+
+Validation is structural and heuristic. It is not a complete secret scanner,
+privacy review, legal review, compliance certification, or release approval.

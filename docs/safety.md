@@ -26,9 +26,21 @@ The Rust CLI does not implement:
 - system/global install
 - global Codex, Claude Code, or OpenCode config edits
 - telemetry
-- runtime network calls
+- user data upload
 - remote auto-update
 - shell profile edits
+
+Allowed network boundary:
+
+- AiPlus may fetch public pricing/release metadata by default for Compact
+  Savings Estimate and write a local pricing cache.
+- `aiplus compact savings`, `prepare`, `checkpoint`, and `resume` use fresh cache
+  first; when cache is missing or stale they may refresh public pricing
+  automatically. Network failure must not block compact, checkpoint, resume, or
+  token savings reporting.
+- The default pricing cache TTL is 7 days.
+- AiPlus does not upload prompts, project files, checkpoints, savings ledgers,
+  secrets, provider account data, billing data, or usage history.
 
 ## Publication Gates
 
@@ -36,10 +48,10 @@ Owner approval remains required before:
 
 - creating additional public repos
 - changing license away from Apache-2.0 or changing public legal wording
-- pushing commits outside the reviewed v0.2.1 release scope
-- creating or pushing git tags beyond `v0.2.1`
-- creating GitHub Releases beyond `v0.2.1`
-- uploading binary artifacts beyond the verified v0.2.1 macOS Apple Silicon
+- pushing commits outside the reviewed release scope
+- creating or pushing git tags beyond the approved release
+- creating GitHub Releases beyond the approved release
+- uploading binary artifacts beyond the verified macOS Apple Silicon
   asset and `checksums.txt`
 - publishing to package registries
 - creating Homebrew formulas or taps
@@ -49,9 +61,16 @@ Owner approval remains required before:
 - modifying `$CODEX_HOME`, `~/.codex`, `~/.claude`, OpenCode global config,
   shell profiles, `~/.cargo/bin`, `/usr/local/bin`, or system paths
 
-Owner approved v0.2.1 GitHub Release creation, the verified macOS Apple Silicon
+Owner approved v0.3.0 GitHub Release creation, the verified macOS Apple Silicon
 binary upload, `checksums.txt`, `install.sh`, and user-level installation to
 `~/.local/bin/aiplus`.
+
+## Compact Savings Boundary
+
+Savings estimates are local, aggregate, and approximate. They are not billing
+data, guaranteed savings, exact token accounting, compliance evidence, or quality
+proof. Unknown model pricing must not silently use generic pricing as if it were
+model-specific.
 
 ## Write Safety
 

@@ -37,6 +37,10 @@ aiplus compact score
 aiplus compact validate
 aiplus compact checkpoint --level standard
 aiplus compact resume
+aiplus compact savings
+aiplus compact savings --json
+aiplus pricing status
+aiplus pricing update
 aiplus uninstall --dry-run
 ```
 
@@ -58,6 +62,8 @@ aiplus install all
 - `ADD_DRY_RUN=PASS`
 - `UNINSTALL_DRY_RUN=PASS`
 - `COMPACT_RUST_NATIVE_STATUS=PASS`
+- `PRICING_STATUS=PASS`
+- `PRICING_UPDATE_STATUS=PASS`
 - `GLOBAL_CONFIG_UNTOUCHED`
 
 `compact checkpoint` may return `UNKNOWN_NEEDS_REVIEW` when seeded templates
@@ -74,7 +80,9 @@ rg -n 'AIPLUS''_SOURCE|/path/to/aiplus/target/release/aiplus' README.md README.z
 rg -n 'UNLICENSED' .
 rg -n 'Apache-2.0|LICENSE' README.md README.zh-CN.md Cargo.toml crates docs
 rg -n 'guaranteed safe|certified|compliant|secure by default|production-ready|official|endorsed|privacy guaranteed|safety approved' .
-rg -n 'npm publish|cargo publish|git push|git tag|GitHub Release|global install|telemetry|network' .
+rg -n 'actual billing savings|guaranteed savings|precise cost saved|quality proof' README.md README.zh-CN.md docs crates
+rg -n 'prompt upload|checkpoint upload|billing API|provider account API|telemetry|analytics' README.md README.zh-CN.md docs crates
+rg -n 'npm publish|cargo publish|git push|git tag|GitHub Release|global install|telemetry' .
 ```
 
 Classify matches in docs as forbidden-action warnings or historical reference

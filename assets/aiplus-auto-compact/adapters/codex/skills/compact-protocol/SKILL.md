@@ -92,6 +92,8 @@ Advanced users and maintainers may also run:
 aiplus compact score
 aiplus compact checkpoint --level standard
 aiplus compact resume
+aiplus compact savings
+aiplus pricing status
 ```
 
 `prepare` evaluates readiness and creates a checkpoint when appropriate.
@@ -99,6 +101,17 @@ aiplus compact resume
 passing validation does not mean safe to compact. `checkpoint` writes
 non-sensitive metadata and prints readiness state. `resume` prints the resumable
 state or `RESUME_BLOCKED`.
+
+If the user asks "show compact savings", "how many tokens did compact save?",
+"compact 帮我省了多少？", or "看一下 compact 收益", run:
+
+```bash
+aiplus compact savings
+```
+
+Savings output is an estimate only. It is not billing data or quality proof. Do
+not ask the user to enter model prices. Do not upload prompts, project files,
+checkpoints, savings ledgers, secrets, billing data, or usage history.
 
 ## After Compact
 

@@ -155,6 +155,17 @@ compact handoff：先备份旧 handoff，保留用户内容，再补缺失的 ro
 compact readiness 被真实安全问题或 denied Owner gate 阻塞，AiPlus 应报告
 `BLOCKED_DO_NOT_COMPACT`，而不是创建普通 checkpoint。
 
+compact savings 场景下，用户可以问：
+
+```text
+看一下 compact 收益
+compact 帮我省了多少？
+```
+
+agent 应映射到 `aiplus compact savings`。Savings 只是 estimates，不是 billing data，
+也不是 workflow quality proof。Auto Team Consultant 可以把 savings 当作操作上下文，
+但不能把 savings 当作 review、CEO plan 或 release gate 正确性的证据。
+
 ## 四种角色
 
 - `Advisor`：直接建议、prompt review、策略判断、CEO-ready handoff

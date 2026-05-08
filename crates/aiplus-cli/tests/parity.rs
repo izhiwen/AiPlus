@@ -35,6 +35,29 @@ fn run_with_path(cwd: &Path, args: &[&str], expected: i32, path_override: Option
     output
 }
 
+fn run_with_env(cwd: &Path, args: &[&str], expected: i32, envs: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(bin());
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env("HOME", cwd.join("fake-home"))
+        .env("CODEX_HOME", cwd.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"));
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("run aiplus");
+    assert_eq!(
+        output.status.code(),
+        Some(expected),
+        "{} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -117,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.2.1, auto-team-consultant@0.2.1]"));
+    assert!(status.contains("modules=[auto-compact@0.3.0, auto-team-consultant@0.3.0]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -624,6 +647,140 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
 }
 
 #[test]
+fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    seed_pricing_cache(target, &[("known-model", 1.0)]);
+
+    let no_network_path = make_empty_path();
+    let prepare = stdout(&run_with_env(
+        target,
+        &["compact", "prepare"],
+        0,
+        &[
+            ("AIPLUS_MODEL", "known-model"),
+            ("PATH", no_network_path.to_str().unwrap()),
+        ],
+    ));
+    assert!(prepare.contains("PREPARE_STATUS=PASS"));
+    let savings = stdout(&run_with_path(
+        target,
+        &["compact", "savings"],
+        0,
+        Some(&no_network_path),
+    ));
+    assert!(savings.contains("Compact savings estimate"));
+    assert!(savings.contains("This compact:"));
+    assert!(savings.contains("All time:"));
+    assert!(savings.contains("Tokens saved: ~"));
+    assert!(savings.contains("Token reduction: ~"));
+    assert!(savings.contains("Estimated cost saved: ~$"));
+    assert!(savings.contains("billing_data=no"));
+    assert!(savings.contains("Estimate only, not billing data."));
+    let ledger = fs::read_to_string(target.join(".codex/compact/savings-ledger.jsonl")).unwrap();
+    assert!(ledger.contains(r#""pricingStatus":"matched""#));
+    assert!(ledger.contains(r#""billingData":false"#));
+    assert!(ledger.contains("no prompt text"));
+    assert!(ledger.contains("raw checkpoint text"));
+
+    let json = stdout(&run_with_path(
+        target,
+        &["compact", "savings", "--json"],
+        0,
+        Some(&no_network_path),
+    ));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["status"], "PASS");
+    assert_eq!(parsed["billingData"], false);
+    assert!(parsed["allTime"]["estimatedTokensSaved"].as_u64().unwrap() > 0);
+
+    let unknown = tempfile::tempdir().unwrap();
+    let unknown_target = unknown.path();
+    setup_fake_env(unknown_target);
+    run(unknown_target, &["install", "codex"], 0);
+    approve_compact_state(unknown_target);
+    seed_pricing_cache(unknown_target, &[("known-model", 1.0)]);
+    run_with_env(
+        unknown_target,
+        &["compact", "prepare"],
+        0,
+        &[("AIPLUS_MODEL", "gpt-new-model")],
+    );
+    let unknown_savings = stdout(&run(unknown_target, &["compact", "savings"], 0));
+    assert!(unknown_savings.contains("Estimated cost saved: unavailable"));
+    assert!(unknown_savings.contains("pricing for detected model is not available"));
+    assert!(unknown_savings.contains("Tokens saved: ~"));
+    assert!(unknown_savings.contains("Token reduction: ~"));
+
+    let missing_cache = tempfile::tempdir().unwrap();
+    let missing_target = missing_cache.path();
+    setup_fake_env(missing_target);
+    run(missing_target, &["install", "codex"], 0);
+    approve_compact_state(missing_target);
+    run_with_env(
+        missing_target,
+        &["compact", "prepare"],
+        0,
+        &[("AIPLUS_MODEL", "gpt-new-model")],
+    );
+    let missing_out = stdout(&run(missing_target, &["compact", "savings"], 0));
+    assert!(missing_out.contains("Estimated cost saved: unavailable"));
+
+    let weighted = tempfile::tempdir().unwrap();
+    let weighted_target = weighted.path();
+    setup_fake_env(weighted_target);
+    run(weighted_target, &["install", "codex"], 0);
+    let ledger_dir = weighted_target.join(".codex/compact");
+    fs::write(
+        ledger_dir.join("savings-ledger.jsonl"),
+        format!(
+            "{}\n{}\nnot json\n",
+            savings_event_fixture(100, 50, 50.0, Some(0.01)),
+            savings_event_fixture(900, 300, 33.3, None)
+        ),
+    )
+    .unwrap();
+    let weighted_out = stdout(&run(weighted_target, &["compact", "savings"], 0));
+    assert!(weighted_out.contains("Average reduction: ~35"));
+    assert!(weighted_out.contains("Unpriced compacts: 1"));
+    assert!(weighted_out.contains("WARNING malformed ledger lines ignored: 1"));
+
+    let pricing_status = stdout(&run(target, &["pricing", "status"], 0));
+    assert!(pricing_status.contains("PRICING_STATUS=PASS"));
+    assert!(pricing_status.contains("billing_data=no"));
+    assert!(pricing_status.contains("uploads=none"));
+
+    let remote_catalog = target.join("pricing-source.json");
+    fs::write(
+        &remote_catalog,
+        r#"{"schemaVersion":"0.3.0","fetchedAt":null,"sourceUrl":"file-test","source":"official","models":[{"provider":"test","model":"updated-model","inputUsdPer1mTokens":3.0,"source":"official","sourceUrl":"file-test"}]}"#,
+    )
+    .unwrap();
+    let update = stdout(&run_with_env(
+        target,
+        &["pricing", "update"],
+        0,
+        &[(
+            "AIPLUS_PRICING_URL",
+            &format!("file://{}", remote_catalog.display()),
+        )],
+    ));
+    assert!(update.contains("PRICING_UPDATE_STATUS=PASS"));
+    assert!(update.contains("uploads=none"));
+
+    let failed_update = stdout(&run_with_env(
+        target,
+        &["pricing", "update"],
+        0,
+        &[("AIPLUS_PRICING_URL", "file:///does/not/exist")],
+    ));
+    assert!(failed_update.contains("PRICING_UPDATE_STATUS=PASS"));
+}
+
+#[test]
 fn compact_source_does_not_invoke_node() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source = fs::read_to_string(manifest_dir.join("src/main.rs")).unwrap();
@@ -640,4 +797,89 @@ fn setup_fake_env(target: &Path) {
 
 fn make_empty_path() -> PathBuf {
     tempfile::tempdir().unwrap().keep()
+}
+
+fn approve_compact_state(target: &Path) {
+    for file in [
+        "current-handoff.md",
+        "decision-log.md",
+        "agent-state-ledger.md",
+        "evidence-ledger.md",
+    ] {
+        let path = target.join(".codex/compact").join(file);
+        let next = fs::read_to_string(&path)
+            .unwrap()
+            .replace("UNKNOWN_PENDING", "APPROVED");
+        fs::write(path, next).unwrap();
+    }
+    let mut policy = fs::read_to_string(target.join(".codex/compact/compact-policy.json")).unwrap();
+    policy = policy.replace(
+        "\"status\": \"UNKNOWN_PENDING\"",
+        "\"status\": \"APPROVED\"",
+    );
+    fs::write(target.join(".codex/compact/compact-policy.json"), policy).unwrap();
+}
+
+fn seed_pricing_cache(target: &Path, models: &[(&str, f64)]) {
+    let cache = target.join("fake-home/.cache/aiplus");
+    fs::create_dir_all(&cache).unwrap();
+    let models_json: Vec<_> = models
+        .iter()
+        .map(|(model, price)| {
+            serde_json::json!({
+                "provider": "test",
+                "model": model,
+                "inputUsdPer1mTokens": price,
+                "source": "official",
+                "sourceUrl": "file-test"
+            })
+        })
+        .collect();
+    fs::write(
+        cache.join("pricing-cache.json"),
+        serde_json::json!({
+            "schemaVersion": "0.3.0",
+            "fetchedAt": "test-cache",
+            "sourceUrl": "file-test",
+            "source": "cached",
+            "models": models_json
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+fn savings_event_fixture(baseline: u64, saved: u64, reduction: f64, cost: Option<f64>) -> String {
+    serde_json::json!({
+        "schemaVersion": "0.3.0",
+        "timestamp": "test",
+        "event": "checkpoint",
+        "checkpointId": null,
+        "checkpointLevel": "standard",
+        "readinessState": "READY_TO_COMPACT",
+        "compactPressure": "HIGH",
+        "sessionRole": "Unknown",
+        "workflowLevel": "Unknown",
+        "estimatedInputTokensBefore": baseline,
+        "estimatedHandoffTokensAfter": baseline - saved,
+        "estimatedResumeTokens": 0,
+        "estimatedTokensSaved": saved,
+        "estimatedTokenReductionPercent": reduction,
+        "estimatedCostSavedUsd": cost,
+        "pricingModel": if cost.is_some() { "known-model" } else { "unavailable" },
+        "pricingStatus": if cost.is_some() { "matched" } else { "unavailable" },
+        "pricingSource": if cost.is_some() { "cached" } else { "unavailable" },
+        "pricingFetchedAt": "test-cache",
+        "pricingAgeDays": 0,
+        "inputPriceUsdPer1mTokens": if cost.is_some() { Some(1.0) } else { None },
+        "modelDetected": "known-model",
+        "modelDetectionConfidence": "medium",
+        "costEstimateAvailable": cost.is_some(),
+        "costEstimateReason": if cost.is_some() { "matched cached public pricing" } else { "pricing for detected model is not available" },
+        "billingData": false,
+        "method": "local_estimate_v1",
+        "confidence": "low",
+        "notes": []
+    })
+    .to_string()
 }

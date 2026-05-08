@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.3.0",
+  "fetchedAt": null,
+  "sourceUrl": "https://openai.com/api/pricing/",
+  "source": "bundled",
+  "models": [
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "inputUsdPer1mTokens": 1.25,
+      "source": "official",
+      "sourceUrl": "https://openai.com/api/pricing/"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "inputUsdPer1mTokens": 0.25,
+      "source": "official",
+      "sourceUrl": "https://openai.com/api/pricing/"
+    },
+    {
+      "provider": "openai",
+      "model": "generic_default",
+      "inputUsdPer1mTokens": 2.50,
+      "source": "generic_default",
+      "sourceUrl": "bundled"
+    }
+  ]
+}

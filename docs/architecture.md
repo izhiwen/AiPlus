@@ -78,6 +78,27 @@ for agents, advanced manual fallbacks, and maintainer debugging commands.
 `COMPACT_RUST_NATIVE_STATUS=PASS` marks compact commands that use Rust-native
 logic.
 
+## Compact Savings Estimate
+
+AiPlus records aggregate savings events in
+`.codex/compact/savings-ledger.jsonl` during `compact prepare`, permitted
+`compact checkpoint`, and `compact resume`. Events store estimated token counts,
+weighted reduction inputs, pricing coverage, model hint confidence, and cost
+estimate availability. They do not store prompt text, transcript text, project
+file contents, raw checkpoint text, billing data, provider account data, or usage
+history.
+
+`aiplus compact savings` reads the local ledger and uses fresh cached pricing
+when available. If pricing cache is missing or stale, AiPlus may refresh public
+pricing automatically. It reports latest compact and all-time totals. All-time
+reduction is weighted:
+`totalEstimatedTokensSaved / totalEstimatedBaselineTokens * 100`.
+
+`aiplus pricing update` explicitly refreshes public pricing data from the
+network. Pricing data is cached in a user cache such as
+`~/.cache/aiplus/pricing-cache.json` with a default 7-day TTL. Compact commands
+continue when pricing fetch fails, pricing is missing, stale, or unavailable.
+
 ## Public Repository Layout
 
 The public repository name is `aiplus` and the Rust workspace is the repository
