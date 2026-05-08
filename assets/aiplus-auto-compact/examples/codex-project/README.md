@@ -25,18 +25,24 @@ If checkpoint output is acceptable after review, the user manually runs Codex co
 The agent can say:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
-After compact, if Codex returns control automatically:
+After compact:
 
 ```bash
 cd <TARGET_PROJECT>
 aiplus compact resume
 ```
 
-If Codex waits for the user, send a natural continuation such as `继续`,
-`刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着`.
+If Codex does not reply, send a natural continuation such as `continue`, `resume`,
+`go on`, `继续`, `刷新`, or `接着`.
 
 ## Synthetic Handoff Content
 

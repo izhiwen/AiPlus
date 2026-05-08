@@ -39,6 +39,6 @@ Return:
 ## Guardrails
 
 - Do not imply hooks are required or enabled by default.
-- Do not claim automatic recovery is guaranteed. Resume is best-effort when the
-  host returns control to the agent.
+- Do not claim automatic recovery is guaranteed. Resume is best-effort after
+  compact.
 - Do not edit files outside the current task's allowed scope.

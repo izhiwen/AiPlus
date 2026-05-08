@@ -5,9 +5,8 @@ Use this prompt as shared guidance for OpenCode compact checkpoint and resume wo
 ## Purpose
 
 The protocol preserves enough task state to continue after context compaction.
-It supports best-effort automatic resume when the host returns control to the
-agent, but it does not provide safety assurances, guaranteed recovery, or
-default-on protection.
+It supports best-effort resume after compact, but it does not provide safety
+assurances, guaranteed recovery, or default-on protection.
 
 ## Required State
 

@@ -67,7 +67,9 @@ enum Commands {
     },
     Doctor,
     Status,
-    Refresh,
+    Refresh {
+        trigger: Vec<String>,
+    },
     Uninstall {
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
@@ -332,7 +334,7 @@ fn run(command: Commands) -> Result<()> {
         } => command_add(module, dry_run, verbose),
         Commands::Doctor => command_doctor(),
         Commands::Status => command_status(),
-        Commands::Refresh => command_refresh(),
+        Commands::Refresh { trigger } => command_refresh(trigger),
         Commands::Uninstall {
             dry_run,
             yes,
@@ -658,44 +660,85 @@ fn command_status() -> Result<()> {
     Ok(())
 }
 
-fn command_refresh() -> Result<()> {
+fn command_refresh(trigger: Vec<String>) -> Result<()> {
     let root = target_root()?;
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let modules = normalize_existing_modules(manifest.modules.as_ref());
-    let auto_compact = module_refresh_status(&modules, "auto-compact");
-    let auto_team = module_refresh_status(&modules, "auto-team-consultant");
     let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
         "present"
     } else {
         "missing"
     };
 
-    println!("已刷新 AiPlus。");
-    println!();
-    println!("当前项目 AiPlus 状态：");
-    println!("- Auto Compact: {auto_compact}");
-    println!("- Auto Team Consultant: {auto_team}");
-    println!("- Compact state: {compact_state}");
-    println!();
-    println!("我会这样使用：");
-    println!("- 长任务或 compact 前准备 checkpoint");
-    println!("- compact 后如果宿主交回控制权，我会自动 resume");
-    println!("- 如果宿主需要消息唤醒，你可以说“继续/刷新/refresh/continue”或明确说“AiPlus 刷新”");
-    println!("- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant");
-    println!();
-    println!("边界：");
-    println!("- AiPlus 不能替你点击 compact");
-    println!("- 不上传数据");
-    println!("- 不改全局 agent config");
+    if prefers_chinese_refresh(&trigger) {
+        let auto_compact = module_refresh_status_zh(&modules, "auto-compact");
+        let auto_team = module_refresh_status_zh(&modules, "auto-team-consultant");
+        println!("已刷新 AiPlus。");
+        println!();
+        println!("当前项目 AiPlus 状态：");
+        println!("- Auto Compact: {auto_compact}");
+        println!("- Auto Team Consultant: {auto_team}");
+        println!("- Compact state: {compact_state}");
+        println!();
+        println!("我会这样使用：");
+        println!("- 长任务或 compact 前准备 checkpoint");
+        println!("- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。");
+        println!("- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant");
+        println!();
+        println!("边界：");
+        println!("- AiPlus 不能替你点击 compact");
+        println!("- 不上传数据");
+        println!("- 不改全局 agent config");
+    } else {
+        let auto_compact = module_refresh_status_en(&modules, "auto-compact");
+        let auto_team = module_refresh_status_en(&modules, "auto-team-consultant");
+        println!("AiPlus refreshed.");
+        println!();
+        println!("Current project AiPlus status:");
+        println!("- Auto Compact: {auto_compact}");
+        println!("- Auto Team Consultant: {auto_team}");
+        println!("- Compact state: {compact_state}");
+        println!();
+        println!("How I will use it:");
+        println!("- Prepare checkpoints before long tasks or compact-worthy moments.");
+        println!("- After compact, if I do not reply, send: continue");
+        println!("- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.");
+        println!();
+        println!("Boundaries:");
+        println!("- AiPlus cannot click compact for you.");
+        println!("- AiPlus does not upload data.");
+        println!("- AiPlus does not change global agent config.");
+    }
     println!("AIPLUS_REFRESH_STATUS=PASS");
     Ok(())
 }
 
-fn module_refresh_status(modules: &BTreeMap<String, ManifestModule>, name: &str) -> &'static str {
+fn prefers_chinese_refresh(trigger: &[String]) -> bool {
+    trigger.iter().any(|part| {
+        part.chars()
+            .any(|ch| ('\u{4e00}'..='\u{9fff}').contains(&ch))
+    })
+}
+
+fn module_refresh_status_zh(
+    modules: &BTreeMap<String, ManifestModule>,
+    name: &str,
+) -> &'static str {
     if modules.contains_key(name) {
         "已安装"
     } else {
         "未安装"
+    }
+}
+
+fn module_refresh_status_en(
+    modules: &BTreeMap<String, ManifestModule>,
+    name: &str,
+) -> &'static str {
+    if modules.contains_key(name) {
+        "installed"
+    } else {
+        "not installed"
     }
 }
 
@@ -2360,7 +2403,26 @@ Generic refresh priority rule:
 - Never bury AiPlus status behind unrelated project refresh when the user asks
   for AiPlus.
 
-Expected response shape:
+Default English response shape:
+
+AiPlus refreshed.
+
+Current project AiPlus status:
+- Auto Compact: installed/not installed
+- Auto Team Consultant: installed/not installed
+- Compact state: present/missing/review-needed
+
+How I will use it:
+- Prepare checkpoints before long tasks or compact-worthy moments.
+- After compact, if I do not reply, send: continue
+- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
+
+Boundaries:
+- AiPlus cannot click compact for you.
+- AiPlus does not upload data.
+- AiPlus does not change global agent config.
+
+Chinese response shape when the user uses Chinese such as `刷新` or `AiPlus 刷新`:
 
 已刷新 AiPlus。
 
@@ -2371,8 +2433,7 @@ Expected response shape:
 
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
-- compact 后如果宿主交回控制权，我会自动 resume
-- 如果宿主需要消息唤醒，你可以说“继续/刷新/refresh/continue”或明确说“AiPlus 刷新”
+- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
 边界：
@@ -2389,8 +2450,7 @@ When continuing:
 2. Re-read `.aiplus/AGENTS.aiplus.md`.
 3. Re-read `.codex/compact/current-handoff.md` if it exists.
 4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for the current session.
-5. Run `aiplus compact resume` if compact state exists and host control has
-   returned after compact.
+5. Run `aiplus compact resume` after compact when work should continue.
 6. Continue the current task without asking the user to repeat the full instruction.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
@@ -2416,13 +2476,18 @@ Before context compaction or compact-worthy moments:
 1. Run `aiplus compact validate`.
 2. Run `aiplus compact checkpoint`.
 3. Suggest compact only after checkpoint is ready:
-   建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+   Ready to compact.
+
+   After compact:
+   - If I continue automatically, you do not need to do anything.
+   - If I do not reply, send: continue
+
+   I will resume from here.
 
 After context compaction:
-1. If the host gives control back automatically, run `aiplus compact resume`
-   without waiting for a specific user phrase.
-2. If the host requires a user message, accept any natural continuation:
-   继续, 刷新, continue, resume, refresh, go on, 接着.
+1. Run `aiplus compact resume` when work continues after compact.
+2. If the user sends a continuation message, accept natural phrasing:
+   continue, resume, go on, 继续, 刷新, 接着.
 3. Continue from the reported next safe action.
 
 Limits:
@@ -2476,7 +2541,26 @@ continue project-specific refresh if needed. If project rules conflict, report
 AiPlus status briefly before project status. Never bury AiPlus status behind
 unrelated project refresh when the user asks for AiPlus.
 
-Reply:
+Default reply:
+
+AiPlus refreshed.
+
+Current project AiPlus status:
+- Auto Compact: installed/not installed
+- Auto Team Consultant: installed/not installed
+- Compact state: present/missing/review-needed
+
+How I will use it:
+- Prepare checkpoints before long tasks or compact-worthy moments.
+- After compact, if I do not reply, send: continue
+- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
+
+Boundaries:
+- AiPlus cannot click compact for you.
+- AiPlus does not upload data.
+- AiPlus does not change global agent config.
+
+Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 
 已刷新 AiPlus。
 
@@ -2487,8 +2571,7 @@ Reply:
 
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
-- compact 后如果宿主交回控制权，我会自动 resume
-- 如果宿主需要消息唤醒，你可以说“继续/刷新/refresh/continue”或明确说“AiPlus 刷新”
+- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
 边界：
@@ -2498,7 +2581,7 @@ Reply:
 
 Generic continuation keywords: 刷新, refresh, 继续, continue, resume, go on, 接着
 
-Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume when compact state exists after host control returns, enable AiPlus, and continue the current task.
+Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume after compact when work should continue, enable AiPlus, and continue the current task.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 
@@ -2522,7 +2605,7 @@ Re-read project-local AiPlus instructions:
 2. Read .aiplus/AGENTS.aiplus.md.
 3. Read .codex/compact/current-handoff.md if present.
 4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for this session.
-5. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, reply with "已刷新 AiPlus。" and summarize Auto Compact, Auto Team Consultant, and compact state before any project-specific refresh.
+5. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Auto Compact, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
 6. Continue the current task.
 
 Continuation keywords: AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, 继续, 刷新, continue, resume, refresh, go on, 接着.

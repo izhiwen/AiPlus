@@ -91,10 +91,9 @@ Keep Codex compact manual. After compact:
 aiplus compact resume
 ```
 
-If the host returns control automatically, the agent should run resume and
-continue. If the host waits for the user, natural continuation messages such as
-`继续`, `刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着` should restart
-the resume flow.
+If the agent continues automatically, you do not need to do anything. If it does
+not reply, natural continuation messages such as `continue`, `resume`, `go on`,
+`继续`, `刷新`, or `接着` should restart the resume flow.
 
 ## Claude Code Users
 

@@ -84,13 +84,13 @@ aiplus compact resume
 ```
 
 Before compact, run validate and checkpoint. If checkpoint state is ready, the
-agent can recommend manual compact and explain best-effort resume: when OpenCode
-returns control automatically, run `aiplus compact resume`; if OpenCode waits
-for the user, explicit AiPlus messages such as `AiPlus 刷新`, `刷新 AiPlus`,
-`aiplus refresh`, `aiplus status`, `AiPlus status`, `继续 AiPlus`, or
-`resume AiPlus` should restart the resume flow. Generic messages such as `继续`,
-`刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着` should try AiPlus
-first when possible; when project-specific refresh rules conflict, report AiPlus
+agent can recommend manual compact and explain best-effort resume: after compact,
+run `aiplus compact resume`; if the agent does not reply, explicit AiPlus
+messages such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`,
+`aiplus status`, `AiPlus status`, `继续 AiPlus`, or `resume AiPlus` should
+restart the resume flow. Generic messages such as `继续`, `刷新`, `refresh`,
+`continue`, `resume`, `go on`, or `接着` should try AiPlus first when possible;
+when project-specific refresh rules conflict, report AiPlus
 status before project status.
 
 `../../core/scripts/compactctl.mjs` remains only as archived history and a

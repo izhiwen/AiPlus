@@ -63,13 +63,12 @@ aiplus compact resume
 
 Before compact, the agent should run `aiplus compact validate` and
 `aiplus compact checkpoint`. If checkpoint state is ready, it can recommend
-manual compact and explain that resume is best-effort: when Claude Code returns
-control automatically, the agent should run `aiplus compact resume`; if Claude
-Code waits for the user, explicit AiPlus messages such as `AiPlus 刷新`,
-`刷新 AiPlus`, `aiplus refresh`, `aiplus status`, `AiPlus status`,
-`继续 AiPlus`, or `resume AiPlus` should restart the resume flow. Generic
-messages such as `继续`, `刷新`, `refresh`, `continue`, `resume`, `go on`, or
-`接着` should try AiPlus first when possible; when project-specific refresh
+manual compact and explain that resume is best-effort: after compact, run
+`aiplus compact resume`; if the agent does not reply, explicit AiPlus messages
+such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
+`AiPlus status`, `继续 AiPlus`, or `resume AiPlus` should restart the resume
+flow. Generic messages such as `继续`, `刷新`, `refresh`, `continue`, `resume`,
+`go on`, or `接着` should try AiPlus first when possible; when project-specific refresh
 rules conflict, report AiPlus status before project status.
 
 ## Optional Hook Concept

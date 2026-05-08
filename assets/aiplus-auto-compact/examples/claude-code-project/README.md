@@ -39,9 +39,9 @@ After the user manually completes the Claude Code compact or session reset step:
 aiplus compact resume
 ```
 
-If Claude Code returns control automatically, the agent should run resume and
-continue. If it waits for the user, send a natural continuation such as `继续`,
-`刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着`.
+If the agent continues automatically, you do not need to do anything. If it does
+not reply, send a natural continuation such as `continue`, `resume`, `go on`,
+`继续`, `刷新`, or `接着`.
 
 ## Synthetic Handoff Content
 

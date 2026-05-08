@@ -92,13 +92,15 @@ aiplus compact checkpoint
 如果 checkpoint 已准备好，agent 应推荐用户手动 compact，话术类似：
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+现在可以 compact 了。
+
+compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 ```
 
 host compact 完成后：
 
-- 如果 host 自动把控制权交回给 agent，agent 应运行 `aiplus compact resume` 并继续，不需要用户再发消息。
-- 如果 host 需要用户发消息，任何自然的继续意图都应该可用：
+- 如果 agent 自动继续，你不需要做任何事。
+- 如果 agent 没回复，任何自然的继续意图都应该可用：
 
 ```text
 AiPlus 刷新
@@ -171,7 +173,7 @@ AiPlus Auto Compact 可以：
 - 检查 required files、sections、enum values、policy JSON、version fields、Owner gates、next actions 和明显 sensitive patterns。
 - 在 `.codex/compact/checkpoints/` 下写本地 checkpoint JSON。
 - compact 后打印 resume-oriented state。
-- host runtime 在 compact 后把控制权交回给 agent 时，支持 best-effort automatic resume。
+- compact 后支持 best-effort automatic resume。
 - 默认保持 runtime setup project-local。
 
 ## 它不能自动化什么

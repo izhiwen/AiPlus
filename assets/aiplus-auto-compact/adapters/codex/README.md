@@ -33,16 +33,22 @@ Only recommend manual compact after `checkpoint` returns `SAFE_TO_COMPACT` and e
 When checkpoint state is ready, tell the user:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
-After compact, if Codex returns control automatically:
+After compact:
 
 ```bash
 aiplus compact resume
 ```
 
-If Codex waits for the user, explicit AiPlus continuation messages such as
+If Codex does not reply, explicit AiPlus continuation messages such as
 `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
 `AiPlus status`, `继续 AiPlus`, or `resume AiPlus` should restart the resume
 flow. Generic messages such as `继续`, `刷新`, `refresh`, `continue`, `resume`,

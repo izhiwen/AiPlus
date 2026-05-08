@@ -122,11 +122,18 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(status.contains("STATUS=PASS"));
 
     let refresh = stdout(&run(target, &["refresh"], 0));
-    assert!(refresh.contains("已刷新 AiPlus。"));
-    assert!(refresh.contains("- Auto Compact: 已安装"));
-    assert!(refresh.contains("- Auto Team Consultant: 已安装"));
+    assert!(refresh.contains("AiPlus refreshed."));
+    assert!(refresh.contains("- Auto Compact: installed"));
+    assert!(refresh.contains("- Auto Team Consultant: installed"));
     assert!(refresh.contains("- Compact state: present"));
     assert!(refresh.contains("AIPLUS_REFRESH_STATUS=PASS"));
+    assert!(!refresh.contains("已刷新 AiPlus。"));
+
+    let refresh_zh = stdout(&run(target, &["refresh", "AiPlus 刷新"], 0));
+    assert!(refresh_zh.contains("已刷新 AiPlus。"));
+    assert!(refresh_zh.contains("- Auto Compact: 已安装"));
+    assert!(refresh_zh.contains("- Auto Team Consultant: 已安装"));
+    assert!(refresh_zh.contains("AIPLUS_REFRESH_STATUS=PASS"));
 
     let installed_agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
     for phrase in [
@@ -211,7 +218,7 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     let agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
     assert!(agents.contains("AiPlus 刷新"));
     assert!(agents.contains("project-specific refresh"));
-    assert!(agents.contains("Expected response shape"));
+    assert!(agents.contains("Default English response shape"));
     assert!(agents.contains("AiPlus CLI not found"));
     assert!(!agents.contains("node .aiplus"));
     assert!(!agents.contains("compactctl.mjs validate"));

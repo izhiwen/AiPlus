@@ -20,7 +20,13 @@ used as a compact recommendation condition.
 When checkpoint state is ready, use clear manual-compact wording:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
 ## Do Not Recommend Compact
@@ -46,7 +52,7 @@ All compact state lives under `.codex/compact/`:
 4. Read `decision-log.md` for active decisions.
 5. Read `agent-state-ledger.md` for delegated work state.
 6. Read `evidence-ledger.md` for verification evidence.
-7. Run `aiplus compact resume` when the host returns control after compact.
+7. Run `aiplus compact resume` after compact before continuing work.
 8. Continue only from the listed Next Safe Action.
 
 ## Owner Gates
@@ -78,10 +84,9 @@ compact. `checkpoint` writes non-sensitive metadata and prints
 
 ## After Compact
 
-After compact, if Codex returns control automatically, first run
-`aiplus compact resume`, then inspect the compact files in recovery order.
+After compact, first run `aiplus compact resume`, then inspect the compact files in recovery order.
 Continue only from the next safe action, and re-run `validate` before changing
-gates or decisions. If Codex waits for the user, natural continuation messages
+gates or decisions. If Codex does not reply, natural continuation messages
 such as `继续`, `刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着`
 should restart the resume flow. This is best-effort; the skill cannot wake
 Codex by itself.

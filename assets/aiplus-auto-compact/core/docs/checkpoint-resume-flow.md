@@ -25,14 +25,20 @@ all Owner gates are explicitly `APPROVED`.
 When checkpoint state is ready, the agent can say:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
 The user or host runtime still performs compact manually.
 
 ## Resume After Host Compact
 
-If the host gives control back automatically, the agent should run:
+After compact, the agent should run:
 
 ```bash
 aiplus compact resume
@@ -40,8 +46,8 @@ aiplus compact resume
 
 and continue from the checkpoint and local handoff files.
 
-If the host waits for a user message, any natural continuation should be enough
-to restart the agent workflow:
+If the agent does not reply, any natural continuation should be enough to
+restart the agent workflow:
 
 ```text
 AiPlus 刷新

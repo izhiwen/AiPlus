@@ -51,18 +51,18 @@ The install is project-local. It may write `.aiplus/`, `.codex/compact/`, projec
 Then type this in the already-open Codex, Claude Code, or OpenCode session:
 
 ```text
-AiPlus 刷新
+aiplus refresh
 ```
 
 Other explicit AiPlus refresh triggers:
 
 ```text
-刷新 AiPlus
-aiplus refresh
-aiplus status
 AiPlus status
-继续 AiPlus
 resume AiPlus
+AiPlus 刷新
+刷新 AiPlus
+aiplus status
+继续 AiPlus
 ```
 
 Generic `刷新` / `refresh` should still try AiPlus first after installation. If
@@ -96,14 +96,19 @@ If the checkpoint is ready, the agent should recommend manual compact with
 language like:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
 After the host compact completes:
 
-- If the host gives control back automatically, the agent should run
-  `aiplus compact resume` and continue without requiring user input.
-- If the host requires a user message, any natural continuation should work:
+- If the agent continues automatically, you do not need to do anything.
+- If the agent does not reply, any natural continuation should work:
 
 ```text
 AiPlus 刷新
@@ -177,8 +182,7 @@ AiPlus Auto Compact can:
 - Validate required files, sections, enum values, policy JSON, version fields, Owner gates, next actions, and obvious sensitive patterns.
 - Write local checkpoint JSON under `.codex/compact/checkpoints/`.
 - Print resume-oriented state after compaction.
-- Support best-effort automatic resume when the host runtime returns control to
-  the agent after compact.
+- Support best-effort automatic resume after compact.
 - Keep runtime setup project-local by default.
 
 ## What It Cannot Automate

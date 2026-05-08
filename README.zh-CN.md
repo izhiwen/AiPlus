@@ -115,14 +115,15 @@ aiplus compact checkpoint
 agent 应该用普通语言建议 compact：
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+现在可以 compact 了。
+
+compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 ```
 
 host compact 之后，AiPlus 会 best-effort resume：
 
-- 如果 host 自动把控制权交回 agent，agent 应自动运行 `aiplus compact resume`。
-- 如果 host 等待用户消息，随便说 `继续`、`刷新`、`continue`、`resume`、
-  `refresh`、`go on` 或 `接着` 都可以。
+- 如果 agent 自动继续，你不需要做任何事。
+- 如果 agent 没回复，发一句 `继续`。
 
 AiPlus 不能强制 host compact，不能点击 UI compact，不能代替你调用 `/compact`，也
 不能在 host 要求用户输入时主动唤醒 agent。

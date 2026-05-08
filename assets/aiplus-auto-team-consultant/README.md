@@ -31,13 +31,14 @@ aiplus install codex
 Then in your already-open agent session, type:
 
 ```text
-刷新
+aiplus refresh
 ```
 
-or:
+Chinese triggers are also supported:
 
 ```text
-refresh
+AiPlus 刷新
+刷新 AiPlus
 ```
 
 If the project already has an older AiPlus install, `aiplus install codex` safely upgrades AiPlus managed files, backs up replaced managed files under `.aiplus/backups/`, and preserves existing `.codex/compact/` state.
@@ -54,18 +55,18 @@ aiplus install codex
 Then in your already-open agent session, type:
 
 ```text
-AiPlus 刷新
+aiplus refresh
 ```
 
 Other explicit AiPlus refresh triggers:
 
 ```text
-刷新 AiPlus
-aiplus refresh
-aiplus status
 AiPlus status
-继续 AiPlus
 resume AiPlus
+AiPlus 刷新
+刷新 AiPlus
+aiplus status
+继续 AiPlus
 ```
 
 Generic `刷新` / `refresh` should still try AiPlus first after installation. If

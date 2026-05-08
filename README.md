@@ -29,18 +29,18 @@ Then type this in the already-open Codex, Claude Code, or OpenCode session for
 that same project:
 
 ```text
-AiPlus 刷新
+aiplus refresh
 ```
 
 Other explicit triggers also work:
 
 ```text
-刷新 AiPlus
-aiplus refresh
-aiplus status
 AiPlus status
-继续 AiPlus
 resume AiPlus
+AiPlus 刷新
+刷新 AiPlus
+aiplus status
+继续 AiPlus
 ```
 
 Generic `刷新` / `refresh` should still try AiPlus first after installation. If
@@ -119,15 +119,19 @@ aiplus compact checkpoint
 The agent should then suggest compact in plain language:
 
 ```text
-建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+Ready to compact.
+
+After compact:
+- If I continue automatically, you do not need to do anything.
+- If I do not reply, send: continue
+
+I will resume from here.
 ```
 
 After host compact, AiPlus resumes best-effort:
 
-- If the host gives control back to the agent, the agent should run
-  `aiplus compact resume` automatically.
-- If the host waits for a user message, say anything like `继续`, `刷新`,
-  `continue`, `resume`, `refresh`, `go on`, or `接着`.
+- If the agent continues automatically, you do not need to do anything.
+- If the agent does not reply, send `continue`.
 
 AiPlus cannot force host compact, click UI compact, call `/compact` for you, or
 wake the agent if the host requires user input.
