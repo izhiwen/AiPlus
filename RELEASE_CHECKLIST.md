@@ -1,8 +1,8 @@
 # AiPlus Rust Release Checklist
 
-Status: `V0_3_0_RELEASE_APPROVED_SCOPE`
+Status: `V0_4_3_RELEASE_APPROVED_SCOPE`
 
-This checklist tracks the Owner-approved v0.4.2 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.4.3 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.4.2 source/docs changes.
-- [x] Owner approves creating the `v0.4.2` git tag.
-- [x] Owner approves the `v0.4.2` GitHub Release.
+- [x] Owner approves git push for reviewed v0.4.3 source/docs changes.
+- [x] Owner approves creating the `v0.4.3` git tag.
+- [x] Owner approves the `v0.4.3` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -52,6 +52,14 @@ system/global install paths.
 - [x] Manual smoke: `compact savings --json`
 - [x] Manual smoke: `pricing status`
 - [x] Manual smoke: `pricing update`
+- [x] Manual smoke: `profile status`
+- [x] Manual smoke: `secret-broker status`
+- [x] Manual smoke: `secret-broker list`
+- [x] Mock smoke: `secret-broker resolve kimi|deepseek|qwen` does not print
+      secret values.
+- [ ] Real Bitwarden smoke with `bws` CLI and read-only machine token
+      (`secret-broker doctor`, `list`, representative default `resolve`, and
+      harmless `run --`). Mark blocked/not-run if `bws` is unavailable.
 - [x] Manual smoke: `uninstall --dry-run`
 
 ## Static Safety Gates
@@ -68,7 +76,7 @@ system/global install paths.
 - [x] `compact savings` reads cached pricing only by default.
 - [x] `pricing update` fetches public pricing only and never uploads local data.
 - [x] No global config writes.
-- [x] No publication actions outside the Owner-approved v0.4.2 GitHub Release
+- [x] No publication actions outside the Owner-approved v0.4.3 GitHub Release
       scope executed.
 - [x] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
@@ -102,4 +110,4 @@ system/global install paths.
 - [x] Archive contains Apache-2.0 `LICENSE`.
 - [x] `checksums.txt` matches uploaded artifacts.
 - [x] `install.sh` downloads only release assets and installs only `aiplus`.
-- [x] Owner approved the v0.4.2 upload scope before release artifact creation.
+- [x] Owner approved the v0.4.3 upload scope before release artifact creation.

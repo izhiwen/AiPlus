@@ -197,6 +197,17 @@ files 或 result packets。
 如果任务明确需要 key，agent 应优先使用 `aiplus secret-broker run -- <command...>`，
 让 approved values 只进入 child process environment。绝不能 print、paste、log、
 summarize、compact 或 persist secret values。
+child command 仍可能 print、log、transmit 或 store 它自己的 environment。只对可信
+且符合当前 action need 的命令使用 `run --`。
+
+AiPlus v0.4.3 扩展了 approved secret alias table，覆盖常见 AI、search、image 和
+developer providers。示例包括 `openai`、`anthropic`、`gemini`、`github`、
+`cloudflare`、`kimi`、`deepseek`、`qwen`、`openrouter`、`xai`、`groq`、
+`mistral`、`perplexity`、`tavily`、`firecrawl` 和 `volcengine_ark`。当前完整映射以
+`aiplus secret-broker list` 为准。真实 Bitwarden smoke check 需要 Bitwarden
+Secrets Manager `bws` CLI 和 read-only machine account token；如果没有 `bws`，
+review/CEO flow 应报告真实 Bitwarden verification 未验证，而不是要求或打印 secret
+value。
 
 ## 四种角色
 

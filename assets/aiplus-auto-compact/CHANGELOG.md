@@ -4,6 +4,11 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Synced AiPlus v0.4.3 secret-broker guidance with the expanded alias inventory
+  for common AI, search, image, and developer providers.
+- Clarified that `aiplus secret-broker list` owns the current alias table and
+  that real Bitwarden smoke checks require the `bws` CLI plus a read-only
+  machine account token.
 - Added guidance for user-level private profiles and `aiplus secret-broker`
   metadata-only checks.
 - Clarified that compact handoffs, checkpoints, and savings ledgers must never

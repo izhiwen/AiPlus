@@ -140,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.4.2, auto-team-consultant@0.4.2]"));
+    assert!(status.contains("modules=[auto-compact@0.4.3, auto-team-consultant@0.4.3]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -994,19 +994,103 @@ fn user_profile_and_secret_broker_are_secret_safe() {
     assert!(broker_status.contains("secret_values_printed=no"));
 
     let broker_list = stdout(&run(target, &["secret-broker", "list"], 0));
-    assert!(broker_list.contains("openai -> zhiwen/openai/api_key -> OPENAI_API_KEY"));
+    let expected_aliases = [
+        ("openai", "zhiwen/openai/api_key", "OPENAI_API_KEY"),
+        ("anthropic", "zhiwen/anthropic/api_key", "ANTHROPIC_API_KEY"),
+        ("gemini", "zhiwen/gemini/api_key", "GEMINI_API_KEY"),
+        ("github", "zhiwen/github/token", "GITHUB_TOKEN"),
+        (
+            "cloudflare",
+            "zhiwen/cloudflare/token",
+            "CLOUDFLARE_API_TOKEN",
+        ),
+        ("kimi", "zhiwen/kimi/api_key", "KIMI_API_KEY"),
+        ("deepseek", "zhiwen/deepseek/api_key", "DEEPSEEK_API_KEY"),
+        ("minimax", "zhiwen/minimax/api_key", "MINIMAX_API_KEY"),
+        ("qwen", "zhiwen/qwen/api_key", "QWEN_API_KEY"),
+        ("glm", "zhiwen/glm/api_key", "GLM_API_KEY"),
+        (
+            "openrouter",
+            "zhiwen/openrouter/api_key",
+            "OPENROUTER_API_KEY",
+        ),
+        ("xai", "zhiwen/xai/api_key", "XAI_API_KEY"),
+        ("groq", "zhiwen/groq/api_key", "GROQ_API_KEY"),
+        ("mistral", "zhiwen/mistral/api_key", "MISTRAL_API_KEY"),
+        (
+            "perplexity",
+            "zhiwen/perplexity/api_key",
+            "PERPLEXITY_API_KEY",
+        ),
+        ("together", "zhiwen/together/api_key", "TOGETHER_API_KEY"),
+        ("cohere", "zhiwen/cohere/api_key", "COHERE_API_KEY"),
+        (
+            "huggingface",
+            "zhiwen/huggingface/token",
+            "HUGGINGFACE_TOKEN",
+        ),
+        ("voyage", "zhiwen/voyage/api_key", "VOYAGE_API_KEY"),
+        ("jina", "zhiwen/jina/api_key", "JINA_API_KEY"),
+        (
+            "replicate",
+            "zhiwen/replicate/api_token",
+            "REPLICATE_API_TOKEN",
+        ),
+        ("fal", "zhiwen/fal/api_key", "FAL_API_KEY"),
+        ("stability", "zhiwen/stability/api_key", "STABILITY_API_KEY"),
+        (
+            "elevenlabs",
+            "zhiwen/elevenlabs/api_key",
+            "ELEVENLABS_API_KEY",
+        ),
+        ("tavily", "zhiwen/tavily/api_key", "TAVILY_API_KEY"),
+        ("exa", "zhiwen/exa/api_key", "EXA_API_KEY"),
+        ("serper", "zhiwen/serper/api_key", "SERPER_API_KEY"),
+        ("firecrawl", "zhiwen/firecrawl/api_key", "FIRECRAWL_API_KEY"),
+        ("brave", "zhiwen/brave/api_key", "BRAVE_API_KEY"),
+        (
+            "siliconflow",
+            "zhiwen/siliconflow/api_key",
+            "SILICONFLOW_API_KEY",
+        ),
+        (
+            "volcengine_ark",
+            "zhiwen/volcengine_ark/api_key",
+            "VOLCENGINE_ARK_API_KEY",
+        ),
+    ];
+    for (alias, secret_name, env_var) in expected_aliases {
+        assert!(
+            broker_list.contains(&format!("{alias} -> {secret_name} -> {env_var}")),
+            "missing alias mapping for {alias}"
+        );
+    }
     assert!(broker_list.contains("SECRET_ALIAS_STATUS=PASS"));
     assert!(!broker_list.contains("AIPLUS_MOCK_OPENAI"));
 
-    let resolve = stdout(&run_with_env(
+    for alias in ["openai", "kimi", "deepseek", "qwen"] {
+        let resolve = stdout(&run_with_env(
+            target,
+            &["secret-broker", "resolve", alias],
+            0,
+            &[("AIPLUS_SECRET_PROVIDER", "mock")],
+        ));
+        assert!(resolve.contains("SECRET_RESOLVE_STATUS=PASS"));
+        assert!(resolve.contains("secret_value_printed=no"));
+        assert!(!resolve.contains("SECRET_ALIAS_NOT_ALLOWED"));
+        assert!(
+            !resolve.contains(&format!("AIPLUS_MOCK_{}", alias.to_ascii_uppercase())),
+            "resolve printed a mock secret value for {alias}"
+        );
+    }
+
+    let unknown_alias = run_with_env(
         target,
-        &["secret-broker", "resolve", "openai"],
-        0,
+        &["secret-broker", "resolve", "unknown-provider"],
+        1,
         &[("AIPLUS_SECRET_PROVIDER", "mock")],
-    ));
-    assert!(resolve.contains("SECRET_RESOLVE_STATUS=PASS"));
-    assert!(resolve.contains("secret_value_printed=no"));
-    assert!(!resolve.contains("AIPLUS_MOCK_OPENAI"));
+    );
+    assert!(stderr(&unknown_alias).contains("SECRET_ALIAS_NOT_ALLOWED unknown-provider"));
 
     let denied_print = run_with_env(
         target,

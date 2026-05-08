@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Synced AiPlus v0.4.3 secret-broker guidance with the expanded alias inventory
+  for common AI, search, image, and developer providers.
+- Clarified that `aiplus secret-broker list` owns the current alias table and
+  that real Bitwarden smoke checks require the `bws` CLI plus a read-only
+  machine account token.
 - Added natural-language routing for `work-with-zhiwen` profile status and
   `aiplus secret-broker` metadata-only secret status checks.
 - Clarified that task cards, result packets, review findings, pressure-tests,

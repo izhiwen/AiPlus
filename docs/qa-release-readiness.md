@@ -43,6 +43,14 @@ aiplus compact savings
 aiplus compact savings --json
 aiplus pricing status
 aiplus pricing update
+aiplus profile status
+aiplus profile doctor
+aiplus secret-broker status
+aiplus secret-broker doctor
+aiplus secret-broker list
+AIPLUS_SECRET_PROVIDER=mock aiplus secret-broker resolve kimi
+AIPLUS_SECRET_PROVIDER=mock aiplus secret-broker resolve deepseek
+AIPLUS_SECRET_PROVIDER=mock aiplus secret-broker resolve qwen
 aiplus uninstall --dry-run
 ```
 
@@ -66,6 +74,11 @@ aiplus install all
 - `COMPACT_RUST_NATIVE_STATUS=PASS`
 - `PRICING_STATUS=PASS`
 - `PRICING_UPDATE_STATUS=PASS`
+- `PROFILE_STATUS=PASS`
+- `SECRET_BROKER_STATUS=PASS`
+- `SECRET_ALIAS_STATUS=PASS`
+- `SECRET_RESOLVE_STATUS=PASS`
+- `secret_value_printed=no`
 - `SELF_UPDATE_STATUS=DRY_RUN`
 - `SELF_UPDATE_STATUS=PASS`
 - `UPDATE_ALL_STATUS=PASS`
@@ -73,6 +86,14 @@ aiplus install all
 
 `compact checkpoint` may return `UNKNOWN_NEEDS_REVIEW` when seeded templates
 contain pending Owner gates. That is expected safety behavior.
+
+Real Bitwarden smoke is separate from mock-provider tests. Run it only when the
+Bitwarden Secrets Manager `bws` CLI is installed and a read-only
+`zhiwen-local-aiplus-agent` machine account token for project
+`zhiwen-agent-secrets` is available through `BWS_ACCESS_TOKEN` or the macOS
+Keychain. The smoke should cover `aiplus secret-broker doctor`, `list`, default
+`resolve` for representative aliases, and a harmless `run --` env-presence
+command. It must not print secret values.
 
 ## Static Scans
 

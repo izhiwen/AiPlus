@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.3
+
+- Expanded `aiplus secret-broker` aliases for common AI, search, image, and
+  developer API providers, including `kimi`, `deepseek`, `qwen`, `openrouter`,
+  `xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and related
+  provider aliases.
+- Added test coverage that every approved alias appears in
+  `aiplus secret-broker list`, that newly added aliases resolve without printing
+  secret values by default, and that unknown aliases remain blocked.
+- Clarified that real Bitwarden smoke checks require the Bitwarden Secrets
+  Manager `bws` CLI plus the read-only `zhiwen-local-aiplus-agent` machine
+  account for project `zhiwen-agent-secrets`.
+- Kept secret values out of normal `list`, `status`, and default `resolve`
+  output. `run -- <command...>` remains the explicit runtime-only injection path.
+
 ## 0.4.2
 
 - Added user-level `work-with-zhiwen` profile commands for private

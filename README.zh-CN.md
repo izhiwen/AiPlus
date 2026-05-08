@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.2 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.3 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -119,10 +119,46 @@ aiplus secret-broker status
 API key、Bitwarden token、password、prompt transcript、project file 或 compact
 checkpoint。
 
-secret 访问统一走 `aiplus secret-broker`。支持的 alias 是 `openai`、
-`anthropic`、`gemini`、`github` 和 `cloudflare`。默认
-`aiplus secret-broker resolve <alias>` 只验证访问，不打印 secret value。需要把 key
-传给工具时，使用：
+secret 访问统一走 `aiplus secret-broker`。默认
+`aiplus secret-broker resolve <alias>` 只验证访问，不打印 secret value。
+`aiplus secret-broker list` 会列出 approved aliases，包括：
+
+```text
+openai -> zhiwen/openai/api_key -> OPENAI_API_KEY
+anthropic -> zhiwen/anthropic/api_key -> ANTHROPIC_API_KEY
+gemini -> zhiwen/gemini/api_key -> GEMINI_API_KEY
+github -> zhiwen/github/token -> GITHUB_TOKEN
+cloudflare -> zhiwen/cloudflare/token -> CLOUDFLARE_API_TOKEN
+kimi -> zhiwen/kimi/api_key -> KIMI_API_KEY
+deepseek -> zhiwen/deepseek/api_key -> DEEPSEEK_API_KEY
+minimax -> zhiwen/minimax/api_key -> MINIMAX_API_KEY
+qwen -> zhiwen/qwen/api_key -> QWEN_API_KEY
+glm -> zhiwen/glm/api_key -> GLM_API_KEY
+openrouter -> zhiwen/openrouter/api_key -> OPENROUTER_API_KEY
+xai -> zhiwen/xai/api_key -> XAI_API_KEY
+groq -> zhiwen/groq/api_key -> GROQ_API_KEY
+mistral -> zhiwen/mistral/api_key -> MISTRAL_API_KEY
+perplexity -> zhiwen/perplexity/api_key -> PERPLEXITY_API_KEY
+together -> zhiwen/together/api_key -> TOGETHER_API_KEY
+cohere -> zhiwen/cohere/api_key -> COHERE_API_KEY
+huggingface -> zhiwen/huggingface/token -> HUGGINGFACE_TOKEN
+voyage -> zhiwen/voyage/api_key -> VOYAGE_API_KEY
+jina -> zhiwen/jina/api_key -> JINA_API_KEY
+replicate -> zhiwen/replicate/api_token -> REPLICATE_API_TOKEN
+fal -> zhiwen/fal/api_key -> FAL_API_KEY
+stability -> zhiwen/stability/api_key -> STABILITY_API_KEY
+elevenlabs -> zhiwen/elevenlabs/api_key -> ELEVENLABS_API_KEY
+tavily -> zhiwen/tavily/api_key -> TAVILY_API_KEY
+exa -> zhiwen/exa/api_key -> EXA_API_KEY
+serper -> zhiwen/serper/api_key -> SERPER_API_KEY
+firecrawl -> zhiwen/firecrawl/api_key -> FIRECRAWL_API_KEY
+brave -> zhiwen/brave/api_key -> BRAVE_API_KEY
+siliconflow -> zhiwen/siliconflow/api_key -> SILICONFLOW_API_KEY
+volcengine_ark -> zhiwen/volcengine_ark/api_key -> VOLCENGINE_ARK_API_KEY
+```
+
+真实 Bitwarden smoke check 需要安装 `bws` CLI，并通过 `BWS_ACCESS_TOKEN` 或 macOS
+Keychain 提供 read-only machine account token。需要把 key 传给工具时，使用：
 
 ```bash
 aiplus secret-broker run -- <command...>
@@ -320,7 +356,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.2 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.3 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

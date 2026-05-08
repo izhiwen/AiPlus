@@ -206,6 +206,18 @@ If a task explicitly needs a key, the agent should prefer
 `aiplus secret-broker run -- <command...>` so approved values enter only the
 child process environment. It must never print, paste, log, summarize, compact,
 or persist secret values.
+The child command can still print, log, transmit, or store its environment. Use
+`run --` only with trusted commands for the specific action.
+
+AiPlus v0.4.3 expands the approved secret alias table for common AI, search,
+image, and developer providers. Examples include `openai`, `anthropic`,
+`gemini`, `github`, `cloudflare`, `kimi`, `deepseek`, `qwen`, `openrouter`,
+`xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and
+`volcengine_ark`. Run `aiplus secret-broker list` for the current complete
+mapping. Real Bitwarden smoke checks require the Bitwarden Secrets Manager
+`bws` CLI plus a read-only machine account token; without `bws`, review and CEO
+flows should report real Bitwarden verification as unverified instead of asking
+for or printing secret values.
 
 ## Roles In Plain Language
 

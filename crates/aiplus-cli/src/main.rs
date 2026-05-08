@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.2";
-const RELEASE_TAG: &str = "v0.4.2";
+const VERSION: &str = "0.4.3";
+const RELEASE_TAG: &str = "v0.4.3";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -172,7 +172,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.4.2",
+        version: "0.4.3",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -183,7 +183,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.4.2",
+        version: "0.4.3",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -1635,6 +1635,136 @@ fn secret_aliases() -> &'static [SecretAlias] {
             bitwarden_name: "zhiwen/cloudflare/token",
             env_var: "CLOUDFLARE_API_TOKEN",
         },
+        SecretAlias {
+            alias: "kimi",
+            bitwarden_name: "zhiwen/kimi/api_key",
+            env_var: "KIMI_API_KEY",
+        },
+        SecretAlias {
+            alias: "deepseek",
+            bitwarden_name: "zhiwen/deepseek/api_key",
+            env_var: "DEEPSEEK_API_KEY",
+        },
+        SecretAlias {
+            alias: "minimax",
+            bitwarden_name: "zhiwen/minimax/api_key",
+            env_var: "MINIMAX_API_KEY",
+        },
+        SecretAlias {
+            alias: "qwen",
+            bitwarden_name: "zhiwen/qwen/api_key",
+            env_var: "QWEN_API_KEY",
+        },
+        SecretAlias {
+            alias: "glm",
+            bitwarden_name: "zhiwen/glm/api_key",
+            env_var: "GLM_API_KEY",
+        },
+        SecretAlias {
+            alias: "openrouter",
+            bitwarden_name: "zhiwen/openrouter/api_key",
+            env_var: "OPENROUTER_API_KEY",
+        },
+        SecretAlias {
+            alias: "xai",
+            bitwarden_name: "zhiwen/xai/api_key",
+            env_var: "XAI_API_KEY",
+        },
+        SecretAlias {
+            alias: "groq",
+            bitwarden_name: "zhiwen/groq/api_key",
+            env_var: "GROQ_API_KEY",
+        },
+        SecretAlias {
+            alias: "mistral",
+            bitwarden_name: "zhiwen/mistral/api_key",
+            env_var: "MISTRAL_API_KEY",
+        },
+        SecretAlias {
+            alias: "perplexity",
+            bitwarden_name: "zhiwen/perplexity/api_key",
+            env_var: "PERPLEXITY_API_KEY",
+        },
+        SecretAlias {
+            alias: "together",
+            bitwarden_name: "zhiwen/together/api_key",
+            env_var: "TOGETHER_API_KEY",
+        },
+        SecretAlias {
+            alias: "cohere",
+            bitwarden_name: "zhiwen/cohere/api_key",
+            env_var: "COHERE_API_KEY",
+        },
+        SecretAlias {
+            alias: "huggingface",
+            bitwarden_name: "zhiwen/huggingface/token",
+            env_var: "HUGGINGFACE_TOKEN",
+        },
+        SecretAlias {
+            alias: "voyage",
+            bitwarden_name: "zhiwen/voyage/api_key",
+            env_var: "VOYAGE_API_KEY",
+        },
+        SecretAlias {
+            alias: "jina",
+            bitwarden_name: "zhiwen/jina/api_key",
+            env_var: "JINA_API_KEY",
+        },
+        SecretAlias {
+            alias: "replicate",
+            bitwarden_name: "zhiwen/replicate/api_token",
+            env_var: "REPLICATE_API_TOKEN",
+        },
+        SecretAlias {
+            alias: "fal",
+            bitwarden_name: "zhiwen/fal/api_key",
+            env_var: "FAL_API_KEY",
+        },
+        SecretAlias {
+            alias: "stability",
+            bitwarden_name: "zhiwen/stability/api_key",
+            env_var: "STABILITY_API_KEY",
+        },
+        SecretAlias {
+            alias: "elevenlabs",
+            bitwarden_name: "zhiwen/elevenlabs/api_key",
+            env_var: "ELEVENLABS_API_KEY",
+        },
+        SecretAlias {
+            alias: "tavily",
+            bitwarden_name: "zhiwen/tavily/api_key",
+            env_var: "TAVILY_API_KEY",
+        },
+        SecretAlias {
+            alias: "exa",
+            bitwarden_name: "zhiwen/exa/api_key",
+            env_var: "EXA_API_KEY",
+        },
+        SecretAlias {
+            alias: "serper",
+            bitwarden_name: "zhiwen/serper/api_key",
+            env_var: "SERPER_API_KEY",
+        },
+        SecretAlias {
+            alias: "firecrawl",
+            bitwarden_name: "zhiwen/firecrawl/api_key",
+            env_var: "FIRECRAWL_API_KEY",
+        },
+        SecretAlias {
+            alias: "brave",
+            bitwarden_name: "zhiwen/brave/api_key",
+            env_var: "BRAVE_API_KEY",
+        },
+        SecretAlias {
+            alias: "siliconflow",
+            bitwarden_name: "zhiwen/siliconflow/api_key",
+            env_var: "SILICONFLOW_API_KEY",
+        },
+        SecretAlias {
+            alias: "volcengine_ark",
+            bitwarden_name: "zhiwen/volcengine_ark/api_key",
+            env_var: "VOLCENGINE_ARK_API_KEY",
+        },
     ]
 }
 
@@ -1884,6 +2014,10 @@ Natural language mappings:
   run `aiplus profile status` and summarize briefly.
 - "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用":
   run `aiplus secret-broker status` or `aiplus secret-broker doctor`.
+- To inspect approved provider aliases, run `aiplus secret-broker list`.
+  Current common aliases include `openai`, `anthropic`, `gemini`, `github`,
+  `cloudflare`, `kimi`, `deepseek`, `qwen`, `openrouter`, `xai`, `groq`,
+  `mistral`, `perplexity`, `tavily`, `firecrawl`, and `volcengine_ark`.
 - "update AiPlus", "升级 AiPlus", or "更新 AiPlus": run `aiplus update all`.
 - "保存进度", "准备 compact", or "做个交接": run `aiplus compact prepare`.
 - "继续", "resume", "refresh", or "刷新" after compact: run
@@ -1892,6 +2026,9 @@ Natural language mappings:
 Secret handling:
 - Use `aiplus secret-broker run -- <command>` for explicit runtime secret needs.
 - Do not print, log, persist, compact, summarize, or paste secret values.
+- Real Bitwarden smoke checks require the `bws` CLI and a read-only machine
+  account token. If unavailable, report real Bitwarden verification as
+  unverified and use mock/local metadata checks only.
 - Remember that the child command can still print, log, transmit, or store
   environment variables. Use `run --` only with trusted commands for explicit
   action needs.
@@ -4150,7 +4287,7 @@ fn collect_version_review_items(
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
     if ![
-        "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2",
+        "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3",
     ]
     .contains(&version)
     {
@@ -4168,7 +4305,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 fn is_supported_manifest_schema(version: &str) -> bool {
     matches!(
         version,
-        "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1" | "0.4.0" | "0.4.1" | "0.4.2"
+        "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1" | "0.4.0" | "0.4.1" | "0.4.2" | "0.4.3"
     )
 }
 
@@ -4667,6 +4804,9 @@ Natural language secret mapping:
   `aiplus secret-broker doctor`.
 - When an explicit action needs a key, prefer `aiplus secret-broker run --
   <command...>` so the value enters only the child process environment.
+- For approved provider inventory, run `aiplus secret-broker list`. Real
+  Bitwarden checks require the `bws` CLI and a read-only machine account token.
+  If `bws` is unavailable, report real Bitwarden verification as unverified.
 - The child command can still print, log, transmit, or store its environment.
   Use `run --` only with trusted commands for an explicit action need.
 
@@ -4847,7 +4987,9 @@ Secret mapping: "secret 状态", "看看 secret", "检查 API key", "API key 是
 `aiplus secret-broker doctor`. Never print, paste, log, compact, or persist
 secret values. Use `aiplus secret-broker run -- <command...>` only for explicit
 runtime secret needs. The child command can still print, log, transmit, or store
-its environment; use it only with trusted commands.
+its environment; use it only with trusted commands. Run `aiplus secret-broker
+list` for approved aliases. Real Bitwarden checks require `bws`; if unavailable,
+report real Bitwarden verification as unverified.
 "#
     )
 }

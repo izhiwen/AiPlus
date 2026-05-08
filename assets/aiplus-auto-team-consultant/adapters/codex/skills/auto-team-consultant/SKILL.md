@@ -113,6 +113,13 @@ Never print, paste, log, summarize, compact, or persist secret values in task
 cards, result packets, review findings, pressure-tests, or final answers. If an
 explicit action needs a key, prefer `aiplus secret-broker run -- <command...>` so
 approved values enter only the child process environment.
+The child command can still print, log, transmit, or store its environment. Use
+`run --` only with trusted commands for the specific action.
+AiPlus v0.4.3 supports expanded aliases such as `kimi`, `deepseek`, `qwen`,
+`openrouter`, `xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and
+`volcengine_ark`; run `aiplus secret-broker list` for the full table. Real
+Bitwarden checks require the `bws` CLI. If `bws` is unavailable, report that real
+Bitwarden smoke is unverified; do not print secret values or invent a fallback.
 
 QA means Process / Orchestration QA for prompt, routing, handoff, and governance-like process questions.
 
