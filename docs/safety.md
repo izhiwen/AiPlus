@@ -22,9 +22,8 @@ The Rust CLI does not implement:
 - registry publish
 - GitHub push, tag, or release
 - Homebrew release
-- shell installer publication
 - marketplace submission
-- global install
+- system/global install
 - global Codex, Claude Code, or OpenCode config edits
 - telemetry
 - runtime network calls
@@ -33,21 +32,26 @@ The Rust CLI does not implement:
 
 ## Publication Gates
 
-Owner approval is required before:
+Owner approval remains required before:
 
-- creating a public repo
+- creating additional public repos
 - changing license away from Apache-2.0 or changing public legal wording
-- pushing commits to a remote
-- creating or pushing git tags
-- creating GitHub Releases
-- uploading binary artifacts
+- pushing commits outside the reviewed v0.1.0 release scope
+- creating or pushing git tags beyond `v0.1.0`
+- creating GitHub Releases beyond `v0.1.0`
+- uploading binary artifacts beyond the verified v0.1.0 macOS Apple Silicon
+  asset and `checksums.txt`
 - publishing to package registries
 - creating Homebrew formulas or taps
-- publishing shell installers
+- publishing installer channels beyond the reviewed `install.sh`
 - publishing npm compatibility wrappers
-- globally installing binaries
+- installing binaries into system/global paths
 - modifying `$CODEX_HOME`, `~/.codex`, `~/.claude`, OpenCode global config,
   shell profiles, `~/.cargo/bin`, `/usr/local/bin`, or system paths
+
+Owner approved v0.1.0 GitHub Release creation, the verified macOS Apple Silicon
+binary upload, `checksums.txt`, `install.sh`, and user-level installation to
+`~/.local/bin/aiplus`.
 
 ## Write Safety
 

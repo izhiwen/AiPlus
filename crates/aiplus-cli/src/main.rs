@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "0.1.3";
+const VERSION: &str = "0.1.0";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -2274,13 +2274,16 @@ Use AiPlus Auto Compact and AiPlus Auto Team Consultant when relevant.
 
 ## Refresh Keywords
 
-If the user says only `刷新` or `refresh`, treat it as:
+If the user says a natural continuation such as `继续`, `刷新`, `continue`,
+`resume`, `refresh`, `go on`, or `接着`, treat it as:
 
 1. Re-read `AGENTS.md`.
 2. Re-read `.aiplus/AGENTS.aiplus.md`.
 3. Re-read `.codex/compact/current-handoff.md` if it exists.
 4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for the current session.
-5. Continue the current task without asking the user to repeat the full instruction.
+5. Run `aiplus compact resume` if compact state exists and host control has
+   returned after compact.
+6. Continue the current task without asking the user to repeat the full instruction.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 
@@ -2288,13 +2291,24 @@ Refresh is not approval to push, publish, tag, release, deploy, globally install
 
 Read `.codex/compact/current-handoff.md` before long-running work if it exists.
 
-Before context compaction:
+Before context compaction or compact-worthy moments:
 1. Run `aiplus compact validate`.
 2. Run `aiplus compact checkpoint`.
+3. Suggest compact only after checkpoint is ready:
+   建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
 
 After context compaction:
-1. Run `aiplus compact resume`.
-2. Continue from the reported next safe action.
+1. If the host gives control back automatically, run `aiplus compact resume`
+   without waiting for a specific user phrase.
+2. If the host requires a user message, accept any natural continuation:
+   继续, 刷新, continue, resume, refresh, go on, 接着.
+3. Continue from the reported next safe action.
+
+Limits:
+- AiPlus cannot force host compact.
+- AiPlus cannot click UI compact.
+- AiPlus cannot call `/compact` for the Owner.
+- AiPlus cannot wake the agent if the host requires user input.
 
 ## Auto Team Consultant
 
@@ -2325,7 +2339,9 @@ fn refresh_prompt_content() -> String {
 
 English: refresh
 
-Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, enable AiPlus, and continue the current task.
+Other continuation keywords: 继续, continue, resume, go on, 接着
+
+Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume when compact state exists after host control returns, enable AiPlus, and continue the current task.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 "#
@@ -2343,7 +2359,7 @@ Re-read project-local AiPlus instructions:
 4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for this session.
 5. Continue the current task.
 
-Refresh keywords: 刷新, refresh.
+Continuation keywords: 继续, 刷新, continue, resume, refresh, go on, 接着.
 
 This is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 "#
@@ -2358,7 +2374,8 @@ Use project-local AiPlus modules from .aiplus/modules/ when relevant.
 - Auto Compact: .aiplus/modules/aiplus-auto-compact/
 - Auto Team Consultant: .aiplus/modules/aiplus-auto-team-consultant/
 
-For already-open agent sessions, the user can type 刷新 or refresh.
+For already-open agent sessions, the user can type any natural continuation:
+继续, 刷新, continue, resume, refresh, go on, 接着.
 "#
     .to_string()
 }
@@ -2367,7 +2384,7 @@ fn opencode_config_content() -> String {
     serde_json::json!({
         "aiplus": {
             "localOnly": true,
-            "refreshKeywords": ["刷新", "refresh"],
+            "refreshKeywords": ["继续", "刷新", "continue", "resume", "refresh", "go on", "接着"],
             "instructions": ".aiplus/AGENTS.aiplus.md"
         }
     })
@@ -2380,7 +2397,8 @@ fn opencode_prompt_content() -> String {
 
 Read .aiplus/AGENTS.aiplus.md and use project-local AiPlus modules when relevant.
 
-Refresh keywords for already-open agent sessions: 刷新, refresh.
+Continuation keywords for already-open agent sessions: 继续, 刷新, continue,
+resume, refresh, go on, 接着.
 "#
     .to_string()
 }

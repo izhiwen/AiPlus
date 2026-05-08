@@ -7,10 +7,16 @@ workflow，支持 Codex、Claude Code 和 OpenCode。
 
 ## 快速开始
 
-在你想使用 AiPlus 的项目目录里运行：
+安装 `aiplus` command：
 
 ```bash
-AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.com/izhiwen/aiplus.git "$AIPLUS_HOME"; (cd "$AIPLUS_HOME" && cargo build --release); "$AIPLUS_HOME/target/release/aiplus" install codex
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+然后把 AiPlus 安装到当前项目：
+
+```bash
+aiplus install codex
 ```
 
 然后在同一个项目里已经打开的 Codex、Claude Code 或 OpenCode session 输入：
@@ -25,11 +31,20 @@ AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.c
 refresh
 ```
 
-如果 `aiplus` command 已经在你的 `PATH` 里，项目安装只需要：
+Claude Code：
 
 ```bash
-aiplus install codex
+aiplus install claude-code
 ```
+
+OpenCode：
+
+```bash
+aiplus install opencode
+```
+
+v0.1.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
 
@@ -72,28 +87,37 @@ Bundled modules：
 - **AiPlus Auto Team Consultant** (`auto-team-consultant`)：Advisor、CEO、
   Reviewer 和 Builder routing assets。
 
-## 当前安装状态
+## Compact And Resume
 
-上面的 quick start 现在采用 source build，因为本 repo 还没有发布 GitHub Release
-binary 或 installer script。
-
-旧文档中的 `<AIPLUS_SOURCE>` 意思是“你 clone AiPlus repo 的目录”。不要把尖括号
-placeholder 原样输入 terminal。
-
-## Future Installer Plan
-
-未来理想的 beginner flow 是：
+在适合 compact 的时机前，先让 agent 准备状态：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
-cd MyProject
-aiplus install codex
+aiplus compact validate
+aiplus compact checkpoint
 ```
 
-这个 flow 目前还没有启用。它需要 Owner 批准 GitHub Release binaries、checksums、
-installer script，以及任何 global/PATH install behavior。未来 installer 不应静默
-修改 shell profiles，不应自动安装 project modules，不应上传数据，不应添加 telemetry，
-也不应修改 global Codex、Claude Code 或 OpenCode config。
+agent 应该用普通语言建议 compact：
+
+```text
+建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+```
+
+host compact 之后，AiPlus 会 best-effort resume：
+
+- 如果 host 自动把控制权交回 agent，agent 应自动运行 `aiplus compact resume`。
+- 如果 host 等待用户消息，随便说 `继续`、`刷新`、`continue`、`resume`、
+  `refresh`、`go on` 或 `接着` 都可以。
+
+AiPlus 不能强制 host compact，不能点击 UI compact，不能代替你调用 `/compact`，也
+不能在 host 要求用户输入时主动唤醒 agent。
+
+## Installer Safety
+
+`install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
+`aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
+profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
+Codex、Claude Code 或 OpenCode config。AiPlus v0.1.0 先发布已验证的 macOS Apple
+Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和
 [installer-plan.md](docs/installer-plan.md)。
@@ -111,6 +135,9 @@ cargo build --release
 ```bash
 ~/aiplus/target/release/aiplus install codex
 ```
+
+旧文档中的 `<AIPLUS_SOURCE>` 意思是“你 clone AiPlus repo 的目录”。不要把尖括号
+placeholder 原样输入 terminal。
 
 ## Public-Ready Docs
 
@@ -136,8 +163,9 @@ compact commands 已是 Rust-native。Rust runtime assets 不再 install 或 che
 
 ## Safety Boundary
 
-AiPlus 不实现 publish、push、tag、release creation、global install、global config
-edit、telemetry、auto-update 或 runtime network fetch。
+AiPlus CLI 不实现 publish、push、tag、release creation、system/global install、
+global config edit、telemetry、auto-update 或 runtime network fetch。v0.1.0
+installer 只写 user-level `~/.local/bin/aiplus` command。
 
 validation 是 structural 和 heuristic，不是 safety、privacy、compliance、
 correctness 或 release certification。

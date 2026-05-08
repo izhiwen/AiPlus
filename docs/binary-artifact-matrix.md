@@ -1,12 +1,13 @@
 # Binary Artifact Matrix
 
-Status: `PLANNED_NOT_PUBLISHED`
+Status: `V0_1_0_PARTIAL_RELEASE`
 
-No binary artifacts have been created or published from this plan.
+v0.1.0 publishes the verified local macOS Apple Silicon asset first. Other
+platforms remain planned until they can be built and smoke-tested safely.
 
 | Artifact | Target triple | Build command | Checksum plan | Signature / notarization | Tested status | Owner gate |
 | --- | --- | --- | --- | --- | --- | --- |
-| `aiplus-aarch64-apple-darwin.tar.gz` | `aarch64-apple-darwin` | `cargo build --release --target aarch64-apple-darwin` | `shasum -a 256 <artifact> > <artifact>.sha256` | Not signed or notarized yet | Local Apple Silicon test required | Required before upload |
+| `aiplus-aarch64-apple-darwin.tar.gz` | `aarch64-apple-darwin` | `cargo build --release --target aarch64-apple-darwin` | included in `checksums.txt` | Not signed or notarized yet | Verified locally for v0.1.0 | Approved for v0.1.0 |
 | `aiplus-x86_64-apple-darwin.tar.gz` | `x86_64-apple-darwin` | `cargo build --release --target x86_64-apple-darwin` | `shasum -a 256 <artifact> > <artifact>.sha256` | Not signed or notarized yet | Intel macOS or cross-test required | Required before upload |
 | `aiplus-x86_64-unknown-linux-gnu.tar.gz` | `x86_64-unknown-linux-gnu` | `cargo build --release --target x86_64-unknown-linux-gnu` | `sha256sum <artifact> > <artifact>.sha256` | Not signed | Linux x86_64 test required | Required before upload |
 | `aiplus-aarch64-unknown-linux-gnu.tar.gz` | `aarch64-unknown-linux-gnu` | `cargo build --release --target aarch64-unknown-linux-gnu` | `sha256sum <artifact> > <artifact>.sha256` | Not signed | Linux ARM64 test required | Required before upload |
@@ -14,16 +15,16 @@ No binary artifacts have been created or published from this plan.
 
 ## Archive Contents
 
-Each archive should contain:
+The v0.1.0 macOS Apple Silicon archive contains:
 
 ```text
 aiplus
 README.md
 LICENSE
-checksums or checksum pointer
 ```
 
-Windows archive should contain `aiplus.exe`.
+`checksums.txt` is uploaded as a separate release asset. Future Windows archives
+should contain `aiplus.exe`.
 
 ## Release Gate
 

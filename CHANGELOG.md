@@ -1,13 +1,18 @@
 # Changelog
 
-## 0.1.3-rust-mainline
+## 0.1.0
 
+- Published v0.1.0 as the first practical binary-installed AiPlus CLI release.
+- Added `install.sh` for checksum-verified user-level install to
+  `~/.local/bin/aiplus`.
+- Documented best-effort automatic compact resume behavior and natural
+  continuation phrases.
 - Rewrote public README and README.zh-CN beginner flow to use copy-pasteable
-  source-build commands instead of undefined `<AIPLUS_SOURCE>` placeholders.
+  installer commands instead of source-build placeholders.
 - Standardized human-facing product naming to `AiPlus` while keeping the
   command, binary, repo, and crate identifiers as `aiplus`/`aiplus-cli`.
-- Added an Owner-gated installer plan for future GitHub Release binaries and
-  checksum-verifying install script.
+- Added an Owner-approved v0.1.0 GitHub Release path with a verified macOS Apple
+  Silicon binary, `checksums.txt`, and checksum-verifying install script.
 - Added Rust-first `aiplus` CLI workspace.
 - Added local vendored AiPlus module asset snapshot.
 - Added project-local install/update/add/status/doctor/uninstall workflows.
@@ -21,10 +26,11 @@
 
 - Documented recommended public repo name `aiplus`.
 - Documented public repo structure with Rust workspace as root.
-- Added Owner-gated distribution plan.
-- Added planned binary artifact matrix.
+- Added v0.1.0 distribution plan.
+- Added binary artifact matrix with macOS Apple Silicon verified first and other
+  platforms planned.
 - Added migration guide from archived Node CLI.
 - Added QA release-readiness checklist.
-- Kept crate version `0.1.3` for manifest compatibility.
+- Kept installed manifest schema `0.1.3` for compatibility.
 - Applied Owner-approved Apache-2.0 licensing to the Rust mainline/public-ready
   package metadata and docs.

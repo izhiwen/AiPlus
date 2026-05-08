@@ -1,23 +1,28 @@
 # AiPlus Rust Release Checklist
 
-Status: `OWNER_REVIEW_READY_CANDIDATE`
+Status: `V0_1_0_RELEASE_APPROVED_SCOPE`
 
-This checklist prepares for Owner review. It does not approve publication.
+This checklist tracks the Owner-approved v0.1.0 GitHub Release scope. It does
+not approve package registries, Homebrew, marketplace publication, telemetry, or
+system/global install paths.
 
 ## Owner Gates
 
-- [ ] Owner approves public repo name and structure.
+- [x] Owner approves public repo name and structure.
 - [x] Owner selected Apache-2.0 for the Rust mainline/public-ready package.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
-- [ ] Owner approves creating or using a public repo.
-- [ ] Owner approves any git push.
-- [ ] Owner approves any git tag.
-- [ ] Owner approves any GitHub Release.
-- [ ] Owner approves any binary artifact upload.
+- [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
+- [x] Owner approves git push for reviewed v0.1.0 source/docs changes.
+- [x] Owner approves creating the `v0.1.0` git tag.
+- [x] Owner approves the `v0.1.0` GitHub Release.
+- [x] Owner approves uploading the verified macOS Apple Silicon binary and
+      `checksums.txt`.
 - [ ] Owner approves any package registry publication.
-- [ ] Owner approves any Homebrew, shell installer, npm wrapper, or global install
-      channel.
+- [x] Owner approves publishing `install.sh` for user-level
+      `~/.local/bin/aiplus` installs.
+- [ ] Owner approves any Homebrew, npm wrapper, marketplace, system/global
+      install, or package registry channel.
 
 ## Local QA Gates
 
@@ -25,6 +30,9 @@ This checklist prepares for Owner review. It does not approve publication.
 - [ ] `cargo test`
 - [ ] `cargo run -p aiplus-cli -- --help`
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings`
+- [ ] `cargo metadata --format-version 1 --no-deps`
+- [ ] `sh install.sh --dry-run`
+- [ ] Fake-HOME installer smoke verifies checksum and runs installed binary.
 - [ ] Manual smoke: `install codex`
 - [ ] Manual smoke: `install claude-code`
 - [ ] Manual smoke: `install opencode`
@@ -51,7 +59,8 @@ This checklist prepares for Owner review. It does not approve publication.
 - [ ] No private data, secrets, raw logs, screenshots, or media artifacts.
 - [ ] No telemetry or runtime network callbacks.
 - [ ] No global config writes.
-- [ ] No publication actions executed.
+- [ ] No publication actions outside the Owner-approved v0.1.0 GitHub Release
+      scope executed.
 - [ ] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
 
@@ -65,11 +74,10 @@ This checklist prepares for Owner review. It does not approve publication.
 - [ ] `docs/safety.md`
 - [ ] Beginner README path does not recommend Node CLI.
 - [ ] Node CLI is clearly archived/reference-only.
-- [ ] Public release docs state no release has happened.
+- [ ] Public release docs state what has and has not been released.
 - [ ] Owner gates are explicit.
 - [ ] Beginner README commands avoid undefined placeholders.
-- [ ] Future installer path is documented as Owner-gated until release artifacts
-      and checksums exist.
+- [ ] Installer behavior is documented with no silent shell profile edits.
 
 ## Binary Artifact Gates
 
@@ -80,4 +88,6 @@ This checklist prepares for Owner review. It does not approve publication.
 - [ ] Tested status documented per platform.
 - [ ] Archive contents reviewed.
 - [ ] Archive contains Apache-2.0 `LICENSE`.
-- [ ] Owner approves upload before any release artifact is created publicly.
+- [ ] `checksums.txt` matches uploaded artifacts.
+- [ ] `install.sh` downloads only release assets and installs only `aiplus`.
+- [x] Owner approved the v0.1.0 upload scope before release artifact creation.

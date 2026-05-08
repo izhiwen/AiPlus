@@ -38,14 +38,14 @@ certification.
 
 ## Manifest
 
-The Rust manifest remains at schema `0.1.3` for installed project
-compatibility:
+The CLI release is v0.1.0. The installed project manifest schema remains
+`0.1.3` for compatibility with existing local installs:
 
 ```json
 {
   "schemaVersion": "0.1.3",
   "installer": "aiplus",
-  "installerVersion": "0.1.3",
+  "installerVersion": "0.1.0",
   "targetRoot": "...",
   "runtimeAdapters": ["codex"],
   "modules": {

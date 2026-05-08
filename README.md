@@ -8,10 +8,16 @@ repository name.
 
 ## Quick Start
 
-Run this from the project where you want to use AiPlus:
+Install the `aiplus` command:
 
 ```bash
-AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.com/izhiwen/aiplus.git "$AIPLUS_HOME"; (cd "$AIPLUS_HOME" && cargo build --release); "$AIPLUS_HOME/target/release/aiplus" install codex
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+Then install AiPlus into your project:
+
+```bash
+aiplus install codex
 ```
 
 Then type this in the already-open Codex, Claude Code, or OpenCode session for
@@ -27,11 +33,21 @@ English also works:
 refresh
 ```
 
-If the `aiplus` command is already on your `PATH`, the project install is just:
+For Claude Code:
 
 ```bash
-aiplus install codex
+aiplus install claude-code
 ```
+
+For OpenCode:
+
+```bash
+aiplus install opencode
+```
+
+The v0.1.0 one-command installer is verified for macOS Apple Silicon first. Other
+platforms should use [Developer Build](#developer-build) until their release
+assets are published and verified.
 
 ## Runtime Choices
 
@@ -74,29 +90,39 @@ Bundled modules:
 - **AiPlus Auto Team Consultant** (`auto-team-consultant`): Advisor, CEO,
   Reviewer, and Builder routing assets.
 
-## Current Install Status
+## Compact And Resume
 
-The copy-paste quick start above builds from source because no GitHub Release
-binary or installer script has been published from this repository yet.
-
-The old docs used `<AIPLUS_SOURCE>` to mean "the folder where you cloned the
-AiPlus repo." Do not type angle-bracket placeholders literally.
-
-## Future Installer Plan
-
-The intended future beginner flow is:
+Before compact-worthy moments, ask the agent to prepare state:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
-cd MyProject
-aiplus install codex
+aiplus compact validate
+aiplus compact checkpoint
 ```
 
-That flow is not active yet. It requires Owner approval for GitHub Release
-binaries, checksums, an installer script, and any global/PATH install behavior.
-The future installer must not silently edit shell profiles, install project
-modules automatically, upload data, add telemetry, or change global Codex,
-Claude Code, or OpenCode configuration.
+The agent should then suggest compact in plain language:
+
+```text
+建议现在 compact。AiPlus checkpoint 已准备好。compact 后如果宿主继续把控制权交给我，我会自动恢复；如果工具等待你发消息，随便说“继续”“刷新”“continue”“resume”或类似意思即可。
+```
+
+After host compact, AiPlus resumes best-effort:
+
+- If the host gives control back to the agent, the agent should run
+  `aiplus compact resume` automatically.
+- If the host waits for a user message, say anything like `继续`, `刷新`,
+  `continue`, `resume`, `refresh`, `go on`, or `接着`.
+
+AiPlus cannot force host compact, click UI compact, call `/compact` for you, or
+wake the agent if the host requires user input.
+
+## Installer Safety
+
+`install.sh` downloads a GitHub Release asset, verifies `checksums.txt`, and
+installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
+not use `sudo`, silently edit shell profiles, install project modules, upload
+data, add telemetry, or change global Codex, Claude Code, or OpenCode
+configuration. AiPlus v0.1.0 publishes the verified macOS Apple Silicon asset
+first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
 [Installer plan](docs/installer-plan.md).
@@ -114,6 +140,9 @@ From a target project:
 ```bash
 ~/aiplus/target/release/aiplus install codex
 ```
+
+The old docs used `<AIPLUS_SOURCE>` to mean "the folder where you cloned the
+AiPlus repo." Do not type angle-bracket placeholders literally.
 
 ## Public-Ready Docs
 
@@ -140,8 +169,10 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 ## Safety Boundary
 
-AiPlus does not implement publish, push, tag, release creation, global install,
-global config edits, telemetry, auto-update, or runtime network fetches.
+The AiPlus CLI does not implement publish, push, tag, release creation,
+system/global install, global config edits, telemetry, auto-update, or runtime
+network fetches. The v0.1.0 installer writes only the user-level
+`~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,
 compliance, correctness, or release certification.

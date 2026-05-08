@@ -1,9 +1,10 @@
 # QA Release Readiness
 
-Status: `OWNER_REVIEW_READY_CANDIDATE`
+Status: `V0_1_0_RELEASE_QA`
 
-This checklist prepares the Rust CLI for Owner review. It does not approve
-publication.
+This checklist tracks the Owner-approved v0.1.0 GitHub Release QA scope. It
+does not approve package registries, Homebrew, marketplace publication,
+telemetry, or system/global install paths.
 
 ## Required Local Commands
 
@@ -15,6 +16,7 @@ cargo test
 cargo run -p aiplus-cli -- --help
 cargo clippy --all-targets --all-features -- -D warnings
 cargo metadata --format-version 1
+sh install.sh --dry-run
 ```
 
 ## Manual Smoke Matrix
@@ -24,17 +26,16 @@ Use temp directories only:
 ```bash
 tmp=$(mktemp -d)
 cd "$tmp"
-AIPLUS_HOME="$HOME/aiplus"
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- install codex
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- status
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- doctor
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- update
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- add auto-team-consultant --dry-run
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact init
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact validate
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact checkpoint
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact resume
-cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- uninstall --dry-run
+aiplus install codex
+aiplus status
+aiplus doctor
+aiplus update
+aiplus add auto-team-consultant --dry-run
+aiplus compact init
+aiplus compact validate
+aiplus compact checkpoint
+aiplus compact resume
+aiplus uninstall --dry-run
 ```
 
 Repeat install + doctor for:
@@ -78,11 +79,14 @@ records. Active source must not implement forbidden actions.
 
 ## Release Readiness Decision
 
-Before any public release:
+Before the v0.1.0 GitHub Release:
 
-- Owner reviews repo name and extraction plan.
-- Owner confirms Apache-2.0 license/public wording remains correct.
-- Owner approves tag and release channel.
+- Owner reviewed repo name and extraction plan.
+- Owner confirmed Apache-2.0 license/public wording remains correct.
+- Owner approved the `v0.1.0` tag and GitHub Release channel.
 - QA matrix is re-run after extraction.
 - Binary artifact matrix is updated with tested status.
 - Checksums are generated for any release artifacts.
+
+Any package registry, Homebrew, npm wrapper, marketplace, telemetry, or
+system/global install path remains out of scope.

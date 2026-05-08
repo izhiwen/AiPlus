@@ -7,7 +7,7 @@ module snapshots used for project-local installs.
 
 | Component | Status | License | Purpose |
 | --- | --- | --- | --- |
-| `aiplus` Rust CLI | Mainline public source package | Apache-2.0 | Project-local install/update/add/status/doctor/uninstall/compact workflows |
+| `aiplus` Rust CLI | Mainline public binary/source package | Apache-2.0 | Project-local install/update/add/status/doctor/uninstall/compact workflows |
 | `assets/aiplus-auto-compact` | Bundled snapshot | Apache-2.0 | Compact, checkpoint, validate, and resume workflow assets |
 | `assets/aiplus-auto-team-consultant` | Bundled snapshot | MIT, preserved | Advisor/CEO/Reviewer/Builder routing assets |
 

@@ -30,8 +30,29 @@
     "Read current-handoff.md.",
     "Read compact-policy.json.",
     "Review Owner Gates and Open Blockers.",
-    "Run resume."
+    "Run aiplus compact resume.",
+    "Continue from the next safe action."
   ],
+  "resumeBehavior": {
+    "bestEffortAutomaticResume": true,
+    "runResumeWhenHostControlReturns": true,
+    "acceptedContinuationKeywords": [
+      "继续",
+      "刷新",
+      "continue",
+      "resume",
+      "refresh",
+      "go on",
+      "接着"
+    ],
+    "exactPhraseRequired": false,
+    "hostCompactLimitations": [
+      "AiPlus cannot force host compact.",
+      "AiPlus cannot click a UI compact button.",
+      "AiPlus cannot call /compact for the Owner.",
+      "AiPlus cannot wake the agent when the host requires user input."
+    ]
+  },
   "resumeSanityCheck": [
     "manualCompactOnly is true.",
     "Allowed enums match protocol.",

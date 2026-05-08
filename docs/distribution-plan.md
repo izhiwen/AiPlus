@@ -1,18 +1,17 @@
 # Distribution Plan
 
-Status: `OWNER_GATED_PLAN_ONLY`
+Status: `V0_1_0_RELEASE_SCOPE`
 
-This document describes a staged distribution plan. It does not approve or
-perform publication.
+This document describes the v0.1.0 binary and installer distribution scope.
 
 ## v0.1: Source Candidate
 
 Audience: Owner review and technical testers.
 
-Current copy-paste path from the target project:
+Current one-command installer:
 
 ```bash
-AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.com/izhiwen/aiplus.git "$AIPLUS_HOME"; (cd "$AIPLUS_HOME" && cargo build --release); "$AIPLUS_HOME/target/release/aiplus" install codex
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
 ```
 
 If the binary is already on PATH in a local test environment:
@@ -34,15 +33,15 @@ English:
 refresh
 ```
 
-Owner gate before v0.1 public source:
+v0.1.0 release scope:
 
-- approve public repo creation or extraction
-- confirm Apache-2.0 public license wording remains correct
-- approve README quick start
-- approve release checklist
-- run QA matrix after extraction
+- verified macOS Apple Silicon binary
+- `checksums.txt`
+- `install.sh`
+- installer support for verified macOS Apple Silicon only
+- source-build path retained under Advanced / Developer docs
 
-## v0.2: GitHub Releases Binary Plan
+## Later GitHub Releases Binary Plan
 
 Planned channel: GitHub Releases with prebuilt archives and checksums.
 
@@ -66,7 +65,7 @@ approved:
 - Homebrew tap/formula
 - `cargo install` or crates.io package, if license and packaging strategy are
   approved
-- checksum-verifying shell installer after Owner approval
+- additional installer-supported platforms after their assets are verified
 - npm wrapper as a compatibility bridge only, not the mainline implementation
 
 ## Update Strategy
@@ -92,7 +91,8 @@ Distribution must preserve these boundaries:
 - no runtime network fetches
 - no global config edits
 - no shell profile edits
-- no global install unless Owner approves a channel
+- no system/global install; v0.1.0 only writes the user-level
+  `~/.local/bin/aiplus` path
 - no claim of safety/compliance/privacy certification
 
 ## License

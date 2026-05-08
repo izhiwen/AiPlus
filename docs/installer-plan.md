@@ -1,15 +1,12 @@
 # Installer Plan
 
-Status: `OWNER_GATED_PLAN_ONLY`
+Status: `ACTIVE_FOR_V0_1_0`
 
-This document plans a future installer for the `aiplus` command. It does not
-publish an installer, create a GitHub Release, upload binaries, or globally
-install anything.
+This document describes the v0.1.0 installer for the `aiplus` command.
 
-## Intended Future User Flow
+## Current User Flow
 
-After Owner approval and release artifact publication, the intended beginner
-flow is:
+The beginner flow is:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
@@ -17,17 +14,18 @@ cd MyProject
 aiplus install codex
 ```
 
-The installer command is not the current recommended path until release binaries
-and checksums exist.
+The installer downloads a GitHub Release asset and verifies `checksums.txt`
+before writing the binary.
 
 ## Installer Responsibilities
 
-A future `install.sh` should:
+`install.sh`:
 
 - detect OS and CPU architecture
+- install v0.1.0 only on platforms with a verified published asset
 - download the matching GitHub Release archive
 - verify SHA-256 checksums before installing
-- install only the `aiplus` command, likely under `~/.local/bin/aiplus`
+- install only the `aiplus` command under `~/.local/bin/aiplus` by default
 - print clear next steps if `~/.local/bin` is not on `PATH`
 - avoid silently editing shell profiles
 - avoid installing project modules automatically
@@ -41,36 +39,43 @@ cd MyProject
 aiplus install codex
 ```
 
-## Release Artifact Requirements
+## v0.1.0 Release Artifact Requirements
 
-Before the installer is activated:
+The v0.1.0 installer is activated for macOS Apple Silicon after these checks:
 
 - GitHub Release tag is Owner-approved
-- release archives are built for supported platforms
+- release archive is built for verified macOS Apple Silicon
 - checksums are generated and reviewed
 - archive contents include `aiplus`, `README.md`, and `LICENSE`
 - target-platform smoke tests are completed or clearly marked untested
 - installer script is reviewed for shell safety
 - README states exactly what the installer writes
 
-## Owner Gates
+Other platforms must use Developer Build instructions until their assets are
+published and verified.
 
-Separate Owner approval is required before:
+## Owner Approval Status
 
-- creating or pushing a git tag
-- creating a GitHub Release
-- uploading binary artifacts
-- publishing or activating `install.sh` as the primary install path
-- installing into `~/.local/bin`, `/usr/local/bin`, `~/.cargo/bin`, or any global
-  path
+Owner approved these v0.1.0 actions:
+
+- creating the v0.1.0 tag and GitHub Release
+- uploading the verified macOS Apple Silicon binary
+- uploading `checksums.txt`
+- publishing `install.sh`
+- installing the `aiplus` command under `~/.local/bin/aiplus`
+
+## Still Owner-Gated
+
+Separate Owner approval is still required before:
+
+- installing into `/usr/local/bin`, `~/.cargo/bin`, or any system/global path
 - modifying shell profiles or global configs
 - publishing package registry, Homebrew, npm wrapper, or marketplace channels
 
-## Current Safe Path
+## Dry Run
 
-Until those gates are approved, use the README source-build quick start from the
-target project:
+Preview without installing:
 
 ```bash
-AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.com/izhiwen/aiplus.git "$AIPLUS_HOME"; (cd "$AIPLUS_HOME" && cargo build --release); "$AIPLUS_HOME/target/release/aiplus" install codex
+sh install.sh --dry-run
 ```
