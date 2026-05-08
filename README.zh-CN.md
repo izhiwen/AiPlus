@@ -16,6 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 然后把 AiPlus 安装到当前项目：
 
 ```bash
+cd MyProject
 aiplus install codex
 ```
 
