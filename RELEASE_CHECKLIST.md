@@ -2,7 +2,7 @@
 
 Status: `V0_3_0_RELEASE_APPROVED_SCOPE`
 
-This checklist tracks the Owner-approved v0.4.1 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.4.2 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.4.1 source/docs changes.
-- [x] Owner approves creating the `v0.4.1` git tag.
-- [x] Owner approves the `v0.4.1` GitHub Release.
+- [x] Owner approves git push for reviewed v0.4.2 source/docs changes.
+- [x] Owner approves creating the `v0.4.2` git tag.
+- [x] Owner approves the `v0.4.2` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -26,80 +26,80 @@ system/global install paths.
 
 ## Local QA Gates
 
-- [ ] `cargo fmt --check`
-- [ ] `cargo test`
-- [ ] `cargo run -p aiplus-cli -- --help`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `cargo metadata --format-version 1 --no-deps`
-- [ ] `sh install.sh --dry-run`
-- [ ] Fake-HOME installer smoke verifies checksum and runs installed binary.
-- [ ] Manual smoke: `install codex`
-- [ ] Manual smoke: `install claude-code`
-- [ ] Manual smoke: `install opencode`
-- [ ] Manual smoke: `install all`
-- [ ] Manual smoke: `status`
-- [ ] Manual smoke: `doctor`
-- [ ] Manual smoke: `update`
-- [ ] Manual smoke: `add auto-team-consultant --dry-run`
-- [ ] Manual smoke: `compact init`
-- [ ] Manual smoke: `compact validate`
-- [ ] Manual smoke: `compact prepare`
-- [ ] Manual smoke: `compact score`
-- [ ] Manual smoke: `compact checkpoint`
-- [ ] Manual smoke: `compact checkpoint --level light|standard|full`
-- [ ] Manual smoke: `compact resume`
-- [ ] Manual smoke: `compact savings`
-- [ ] Manual smoke: `compact savings --json`
-- [ ] Manual smoke: `pricing status`
-- [ ] Manual smoke: `pricing update`
-- [ ] Manual smoke: `uninstall --dry-run`
+- [x] `cargo fmt --check`
+- [x] `cargo test`
+- [x] `cargo run -p aiplus-cli -- --help`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `cargo metadata --format-version 1 --no-deps`
+- [x] `sh install.sh --dry-run`
+- [x] Fake-HOME installer smoke verifies checksum and runs installed binary.
+- [x] Manual smoke: `install codex`
+- [x] Manual smoke: `install claude-code`
+- [x] Manual smoke: `install opencode`
+- [x] Manual smoke: `install all`
+- [x] Manual smoke: `status`
+- [x] Manual smoke: `doctor`
+- [x] Manual smoke: `update`
+- [x] Manual smoke: `add auto-team-consultant --dry-run`
+- [x] Manual smoke: `compact init`
+- [x] Manual smoke: `compact validate`
+- [x] Manual smoke: `compact prepare`
+- [x] Manual smoke: `compact score`
+- [x] Manual smoke: `compact checkpoint`
+- [x] Manual smoke: `compact checkpoint --level light|standard|full`
+- [x] Manual smoke: `compact resume`
+- [x] Manual smoke: `compact savings`
+- [x] Manual smoke: `compact savings --json`
+- [x] Manual smoke: `pricing status`
+- [x] Manual smoke: `pricing update`
+- [x] Manual smoke: `uninstall --dry-run`
 
 ## Static Safety Gates
 
-- [ ] No `compactctl.mjs` in Rust install footprint.
-- [ ] No active `Command::new("node")`.
-- [ ] Cargo metadata reports `Apache-2.0`.
-- [ ] `LICENSE` exists in Rust package root.
-- [ ] Child module licenses are preserved and documented.
-- [ ] No target/build artifacts in release docs or package staging area.
-- [ ] No `.DS_Store`.
-- [ ] No private data, secrets, raw logs, screenshots, or media artifacts.
-- [ ] No telemetry or user-data upload.
-- [ ] `compact savings` reads cached pricing only by default.
-- [ ] `pricing update` fetches public pricing only and never uploads local data.
-- [ ] No global config writes.
-- [ ] No publication actions outside the Owner-approved v0.4.1 GitHub Release
+- [x] No `compactctl.mjs` in Rust install footprint.
+- [x] No active `Command::new("node")`.
+- [x] Cargo metadata reports `Apache-2.0`.
+- [x] `LICENSE` exists in Rust package root.
+- [x] Child module licenses are preserved and documented.
+- [x] No target/build artifacts in release docs or package staging area.
+- [x] No `.DS_Store`.
+- [x] No private data, secrets, raw logs, screenshots, or media artifacts.
+- [x] No telemetry or user-data upload.
+- [x] `compact savings` reads cached pricing only by default.
+- [x] `pricing update` fetches public pricing only and never uploads local data.
+- [x] No global config writes.
+- [x] No publication actions outside the Owner-approved v0.4.2 GitHub Release
       scope executed.
-- [ ] No overclaim wording such as certified, compliant, official, endorsed,
+- [x] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
 
 ## Distribution Docs Gates
 
-- [ ] `docs/public-repo-plan.md`
-- [ ] `docs/distribution-plan.md`
-- [ ] `docs/binary-artifact-matrix.md`
-- [ ] `docs/migration-from-node-cli.md`
-- [ ] `docs/qa-release-readiness.md`
-- [ ] `docs/safety.md`
-- [ ] Beginner README path does not recommend Node CLI.
-- [ ] Node CLI is clearly archived/reference-only.
-- [ ] Public release docs state what has and has not been released.
-- [ ] Owner gates are explicit.
-- [ ] Beginner README commands avoid undefined placeholders.
-- [ ] Installer behavior is documented with no silent shell profile edits.
-- [ ] Savings estimates are labeled estimate-only and not billing data.
-- [ ] Unknown model pricing does not silently use generic fallback as exact
+- [x] `docs/public-repo-plan.md`
+- [x] `docs/distribution-plan.md`
+- [x] `docs/binary-artifact-matrix.md`
+- [x] `docs/migration-from-node-cli.md`
+- [x] `docs/qa-release-readiness.md`
+- [x] `docs/safety.md`
+- [x] Beginner README path does not recommend Node CLI.
+- [x] Node CLI is clearly archived/reference-only.
+- [x] Public release docs state what has and has not been released.
+- [x] Owner gates are explicit.
+- [x] Beginner README commands avoid undefined placeholders.
+- [x] Installer behavior is documented with no silent shell profile edits.
+- [x] Savings estimates are labeled estimate-only and not billing data.
+- [x] Unknown model pricing does not silently use generic fallback as exact
       model-specific pricing.
 
 ## Binary Artifact Gates
 
-- [ ] Target triples reviewed.
-- [ ] Build commands reviewed.
-- [ ] Checksum plan reviewed.
-- [ ] Signature/notarization status documented.
-- [ ] Tested status documented per platform.
-- [ ] Archive contents reviewed.
-- [ ] Archive contains Apache-2.0 `LICENSE`.
-- [ ] `checksums.txt` matches uploaded artifacts.
-- [ ] `install.sh` downloads only release assets and installs only `aiplus`.
-- [x] Owner approved the v0.4.1 upload scope before release artifact creation.
+- [x] Target triples reviewed.
+- [x] Build commands reviewed.
+- [x] Checksum plan reviewed.
+- [x] Signature/notarization status documented.
+- [x] Tested status documented per platform.
+- [x] Archive contents reviewed.
+- [x] Archive contains Apache-2.0 `LICENSE`.
+- [x] `checksums.txt` matches uploaded artifacts.
+- [x] `install.sh` downloads only release assets and installs only `aiplus`.
+- [x] Owner approved the v0.4.2 upload scope before release artifact creation.

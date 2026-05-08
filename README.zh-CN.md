@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.1 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.2 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -320,7 +320,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.1 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.2 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

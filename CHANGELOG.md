@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1
+## 0.4.2
 
 - Added user-level `work-with-zhiwen` profile commands for private
   collaboration preferences under `~/.config/aiplus/`.

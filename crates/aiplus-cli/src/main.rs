@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.1";
-const RELEASE_TAG: &str = "v0.4.1";
+const VERSION: &str = "0.4.2";
+const RELEASE_TAG: &str = "v0.4.2";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -172,7 +172,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.4.1",
+        version: "0.4.2",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -183,7 +183,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.4.1",
+        version: "0.4.2",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -4150,7 +4150,7 @@ fn collect_version_review_items(
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
     if ![
-        "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1",
+        "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2",
     ]
     .contains(&version)
     {
@@ -4168,7 +4168,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 fn is_supported_manifest_schema(version: &str) -> bool {
     matches!(
         version,
-        "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1" | "0.4.0" | "0.4.1"
+        "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1" | "0.4.0" | "0.4.1" | "0.4.2"
     )
 }
 
