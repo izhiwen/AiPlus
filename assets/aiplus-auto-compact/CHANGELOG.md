@@ -4,10 +4,19 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added v0.2 Compact Readiness & Recovery guidance with `aiplus compact prepare`,
+  readiness states, `aiplus compact score`, checkpoint levels, and role-aware
+  resume context.
+- Made natural language the primary interface for ordinary users: "prepare
+  compact", "save progress", "continue", "帮我准备 compact", "保存进度", and
+  "继续" map to agent use of AiPlus backend commands.
+- Clarified that compact CLI commands are backend tools for agents, advanced
+  manual fallbacks, and maintainer debugging commands, not beginner memorization
+  requirements.
 - Removed active Node `compactctl.mjs` command guidance from ordinary-user and
   module-only compact paths.
-- Clarified that `aiplus compact validate`, `aiplus compact checkpoint`, and
-  `aiplus compact resume` are the only supported active compact execution
+- Clarified that Rust-native `aiplus compact prepare`, `score`, `validate`,
+  `checkpoint`, and `resume` are the only supported active compact execution
   commands.
 - Added missing-`aiplus` guidance to install AiPlus or fix PATH instead of
   falling back to Node.

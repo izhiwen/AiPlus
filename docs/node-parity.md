@@ -1,6 +1,6 @@
 # Archived Node Reference
 
-Archived reference implementation: `../aiplus-cli` v0.1.3.
+Archived reference implementation: `../aiplus-cli` v0.2.0.
 
 The Rust CLI preserves user-facing command markers and local project workflows:
 

@@ -24,6 +24,7 @@ From a target project:
 
 ```bash
 aiplus install codex
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 ```

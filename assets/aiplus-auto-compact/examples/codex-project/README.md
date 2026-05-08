@@ -16,6 +16,7 @@ This example shows how a Codex user can apply AiPlus Auto Compact to a synthetic
 ```bash
 cd <TARGET_PROJECT>
 aiplus install codex
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 ```

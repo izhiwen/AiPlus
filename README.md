@@ -61,7 +61,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.1.3 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.2.0 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -109,14 +109,22 @@ Bundled modules:
 
 ## Compact And Resume
 
-Before compact-worthy moments, ask the agent to prepare state:
+You do not need to remember compact commands.
 
-```bash
-aiplus compact validate
-aiplus compact checkpoint
+In your agent session, say:
+
+```text
+prepare compact
 ```
 
-The agent should then suggest compact in plain language:
+or:
+
+```text
+save progress
+```
+
+The agent will use AiPlus backend tools to validate readiness and prepare a
+checkpoint. If it is ready, the agent should answer in plain language:
 
 ```text
 Ready to compact.
@@ -128,13 +136,28 @@ After compact:
 I will resume from here.
 ```
 
-After host compact, AiPlus resumes best-effort:
+After compact, say:
+
+```text
+continue
+```
+
+AiPlus resumes best-effort:
 
 - If the agent continues automatically, you do not need to do anything.
 - If the agent does not reply, send `continue`.
 
 AiPlus cannot force host compact, click UI compact, call `/compact` for you, or
 wake the agent if the host requires user input.
+
+Advanced users and maintainers can run the backend commands directly:
+
+```bash
+aiplus compact prepare
+aiplus compact score
+aiplus compact checkpoint --level standard
+aiplus compact resume
+```
 
 If `aiplus` is not found, install AiPlus or fix PATH instead of falling back to
 Node:
@@ -151,7 +174,7 @@ Then reopen the terminal or ensure `~/.local/bin` is on PATH.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.1.3 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.2.0 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -189,7 +212,7 @@ AiPlus repo." Do not type angle-bracket placeholders literally.
 
 ## Node Reference Status
 
-The legacy Node CLI is archived/reference-only at v0.1.3 and is not included in
+The legacy Node CLI is archived/reference-only at v0.2.0 and is not included in
 this public source package. It is retained in the private/local AiPlus workspace
 for behavior audits and emergency reference fixes. New CLI work should target
 Rust.
@@ -201,7 +224,7 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 The AiPlus CLI does not implement publish, push, tag, release creation,
 system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.1.3 installer writes only the user-level
+network fetches. The v0.2.0 installer writes only the user-level
 `~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,

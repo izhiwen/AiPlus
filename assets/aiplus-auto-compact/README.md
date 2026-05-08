@@ -85,15 +85,25 @@ audits and compatibility checks only.
 
 ## What Happens Around Compact
 
-Before compact, the agent should run when available:
+You do not need to remember compact commands.
 
-```bash
-aiplus compact validate
-aiplus compact checkpoint
+In your agent session, say:
+
+```text
+prepare compact
 ```
 
-If the checkpoint is ready, the agent should recommend manual compact with
-language like:
+or:
+
+```text
+save progress
+```
+
+The agent should use `aiplus compact prepare` as an internal backend tool. If
+`prepare` is not available, it may fall back to the closest supported sequence:
+`aiplus compact validate` followed by `aiplus compact checkpoint`. If the
+checkpoint is ready, the agent should recommend manual compact with language
+like:
 
 ```text
 Ready to compact.
@@ -108,21 +118,15 @@ I will resume from here.
 After the host compact completes:
 
 - If the agent continues automatically, you do not need to do anything.
-- If the agent does not reply, any natural continuation should work:
+- If the agent does not reply, say:
 
 ```text
-AiPlus 刷新
-刷新 AiPlus
-aiplus refresh
-aiplus status
-继续
-刷新
-refresh
 continue
-resume
-go on
-接着
 ```
+
+The agent should run `aiplus compact resume` and then continue from the
+recovered state. Natural continuation phrases such as `continue`, `resume`,
+`refresh`, `go on`, `继续`, `刷新`, and `接着` should work.
 
 This is best-effort automatic resume. AiPlus Auto Compact can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime
@@ -133,6 +137,8 @@ that is waiting for the user.
 ```bash
 aiplus status
 aiplus doctor
+aiplus compact prepare
+aiplus compact score
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume

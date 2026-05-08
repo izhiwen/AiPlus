@@ -69,22 +69,43 @@ Use at most 5 review/discussion rounds. The CEO records the goal, current phase,
 
 ## AiPlus CLI
 
-Run from a target repository:
+Natural language is the primary interface for ordinary users. If the user says
+"prepare compact", "help me compact", "I want to compact", "save progress",
+"checkpoint this", "get ready for compact", "我想 compact", "准备 compact",
+"帮我准备 compact", "保存进度", "做个交接", or "我要 compact 了", run the
+backend tool:
+
+```bash
+aiplus compact prepare
+```
+
+If `prepare` is unavailable, use the closest supported sequence:
 
 ```bash
 aiplus compact validate
 aiplus compact checkpoint
+```
+
+Advanced users and maintainers may also run:
+
+```bash
+aiplus compact score
+aiplus compact checkpoint --level standard
 aiplus compact resume
 ```
 
-`validate` checks structure only; passing validation does not mean safe to
-compact. `checkpoint` writes non-sensitive metadata and prints
-`SAFE_TO_COMPACT`, `BLOCKED_DO_NOT_COMPACT`, or `UNKNOWN_NEEDS_REVIEW`.
-`resume` prints the resumable state or `RESUME_BLOCKED`.
+`prepare` evaluates readiness and creates a checkpoint when appropriate.
+`score` prints explainable compact pressure. `validate` checks structure only;
+passing validation does not mean safe to compact. `checkpoint` writes
+non-sensitive metadata and prints readiness state. `resume` prints the resumable
+state or `RESUME_BLOCKED`.
 
 ## After Compact
 
-After compact, first run `aiplus compact resume`, then inspect the compact files in recovery order.
+After compact, if the agent gets control automatically, or if the user says
+"continue after compact", "resume after compact", `continue`, `resume`,
+`refresh`, `继续`, `刷新`, or similar, first run `aiplus compact resume`, then
+inspect the compact files in recovery order.
 Continue only from the next safe action, and re-run `validate` before changing
 gates or decisions. If Codex does not reply, natural continuation messages
 such as `继续`, `刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着`

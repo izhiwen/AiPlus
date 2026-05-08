@@ -11,6 +11,7 @@ compact command path.
 ```bash
 cd <TARGET_PROJECT>
 aiplus install opencode
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 ```

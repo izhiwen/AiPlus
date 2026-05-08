@@ -29,6 +29,7 @@ The adapter command documents may also be used in Claude Code:
 
 ```bash
 cd <TARGET_PROJECT>
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 ```

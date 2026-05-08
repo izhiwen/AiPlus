@@ -136,6 +136,20 @@ Builder handoff 示例：
 Use auto-team-consultant. Role=Builder. Summarize changed files, verification run, known risks, and who should review next.
 ```
 
+compact readiness 不要求普通用户记住 compact 命令。自然语言是主界面：
+
+```text
+帮我准备 compact
+保存进度
+compact 后继续
+```
+
+agent 应在 compact 前把 `aiplus compact prepare` 当作 AiPlus backend tool 使用，
+compact 后用 `aiplus compact resume` 恢复。这些命令主要是 agent 内部工具、高级
+用户 fallback 和 maintainer debug commands。AiPlus Auto Team Consultant 应在
+compact handoff 中保留角色上下文：Advisor recommendations、CEO task cards、
+Reviewer findings、Builder changed files、Owner gates 和 next safe action。
+
 ## 四种角色
 
 - `Advisor`：直接建议、prompt review、策略判断、CEO-ready handoff

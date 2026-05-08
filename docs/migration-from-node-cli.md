@@ -3,7 +3,7 @@
 Status: `RUST_MAINLINE`
 
 The Rust `aiplus` binary is the mainline CLI. The legacy Node CLI is
-archived/reference-only at v0.1.3 and is not included in this public source
+archived/reference-only at v0.2.0 and is not included in this public source
 package.
 
 ## What Changes
@@ -55,9 +55,13 @@ refresh
 
 ## Compact Migration
 
-Compact commands are Rust-native:
+Compact behavior is Rust-native. Ordinary users can ask the agent in natural
+language, for example "prepare compact", "save progress", or "continue". The
+agent uses these backend commands when needed:
 
 ```bash
+aiplus compact prepare
+aiplus compact score
 aiplus compact init
 aiplus compact validate
 aiplus compact checkpoint

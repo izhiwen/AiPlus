@@ -1,11 +1,20 @@
 # Changelog
 
-## 0.1.3
+## 0.2.0
 
+- Added v0.2 Compact Readiness & Recovery:
+  `aiplus compact prepare`, readiness states, `aiplus compact score`,
+  `checkpoint --level light|standard|full`, and role-aware resume guidance.
+- Made natural language the primary compact interface for ordinary users:
+  "prepare compact", "save progress", "continue", "帮我准备 compact", "保存进度",
+  and "继续" map to agent use of AiPlus backend commands.
+- Documented that compact CLI commands are agent backend tools, advanced manual
+  fallbacks, and maintainer debugging commands, not beginner memorization
+  requirements.
 - Removed active Node `compactctl.mjs` guidance from installed and
   ordinary-user compact paths.
-- Made Rust-native `aiplus compact validate`, `aiplus compact checkpoint`, and
-  `aiplus compact resume` the only supported compact execution commands.
+- Made Rust-native `aiplus compact prepare`, `score`, `checkpoint`, `validate`,
+  and `resume` the only supported compact execution commands.
 - Added missing-`aiplus` guidance: install AiPlus or fix PATH instead of falling
   back to Node.
 - Updated bundled Auto Compact docs so legacy Node references are archived
@@ -66,6 +75,6 @@
   platforms planned.
 - Added migration guide from archived Node CLI.
 - Added QA release-readiness checklist.
-- Kept installed manifest schema `0.1.3` for compatibility.
+- Kept installed manifest schema `0.2.0` for compatibility.
 - Applied Owner-approved Apache-2.0 licensing to the Rust mainline/public-ready
   package metadata and docs.

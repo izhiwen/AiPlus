@@ -56,13 +56,13 @@ You can then invoke the namespaced slash commands in Claude Code.
 When shell validation is needed, use:
 
 ```bash
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume
 ```
 
-Before compact, the agent should run `aiplus compact validate` and
-`aiplus compact checkpoint`. If checkpoint state is ready, it can recommend
+Before compact, the agent should treat natural language such as "prepare compact" or "save progress" as the primary interface and run `aiplus compact prepare`. If checkpoint state is ready, it can recommend
 manual compact and explain that resume is best-effort: after compact, run
 `aiplus compact resume`; if the agent does not reply, explicit AiPlus messages
 such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,

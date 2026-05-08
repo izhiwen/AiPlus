@@ -117,7 +117,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.1.0, auto-team-consultant@0.1.3]"));
+    assert!(status.contains("modules=[auto-compact@0.2.0, auto-team-consultant@0.2.0]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -148,6 +148,10 @@ fn install_status_doctor_update_add_uninstall_codex() {
         "Never bury AiPlus status",
         "AiPlus CLI not found",
         "fix PATH",
+        "prepare compact",
+        "save progress",
+        "aiplus compact prepare",
+        "aiplus compact resume",
     ] {
         assert!(installed_agents.contains(phrase), "missing {phrase}");
     }
@@ -220,6 +224,8 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     assert!(agents.contains("project-specific refresh"));
     assert!(agents.contains("Default English response shape"));
     assert!(agents.contains("AiPlus CLI not found"));
+    assert!(agents.contains("prepare compact"));
+    assert!(agents.contains("aiplus compact prepare"));
     assert!(!agents.contains("node .aiplus"));
     assert!(!agents.contains("compactctl.mjs validate"));
 
@@ -401,6 +407,8 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     let checkpoint = run_with_path(target, &["compact", "checkpoint"], 2, Some(&no_node_path));
     let checkpoint_out = stdout(&checkpoint);
     assert!(checkpoint_out.contains("UNKNOWN_NEEDS_REVIEW"));
+    assert!(checkpoint_out.contains("READINESS_STATE=UNKNOWN_NEEDS_REVIEW"));
+    assert!(checkpoint_out.contains("CHECKPOINT_LEVEL=standard"));
     assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
     assert!(checkpoint_out.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
     let checkpoint_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
@@ -423,6 +431,10 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
         Some(&no_node_path),
     ));
     assert!(resume.contains("RESUME_READY"));
+    assert!(resume.contains("latest_checkpoint=.codex/compact/checkpoints/"));
+    assert!(resume.contains("session_role=Unknown"));
+    assert!(resume.contains("workflow_level=Unknown"));
+    assert!(resume.contains("read_only_recovery_guidance=yes"));
     assert!(resume.contains("current_goal="));
     assert!(resume.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
 
@@ -453,7 +465,39 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
         Some(&no_node_path),
     ));
     assert!(safe_checkpoint.contains("SAFE_TO_COMPACT"));
+    assert!(safe_checkpoint.contains("READINESS_STATE=READY_TO_COMPACT"));
     assert!(safe_checkpoint.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+
+    for level in ["light", "standard", "full"] {
+        let out = stdout(&run_with_path(
+            target,
+            &["compact", "checkpoint", "--level", level],
+            0,
+            Some(&no_node_path),
+        ));
+        assert!(out.contains(&format!("CHECKPOINT_LEVEL={level}")));
+        assert!(out.contains("READINESS_STATE=READY_TO_COMPACT"));
+    }
+
+    let prepare = stdout(&run_with_path(
+        target,
+        &["compact", "prepare"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(prepare.contains("COMPACT_PREPARE"));
+    assert!(prepare.contains("READINESS_STATE=READY_TO_COMPACT"));
+    assert!(prepare.contains("Ready to compact."));
+    assert!(prepare.contains("PREPARE_STATUS=PASS"));
+
+    let score = stdout(&run_with_path(
+        target,
+        &["compact", "score"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(score.contains("COMPACT_SCORE"));
+    assert!(score.contains("COMPACT_PRESSURE=HIGH"));
 
     fs::write(target.join(".codex/compact/compact-policy.json"), "{ bad").unwrap();
     let bad_policy = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));

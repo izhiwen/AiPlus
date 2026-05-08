@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2 compact readiness alignment
+
+- Added natural-language compact readiness guidance so ordinary users can say
+  "prepare compact", "save progress", "continue after compact", "帮我准备
+  compact", "保存进度", or "继续" instead of memorizing compact CLI commands.
+- Clarified that agents should use `aiplus compact prepare` before compact and
+  `aiplus compact resume` after compact as AiPlus backend tools.
+- Documented role-aware compact handoff preservation for Advisor, CEO,
+  Reviewer, and Builder contexts.
+
 ## AiPlus ecosystem and subproduct alignment
 
 - Clarified AiPlus as the ecosystem / CLI distribution entry and AiPlus Auto Team Consultant as an independent subproduct/module.

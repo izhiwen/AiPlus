@@ -21,7 +21,9 @@ Date: 2026-05-08
   - `install --runtime codex`
   - `install --all-runtimes`
   - Rust-native `compact validate`
-  - Rust-native `compact checkpoint`
+  - Rust-native `compact prepare`
+  - Rust-native `compact score`
+  - Rust-native `compact checkpoint --level`
   - Rust-native `compact resume`
   - compact commands with `PATH` excluding Node
   - static source scan for no `Command::new("node")`
@@ -40,7 +42,7 @@ cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- doctor
 
 ## Compact Status
 
-Compact is Rust-native for `init`, `validate`, `checkpoint`, and `resume`. The
+Compact is Rust-native for `init`, `prepare`, `score`, `validate`, `checkpoint`, and `resume`. The
 CLI prints `COMPACT_RUST_NATIVE_STATUS=PASS` for compact commands.
 
 ## Public-ready Candidate Smoke
@@ -58,6 +60,8 @@ Latest local evidence:
 - temp `add auto-team-consultant --dry-run`: PASS
 - temp `compact init`: PASS
 - temp `compact validate`: PASS
+- temp `compact prepare`: PASS when readiness is ready; otherwise prints readiness state
+- temp `compact score`: PASS when readiness is ready; otherwise prints readiness state
 - temp `compact checkpoint`: created checkpoint and printed
   `COMPACT_RUST_NATIVE_STATUS=PASS`; seeded templates may return
   `UNKNOWN_NEEDS_REVIEW` until Owner gates are resolved

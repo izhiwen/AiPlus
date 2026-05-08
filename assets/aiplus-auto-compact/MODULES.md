@@ -18,8 +18,11 @@ Responsibilities:
 - Provide templates for `.codex/compact/`.
 - Provide schemas for policy and parsed handoff files.
 - Provide templates and schemas used by AiPlus CLI commands such as
-  `aiplus compact init`, `aiplus compact validate`,
-  `aiplus compact checkpoint`, and `aiplus compact resume`.
+  `aiplus compact init`, `aiplus compact prepare`, `aiplus compact score`,
+  `aiplus compact validate`, `aiplus compact checkpoint`, and
+  `aiplus compact resume`.
+- Treat natural-language compact requests as the ordinary-user interface and the
+  CLI commands as agent backend tools or advanced manual fallbacks.
 - Retain `compactctl.mjs` only as archived legacy history and compatibility-test
   reference, not as an active compact execution path.
 - Document Owner gates and checkpoint/resume flow.

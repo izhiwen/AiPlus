@@ -1,10 +1,13 @@
 {
-  "protocolVersion": "0.1.0",
-  "schemaVersion": "0.1.0",
-  "templateVersion": "0.1.0",
+  "protocolVersion": "0.2.0",
+  "schemaVersion": "0.2.0",
+  "templateVersion": "0.2.0",
   "lastUpdated": "<ISO8601_TIMESTAMP>",
   "currentGoal": "Initialize compact/resume handoff state for <REPO_ROOT>.",
   "currentPhase": "IN_PROGRESS",
+  "sessionRole": "Unknown",
+  "workflowLevel": "Unknown",
+  "outputContract": "Summarize the current goal, blockers, Owner gates, and next safe action before resuming.",
   "completedWork": [
     "Seeded compact policy."
   ],
@@ -19,8 +22,8 @@
   ],
   "next3Actions": [
     "Review compact policy placeholders.",
-    "Run aiplus compact validate.",
-    "Run aiplus compact checkpoint before manual compact."
+    "Run aiplus compact prepare.",
+    "If readiness is READY_TO_COMPACT, manually use the host compact control."
   ],
   "doNotDo": [
     "Do not store sensitive material in compact files.",
@@ -31,7 +34,7 @@
     "Read current-handoff.md.",
     "Read compact-policy.json.",
     "Review Owner Gates and Open Blockers.",
-    "Run aiplus compact resume when host control returns."
+    "Run aiplus compact resume when work continues after compact."
   ],
   "resumeSanityCheck": [
     "manualCompactOnly is true.",
@@ -39,6 +42,20 @@
     "No sensitive material is present."
   ],
   "manualCompactOnly": true,
+  "naturalLanguagePrimary": true,
+  "agentBackendCommands": [
+    "aiplus compact prepare",
+    "aiplus compact score",
+    "aiplus compact checkpoint --level standard",
+    "aiplus compact resume"
+  ],
+  "readinessStates": [
+    "READY_TO_COMPACT",
+    "NEEDS_HANDOFF_UPDATE",
+    "BLOCKED_BY_OWNER_GATE",
+    "NOT_RECOMMENDED_DURING_ACTIVE_WORK",
+    "UNKNOWN_NEEDS_REVIEW"
+  ],
   "allowedOwnerGateStatuses": [
     "APPROVED",
     "DENIED",

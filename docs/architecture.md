@@ -38,14 +38,14 @@ certification.
 
 ## Manifest
 
-The CLI release is v0.1.3. The installed project manifest schema remains
-`0.1.3` for compatibility with existing local installs:
+The CLI release is v0.2.0. The installed project manifest schema remains
+`0.2.0` for compatibility with existing local installs:
 
 ```json
 {
-  "schemaVersion": "0.1.3",
+  "schemaVersion": "0.2.0",
   "installer": "aiplus",
-  "installerVersion": "0.1.3",
+  "installerVersion": "0.2.0",
   "targetRoot": "...",
   "runtimeAdapters": ["codex"],
   "modules": {
@@ -69,8 +69,11 @@ The CLI release is v0.1.3. The installed project manifest schema remains
 ## Compact Status
 
 `compact init` creates the project-local compact state from vendored templates
-with Rust safe writes. `compact validate`, `compact checkpoint`, and
-`compact resume` are Rust-native and do not invoke Node.
+with Rust safe writes. `compact prepare`, `compact score`, `compact validate`,
+`compact checkpoint`, and `compact resume` are Rust-native and do not invoke
+Node. In ordinary agent sessions, natural language such as "prepare compact" or
+"save progress" is the preferred interface; the CLI commands are backend tools
+for agents, advanced manual fallbacks, and maintainer debugging commands.
 
 `COMPACT_RUST_NATIVE_STATUS=PASS` marks compact commands that use Rust-native
 logic.

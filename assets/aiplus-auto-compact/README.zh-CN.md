@@ -82,14 +82,24 @@ module-only path 不是 beginner install path。旧 Node helper 只保留在
 
 ## Compact 前后会发生什么
 
-compact 前，agent 应在可用时运行：
+你不需要记住 compact 命令。
 
-```bash
-aiplus compact validate
-aiplus compact checkpoint
+在 agent 对话里说：
+
+```text
+帮我准备 compact
 ```
 
-如果 checkpoint 已准备好，agent 应推荐用户手动 compact，话术类似：
+或者：
+
+```text
+保存进度
+```
+
+agent 应把 `aiplus compact prepare` 当作 backend tool 自动使用。如果 `prepare`
+还不可用，它可以 fallback 到最接近的支持序列：`aiplus compact validate` 后接
+`aiplus compact checkpoint`。如果 checkpoint 已准备好，agent 应推荐用户手动
+compact，话术类似：
 
 ```text
 现在可以 compact 了。
@@ -100,21 +110,14 @@ compact 后如果我没自动继续，你发一句“继续”就行。我会从
 host compact 完成后：
 
 - 如果 agent 自动继续，你不需要做任何事。
-- 如果 agent 没回复，任何自然的继续意图都应该可用：
+- 如果 agent 没回复，说：
 
 ```text
-AiPlus 刷新
-刷新 AiPlus
-aiplus refresh
-aiplus status
 继续
-刷新
-refresh
-continue
-resume
-go on
-接着
 ```
+
+agent 应运行 `aiplus compact resume`，然后从恢复出来的状态继续。`continue`、
+`resume`、`refresh`、`go on`、`继续`、`刷新`、`接着` 等自然继续意图都应该可用。
 
 这是 best-effort automatic resume。AiPlus Auto Compact 可以准备 checkpoint，并告诉
 agent 如何 resume，但不能唤醒一个正在等待用户消息的 host runtime。
@@ -124,6 +127,8 @@ agent 如何 resume，但不能唤醒一个正在等待用户消息的 host runt
 ```bash
 aiplus status
 aiplus doctor
+aiplus compact prepare
+aiplus compact score
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume

@@ -138,6 +138,22 @@ Or for a Builder handoff:
 Use auto-team-consultant. Role=Builder. Summarize changed files, verification run, known risks, and who should review next.
 ```
 
+For compact readiness, ordinary users do not need to remember compact commands.
+Natural language is the primary interface:
+
+```text
+prepare compact
+save progress
+continue after compact
+```
+
+The agent should use AiPlus backend tools such as `aiplus compact prepare` before
+compact and `aiplus compact resume` after compact. These commands are internal
+tools for agents, manual fallbacks for advanced users, and maintainer debugging
+commands. AiPlus Auto Team Consultant should preserve role context in compact
+handoffs: Advisor recommendations, CEO task cards, Reviewer findings, Builder
+changed files, Owner gates, and the next safe action.
+
 ## Roles In Plain Language
 
 - `Advisor`: gives direct advice, prompt review, strategy, or CEO-ready handoff

@@ -58,7 +58,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.1.3 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.2.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -105,14 +105,22 @@ Bundled modules：
 
 ## Compact And Resume
 
-在适合 compact 的时机前，先让 agent 准备状态：
+你不需要记住 compact 命令。
 
-```bash
-aiplus compact validate
-aiplus compact checkpoint
+在 agent 对话里说：
+
+```text
+帮我准备 compact
 ```
 
-agent 应该用普通语言建议 compact：
+或者：
+
+```text
+保存进度
+```
+
+agent 会自动用 AiPlus backend tools 检查 readiness 并准备 checkpoint。如果可以
+compact，它会用普通语言回复：
 
 ```text
 现在可以 compact 了。
@@ -120,13 +128,28 @@ agent 应该用普通语言建议 compact：
 compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 ```
 
-host compact 之后，AiPlus 会 best-effort resume：
+compact 后，如果它没有自动继续，你说：
+
+```text
+继续
+```
+
+AiPlus 会 best-effort resume：
 
 - 如果 agent 自动继续，你不需要做任何事。
 - 如果 agent 没回复，发一句 `继续`。
 
 AiPlus 不能强制 host compact，不能点击 UI compact，不能代替你调用 `/compact`，也
 不能在 host 要求用户输入时主动唤醒 agent。
+
+高级用户和 maintainer 可以直接运行 backend commands：
+
+```bash
+aiplus compact prepare
+aiplus compact score
+aiplus compact checkpoint --level standard
+aiplus compact resume
+```
 
 如果找不到 `aiplus`，请安装 AiPlus 或修复 PATH，不要 fallback 到 Node：
 
@@ -141,7 +164,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.1.3 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.2.0 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和
@@ -179,7 +202,7 @@ placeholder 原样输入 terminal。
 
 ## Node Reference Status
 
-legacy Node CLI 是 archived/reference-only v0.1.3，不包含在本 public source
+legacy Node CLI 是 archived/reference-only v0.2.0，不包含在本 public source
 package 中。它保留在 private/local AiPlus workspace，用于 behavior audit 和
 emergency reference fixes。新的 CLI work 应进入 Rust。
 
@@ -189,7 +212,7 @@ compact commands 已是 Rust-native。Rust runtime assets 不再 install 或 che
 ## Safety Boundary
 
 AiPlus CLI 不实现 publish、push、tag、release creation、system/global install、
-global config edit、telemetry、auto-update 或 runtime network fetch。v0.1.3
+global config edit、telemetry、auto-update 或 runtime network fetch。v0.2.0
 installer 只写 user-level `~/.local/bin/aiplus` command。
 
 validation 是 structural 和 heuristic，不是 safety、privacy、compliance、

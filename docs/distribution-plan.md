@@ -2,7 +2,7 @@
 
 Status: `V0_1_0_RELEASE_SCOPE`
 
-This document describes the v0.1.3 binary and installer distribution scope.
+This document describes the v0.2.0 binary and installer distribution scope.
 
 ## v0.1: Source Candidate
 
@@ -33,7 +33,7 @@ English:
 refresh
 ```
 
-v0.1.3 release scope:
+v0.2.0 release scope:
 
 - verified macOS Apple Silicon binary
 - `checksums.txt`
@@ -91,7 +91,7 @@ Distribution must preserve these boundaries:
 - no runtime network fetches
 - no global config edits
 - no shell profile edits
-- no system/global install; v0.1.3 only writes the user-level
+- no system/global install; v0.2.0 only writes the user-level
   `~/.local/bin/aiplus` path
 - no claim of safety/compliance/privacy certification
 

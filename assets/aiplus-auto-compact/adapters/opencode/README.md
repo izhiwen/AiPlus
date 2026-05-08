@@ -78,6 +78,7 @@ They are designed for a Plan/Build style workflow:
 When shell validation is needed, use the AiPlus CLI (`aiplus`):
 
 ```bash
+aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume

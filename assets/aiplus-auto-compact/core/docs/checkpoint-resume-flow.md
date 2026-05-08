@@ -5,17 +5,26 @@ boundary; it does not press, call, or automate any host agent compact control.
 
 ## Installed Through AiPlus
 
-From a target repository where `aiplus` is available:
+Ordinary users do not need to remember compact commands. In the agent session,
+say "prepare compact" or "save progress". The agent should use this backend
+tool from the target repository:
+
+```bash
+aiplus compact prepare
+```
+
+If `prepare` is unavailable, use the closest supported sequence:
 
 ```bash
 aiplus compact validate
 aiplus compact checkpoint
 ```
 
-`validate` checks the local compact state. `checkpoint` writes a redacted JSON
-checkpoint under `.codex/compact/checkpoints/` with validation status, Owner
-gate state, review items, warnings, errors, dirty git summary when available,
-and the next safe action.
+`prepare` checks readiness, creates or recommends a checkpoint as appropriate,
+and prints the next step. `validate` checks the local compact state.
+`checkpoint` writes a redacted JSON checkpoint under `.codex/compact/checkpoints/`
+with validation status, Owner gate state, review items, warnings, errors, role
+context, and the next safe action.
 
 Only recommend manual compact when checkpoint output is `SAFE_TO_COMPACT` and
 all Owner gates are explicitly `APPROVED`.
@@ -46,22 +55,14 @@ aiplus compact resume
 
 and continue from the checkpoint and local handoff files.
 
-If the agent does not reply, any natural continuation should be enough to
-restart the agent workflow:
+If the agent does not reply, say:
 
 ```text
-AiPlus 刷新
-刷新 AiPlus
-aiplus refresh
-aiplus status
-继续
-刷新
-refresh
 continue
-resume
-go on
-接着
 ```
+
+Natural continuation phrases such as `continue`, `resume`, `refresh`, `go on`,
+`继续`, `刷新`, and `接着` should restart the resume flow.
 
 Use explicit AiPlus refresh triggers when a project has its own meaning for
 `刷新` or `refresh`; the agent should report AiPlus status before unrelated
@@ -78,6 +79,8 @@ and `core/docs/` directly, but compact execution should still use Rust-native
 AiPlus CLI:
 
 ```bash
+aiplus compact prepare
+aiplus compact score
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume

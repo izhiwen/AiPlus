@@ -2,7 +2,7 @@
 
 Status: `V0_1_0_RELEASE_APPROVED_SCOPE`
 
-This checklist tracks the Owner-approved v0.1.3 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.2.0 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.1.3 source/docs changes.
-- [x] Owner approves creating the `v0.1.3` git tag.
-- [x] Owner approves the `v0.1.3` GitHub Release.
+- [x] Owner approves git push for reviewed v0.2.0 source/docs changes.
+- [x] Owner approves creating the `v0.2.0` git tag.
+- [x] Owner approves the `v0.2.0` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -43,7 +43,10 @@ system/global install paths.
 - [ ] Manual smoke: `add auto-team-consultant --dry-run`
 - [ ] Manual smoke: `compact init`
 - [ ] Manual smoke: `compact validate`
+- [ ] Manual smoke: `compact prepare`
+- [ ] Manual smoke: `compact score`
 - [ ] Manual smoke: `compact checkpoint`
+- [ ] Manual smoke: `compact checkpoint --level light|standard|full`
 - [ ] Manual smoke: `compact resume`
 - [ ] Manual smoke: `uninstall --dry-run`
 
@@ -59,7 +62,7 @@ system/global install paths.
 - [ ] No private data, secrets, raw logs, screenshots, or media artifacts.
 - [ ] No telemetry or runtime network callbacks.
 - [ ] No global config writes.
-- [ ] No publication actions outside the Owner-approved v0.1.3 GitHub Release
+- [ ] No publication actions outside the Owner-approved v0.2.0 GitHub Release
       scope executed.
 - [ ] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
@@ -90,4 +93,4 @@ system/global install paths.
 - [ ] Archive contains Apache-2.0 `LICENSE`.
 - [ ] `checksums.txt` matches uploaded artifacts.
 - [ ] `install.sh` downloads only release assets and installs only `aiplus`.
-- [x] Owner approved the v0.1.3 upload scope before release artifact creation.
+- [x] Owner approved the v0.2.0 upload scope before release artifact creation.

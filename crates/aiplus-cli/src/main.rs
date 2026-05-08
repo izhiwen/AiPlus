@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.1.3";
+const VERSION: &str = "0.2.0";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -80,6 +80,8 @@ enum Commands {
     },
     Compact {
         subcommand: Option<String>,
+        #[arg(long, default_value = "standard", value_parser = ["light", "standard", "full"])]
+        level: String,
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
     },
@@ -129,7 +131,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.1.0",
+        version: "0.2.0",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -140,7 +142,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.1.3",
+        version: "0.2.0",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -215,14 +217,28 @@ struct CompactValidation {
     next_safe_action: String,
 }
 
+struct CompactReadiness {
+    state: &'static str,
+    pressure: &'static str,
+    explanation: &'static str,
+    next_action: String,
+    manual_compact_recommended: bool,
+    reasons: Vec<String>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CompactCheckpoint {
     schema_version: String,
+    checkpoint_level: String,
     timestamp: String,
     cwd: String,
     validation_result: String,
     status: String,
+    readiness_state: String,
+    compact_pressure: String,
+    session_role: String,
+    workflow_level: String,
     pending_gates: Vec<String>,
     denied_gates: Vec<String>,
     review_items: Vec<String>,
@@ -230,9 +246,13 @@ struct CompactCheckpoint {
     errors: Vec<String>,
     current_goal: Option<String>,
     current_phase: Option<String>,
+    output_contract: Option<String>,
+    decisions_made: Vec<String>,
     open_blockers: Option<String>,
     owner_gates: Option<String>,
     next_safe_action: Option<String>,
+    do_not_do: Vec<String>,
+    files_or_artifacts: Vec<String>,
     evidence_pointers: Vec<String>,
     manual_compact_only: bool,
 }
@@ -257,6 +277,9 @@ const COMPACT_REQUIRED_SECTIONS: &[&str] = &[
     "Do Not Do",
     "Recovery Order",
 ];
+
+const COMPACT_HANDOFF_REQUIRED_SECTIONS: &[&str] =
+    &["Session Role", "Workflow Level", "Output Contract"];
 
 const OWNER_GATE_VALUES: &[&str] = &["APPROVED", "DENIED", "UNKNOWN_PENDING"];
 const DECISION_STATUSES: &[&str] = &["DECIDED", "PROVISIONAL", "REVERSED", "NEEDS_VERIFICATION"];
@@ -340,13 +363,17 @@ fn run(command: Commands) -> Result<()> {
             yes,
             force,
         } => command_uninstall(dry_run, yes, force),
-        Commands::Compact { subcommand, force } => command_compact(subcommand, force),
+        Commands::Compact {
+            subcommand,
+            level,
+            force,
+        } => command_compact(subcommand, &level, force),
     }
 }
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|checkpoint|resume\n\nSafety:\n  Project-local only. Writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. No npm publish, global install,\n  telemetry, network calls, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume [--level light|standard|full]\n\nSafety:\n  Project-local only. Writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. No npm publish, global install,\n  telemetry, network calls, or global config edits are implemented."
     );
 }
 
@@ -682,6 +709,9 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!();
         println!("我会这样使用：");
         println!("- 长任务或 compact 前准备 checkpoint");
+        println!(
+            "- 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。"
+        );
         println!("- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。");
         println!("- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant");
         println!();
@@ -701,6 +731,7 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!();
         println!("How I will use it:");
         println!("- Prepare checkpoints before long tasks or compact-worthy moments.");
+        println!("- If you say \"prepare compact\", \"save progress\", or \"checkpoint this\", I will run aiplus compact prepare.");
         println!("- After compact, if I do not reply, send: continue");
         println!("- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.");
         println!();
@@ -778,7 +809,7 @@ fn command_doctor() -> Result<()> {
                 .manifest
                 .as_ref()
                 .and_then(|manifest| manifest.schema_version.as_deref())
-                == Some("0.1.3"),
+                .is_some_and(is_supported_manifest_schema),
             None,
         );
     } else {
@@ -809,7 +840,10 @@ fn command_doctor() -> Result<()> {
     );
     let parsed = manifest_diag.manifest.filter(|manifest| {
         manifest.installer.as_deref() == Some(INSTALLER)
-            && manifest.schema_version.as_deref() == Some("0.1.3")
+            && manifest
+                .schema_version
+                .as_deref()
+                .is_some_and(is_supported_manifest_schema)
     });
     let runtimes = parsed
         .as_ref()
@@ -968,12 +1002,21 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn command_compact(subcommand: Option<String>, force: bool) -> Result<()> {
+fn command_compact(subcommand: Option<String>, level: &str, force: bool) -> Result<()> {
     let Some(subcommand) = subcommand else {
         print_usage();
         process::exit(2);
     };
-    if !["init", "validate", "checkpoint", "resume"].contains(&subcommand.as_str()) {
+    if ![
+        "init",
+        "validate",
+        "checkpoint",
+        "resume",
+        "prepare",
+        "score",
+    ]
+    .contains(&subcommand.as_str())
+    {
         print_usage();
         process::exit(2);
     }
@@ -1006,7 +1049,7 @@ fn command_compact(subcommand: Option<String>, force: bool) -> Result<()> {
             }
         }
         "checkpoint" => {
-            let exit_code = compact_checkpoint(&root)?;
+            let exit_code = compact_checkpoint(&root, level)?;
             println!("COMPACT_RUST_NATIVE_STATUS=PASS");
             if exit_code == 0 {
                 Ok(())
@@ -1016,6 +1059,24 @@ fn command_compact(subcommand: Option<String>, force: bool) -> Result<()> {
         }
         "resume" => {
             let exit_code = compact_resume(&root)?;
+            println!("COMPACT_RUST_NATIVE_STATUS=PASS");
+            if exit_code == 0 {
+                Ok(())
+            } else {
+                process::exit(exit_code);
+            }
+        }
+        "prepare" => {
+            let exit_code = compact_prepare(&root, level)?;
+            println!("COMPACT_RUST_NATIVE_STATUS=PASS");
+            if exit_code == 0 {
+                Ok(())
+            } else {
+                process::exit(exit_code);
+            }
+        }
+        "score" => {
+            let exit_code = compact_score(&root)?;
             println!("COMPACT_RUST_NATIVE_STATUS=PASS");
             if exit_code == 0 {
                 Ok(())
@@ -1291,7 +1352,7 @@ fn write_manifest(
         managed_files.extend(runtime_managed_files(runtime));
     }
     let manifest = Manifest {
-        schema_version: Some("0.1.3".to_string()),
+        schema_version: Some(VERSION.to_string()),
         installer: Some(INSTALLER.to_string()),
         installer_version: Some(VERSION.to_string()),
         installed_at: Some(existing.installed_at.unwrap_or_else(|| now.clone())),
@@ -1716,8 +1777,13 @@ fn compact_validate_state(root: &Path) -> Result<CompactValidation> {
             }
         }
     }
-
     let handoff = read_compact_text(root, "current-handoff.md")?;
+    for section in COMPACT_HANDOFF_REQUIRED_SECTIONS {
+        if !has_section(&handoff, section) {
+            errors.push(format!("current-handoff.md missing section: {section}"));
+        }
+    }
+
     let goal = section_body(&handoff, "Current Goal");
     let phase = section_body(&handoff, "Current Phase")
         .split_whitespace()
@@ -1855,31 +1921,48 @@ fn compact_validate_state(root: &Path) -> Result<CompactValidation> {
     })
 }
 
-fn compact_checkpoint(root: &Path) -> Result<i32> {
+fn compact_checkpoint(root: &Path, level: &str) -> Result<i32> {
+    let (exit_code, _) = compact_checkpoint_with_options(root, level, true)?;
+    Ok(exit_code)
+}
+
+fn compact_checkpoint_with_options(
+    root: &Path,
+    level: &str,
+    print_output: bool,
+) -> Result<(i32, String)> {
     ensure_dir(
         root,
         &compact_file(root, "checkpoints")?,
         &mut Plan::default(),
     )?;
     let result = compact_validate_state(root)?;
-    let mut status = "SAFE_TO_COMPACT";
-    let mut exit_code = 0;
-    if !result.errors.is_empty() || !result.warnings.is_empty() || !result.denied_gates.is_empty() {
-        status = "BLOCKED_DO_NOT_COMPACT";
-        exit_code = 1;
-    } else if !result.review_items.is_empty() || !result.pending_gates.is_empty() {
-        status = "UNKNOWN_NEEDS_REVIEW";
-        exit_code = 2;
-    }
+    let readiness = compact_readiness(&result, root);
+    let status = if readiness.state == "READY_TO_COMPACT" {
+        "SAFE_TO_COMPACT"
+    } else if readiness.state == "BLOCKED_BY_OWNER_GATE" {
+        "BLOCKED_DO_NOT_COMPACT"
+    } else {
+        readiness.state
+    };
+    let exit_code = readiness_exit_code(&readiness);
     let timestamp = timestamp();
     let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
     let evidence = read_compact_text(root, "evidence-ledger.md").unwrap_or_default();
+    let decision_log = read_compact_text(root, "decision-log.md").unwrap_or_default();
+    let (decisions_made, evidence_pointers, files_or_artifacts) =
+        checkpoint_detail_vectors(level, &decision_log, &evidence);
     let checkpoint = CompactCheckpoint {
-        schema_version: "0.1.0".to_string(),
+        schema_version: "0.2.0".to_string(),
+        checkpoint_level: level.to_string(),
         timestamp: timestamp.clone(),
         cwd: "<REPO_ROOT>".to_string(),
         validation_result: if result.ok { "PASS" } else { "FAIL" }.to_string(),
         status: status.to_string(),
+        readiness_state: readiness.state.to_string(),
+        compact_pressure: readiness.pressure.to_string(),
+        session_role: compact_section_or_unknown(&handoff, "Session Role"),
+        workflow_level: compact_section_or_unknown(&handoff, "Workflow Level"),
         pending_gates: result.pending_gates.clone(),
         denied_gates: result.denied_gates.clone(),
         review_items: result.review_items.clone(),
@@ -1887,10 +1970,18 @@ fn compact_checkpoint(root: &Path) -> Result<i32> {
         errors: result.errors.clone(),
         current_goal: optional_line(section_body(&handoff, "Current Goal")),
         current_phase: optional_line(section_body(&handoff, "Current Phase")),
+        output_contract: optional_for_level(
+            level,
+            section_body(&handoff, "Output Contract"),
+            "full",
+        ),
+        decisions_made,
         open_blockers: optional_line(section_body(&handoff, "Open Blockers")),
         owner_gates: optional_line(section_body(&handoff, "Owner Gates")),
         next_safe_action: optional_line(result.next_safe_action.clone()),
-        evidence_pointers: evidence_ids(&evidence),
+        do_not_do: lines_for_level(level, section_body(&handoff, "Do Not Do"), "light"),
+        files_or_artifacts,
+        evidence_pointers,
         manual_compact_only: true,
     };
     let filename = format!("{}.json", timestamp.replace([':', '.'], "-"));
@@ -1906,11 +1997,50 @@ fn compact_checkpoint(root: &Path) -> Result<i32> {
             yes: true,
         },
     )?;
+    if print_output {
+        print_compact_diagnostics(&result);
+        println!("{status}");
+        print_readiness(&readiness);
+        println!("CHECKPOINT_LEVEL={level}");
+        println!("CHECKPOINT_CREATED={rel}");
+        println!("checkpoint={rel}");
+    }
+    Ok((exit_code, rel))
+}
+
+fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
+    let result = compact_validate_state(root)?;
+    let readiness = compact_readiness(&result, root);
     print_compact_diagnostics(&result);
-    println!("{status}");
-    println!("CHECKPOINT_CREATED={rel}");
-    println!("checkpoint={rel}");
-    Ok(exit_code)
+    println!("COMPACT_PREPARE");
+    print_readiness(&readiness);
+    if readiness.state == "READY_TO_COMPACT" {
+        let (_, checkpoint) = compact_checkpoint_with_options(root, level, false)?;
+        println!("CHECKPOINT_LEVEL={level}");
+        println!("CHECKPOINT_CREATED={checkpoint}");
+        println!();
+        println!("Ready to compact.");
+        println!();
+        println!("After compact:");
+        println!("- If I continue automatically, you do not need to do anything.");
+        println!("- If I do not reply, send: continue");
+        println!();
+        println!("I will resume from here.");
+        println!("PREPARE_STATUS=PASS");
+    } else {
+        println!("PREPARE_STATUS={}", readiness.state);
+        println!("manual_compact_recommended=no");
+    }
+    Ok(readiness_exit_code(&readiness))
+}
+
+fn compact_score(root: &Path) -> Result<i32> {
+    let result = compact_validate_state(root)?;
+    let readiness = compact_readiness(&result, root);
+    print_compact_diagnostics(&result);
+    println!("COMPACT_SCORE");
+    print_readiness(&readiness);
+    Ok(readiness_exit_code(&readiness))
 }
 
 fn compact_resume(root: &Path) -> Result<i32> {
@@ -1927,7 +2057,20 @@ fn compact_resume(root: &Path) -> Result<i32> {
         );
     }
     let handoff = read_compact_text(root, "current-handoff.md")?;
+    let latest = latest_checkpoint(root)?;
     println!("RESUME_READY");
+    println!(
+        "latest_checkpoint={}",
+        latest.unwrap_or_else(|| "missing".to_string())
+    );
+    println!(
+        "session_role={}",
+        single_line(&section_body(&handoff, "Session Role"))
+    );
+    println!(
+        "workflow_level={}",
+        single_line(&section_body(&handoff, "Workflow Level"))
+    );
     println!(
         "current_goal={}",
         single_line(&section_body(&handoff, "Current Goal"))
@@ -1945,7 +2088,208 @@ fn compact_resume(root: &Path) -> Result<i32> {
         single_line(&section_body(&handoff, "Owner Gates"))
     );
     println!("next_safe_action={}", single_line(&result.next_safe_action));
+    println!("read_only_recovery_guidance=yes");
+    println!("high_risk_actions=manual_owner_approval_required");
     Ok(0)
+}
+
+fn compact_readiness(result: &CompactValidation, root: &Path) -> CompactReadiness {
+    let mut reasons = Vec::new();
+    if !result.errors.is_empty() || !result.warnings.is_empty() || !result.denied_gates.is_empty() {
+        reasons.extend(result.errors.iter().cloned());
+        reasons.extend(result.warnings.iter().cloned());
+        reasons.extend(result.denied_gates.iter().cloned());
+        return CompactReadiness {
+            state: "BLOCKED_BY_OWNER_GATE",
+            pressure: "BLOCKED",
+            explanation: "Compact is blocked until validation errors, sensitive findings, or denied Owner gates are resolved.",
+            next_action: "Fix blocking compact validation findings before compact.".to_string(),
+            manual_compact_recommended: false,
+            reasons,
+        };
+    }
+    if !result.pending_gates.is_empty() {
+        reasons.extend(result.pending_gates.iter().cloned());
+        return CompactReadiness {
+            state: "UNKNOWN_NEEDS_REVIEW",
+            pressure: "MEDIUM",
+            explanation: "Owner gates are not fully documented, so compact readiness needs review.",
+            next_action:
+                "Document or resolve pending Owner gates, then rerun aiplus compact prepare."
+                    .to_string(),
+            manual_compact_recommended: false,
+            reasons,
+        };
+    }
+    if !result.review_items.is_empty() {
+        reasons.extend(result.review_items.iter().cloned());
+        return CompactReadiness {
+            state: "UNKNOWN_NEEDS_REVIEW",
+            pressure: "MEDIUM",
+            explanation:
+                "Compact files need version or structure review before recommending compact.",
+            next_action: "Review compact protocol files, then rerun aiplus compact prepare."
+                .to_string(),
+            manual_compact_recommended: false,
+            reasons,
+        };
+    }
+    if result.next_safe_action.trim().is_empty() {
+        return CompactReadiness {
+            state: "NEEDS_HANDOFF_UPDATE",
+            pressure: "MEDIUM",
+            explanation: "The next safe action is missing from the handoff.",
+            next_action: "Update .codex/compact/current-handoff.md with the next safe action."
+                .to_string(),
+            manual_compact_recommended: false,
+            reasons: vec!["next safe action is missing".to_string()],
+        };
+    }
+    let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
+    let phase = section_body(&handoff, "Current Phase").to_ascii_uppercase();
+    if phase.contains("DEBUG") || phase.contains("RUNNING_TESTS") || phase.contains("ACTIVE_WORK") {
+        return CompactReadiness {
+            state: "NOT_RECOMMENDED_DURING_ACTIVE_WORK",
+            pressure: "LOW",
+            explanation: "Compact is not recommended while active work is unstable.",
+            next_action: "Finish or stabilize the current work phase before compact.".to_string(),
+            manual_compact_recommended: false,
+            reasons: vec![format!("current phase: {}", single_line(&phase))],
+        };
+    }
+    CompactReadiness {
+        state: "READY_TO_COMPACT",
+        pressure: "HIGH",
+        explanation: "Compact state is valid and the next safe action is documented.",
+        next_action: "Run the host compact action manually, then continue or send: continue."
+            .to_string(),
+        manual_compact_recommended: true,
+        reasons: vec!["validated compact files".to_string()],
+    }
+}
+
+fn print_readiness(readiness: &CompactReadiness) {
+    println!("READINESS_STATE={}", readiness.state);
+    println!("COMPACT_PRESSURE={}", readiness.pressure);
+    println!(
+        "MANUAL_COMPACT_RECOMMENDED={}",
+        if readiness.manual_compact_recommended {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    println!("READINESS_EXPLANATION={}", readiness.explanation);
+    println!("NEXT_ACTION={}", readiness.next_action);
+    for reason in &readiness.reasons {
+        println!("REASON {}", single_line(reason));
+    }
+}
+
+fn readiness_exit_code(readiness: &CompactReadiness) -> i32 {
+    match readiness.state {
+        "READY_TO_COMPACT" => 0,
+        "BLOCKED_BY_OWNER_GATE" => 1,
+        _ => 2,
+    }
+}
+
+fn compact_section_or_unknown(text: &str, heading: &str) -> String {
+    let value = single_line(&section_body(text, heading));
+    if value.is_empty() {
+        "Unknown".to_string()
+    } else {
+        value
+    }
+}
+
+fn checkpoint_detail_vectors(
+    level: &str,
+    decision_log: &str,
+    evidence: &str,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let decisions = if level == "light" {
+        Vec::new()
+    } else {
+        parse_markdown_table(
+            decision_log,
+            &["id", "status", "decision", "rationale", "evidence"],
+        )
+        .into_iter()
+        .filter_map(|row| {
+            let id = row.get("id")?;
+            let status = row.get("status").map(String::as_str).unwrap_or("");
+            let decision = row.get("decision").map(String::as_str).unwrap_or("");
+            Some(format!("{id}: {status} {decision}"))
+        })
+        .collect()
+    };
+    let evidence_ids = if level == "light" {
+        Vec::new()
+    } else {
+        evidence_ids(evidence)
+    };
+    let artifacts = if level == "full" {
+        parse_markdown_table(
+            evidence,
+            &["id", "confidence", "source", "finding", "artifact"],
+        )
+        .into_iter()
+        .filter_map(|row| row.get("artifact").cloned())
+        .filter(|value| !value.is_empty() && value != "<ARTIFACT_ID>")
+        .collect()
+    } else {
+        Vec::new()
+    };
+    (decisions, evidence_ids, artifacts)
+}
+
+fn optional_for_level(level: &str, value: String, minimum: &str) -> Option<String> {
+    let allowed = match minimum {
+        "full" => level == "full",
+        "standard" => level == "standard" || level == "full",
+        _ => true,
+    };
+    if allowed {
+        optional_line(value)
+    } else {
+        None
+    }
+}
+
+fn lines_for_level(level: &str, value: String, minimum: &str) -> Vec<String> {
+    let allowed = match minimum {
+        "full" => level == "full",
+        "standard" => level == "standard" || level == "full",
+        _ => true,
+    };
+    if !allowed {
+        return Vec::new();
+    }
+    non_placeholder_lines(&value)
+        .into_iter()
+        .map(|line| strip_numbering(&line))
+        .collect()
+}
+
+fn latest_checkpoint(root: &Path) -> Result<Option<String>> {
+    let dir = compact_file(root, "checkpoints")?;
+    if !dir.exists() {
+        return Ok(None);
+    }
+    let mut files = Vec::new();
+    for entry in fs::read_dir(&dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files
+        .last()
+        .and_then(|path| path_relative(root, path).ok())
+        .map(path_slash))
 }
 
 fn print_compact_diagnostics(result: &CompactValidation) {
@@ -2017,7 +2361,7 @@ fn collect_version_review_items(
 
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
-    if version != "0.1.0" {
+    if !["0.1.0", "0.2.0"].contains(&version) {
         review_items.push(format!(
             "{label} unsupported or unknown: {}",
             if version.is_empty() {
@@ -2027,6 +2371,10 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
             }
         ));
     }
+}
+
+fn is_supported_manifest_schema(version: &str) -> bool {
+    matches!(version, "0.1.3" | "0.2.0")
 }
 
 fn check_policy_array(
@@ -2414,6 +2762,7 @@ Current project AiPlus status:
 
 How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
+- If you say "prepare compact", "save progress", "checkpoint this", "帮我准备 compact", or "保存进度", I will run aiplus compact prepare.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -2433,6 +2782,7 @@ Chinese response shape when the user uses Chinese such as `刷新` or `AiPlus �
 
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
+- 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
@@ -2473,9 +2823,13 @@ Then reopen the terminal or ensure `~/.local/bin` is on PATH.
 Read `.codex/compact/current-handoff.md` before long-running work if it exists.
 
 Before context compaction or compact-worthy moments:
-1. Run `aiplus compact validate`.
-2. Run `aiplus compact checkpoint`.
-3. Suggest compact only after checkpoint is ready:
+1. Treat natural language as the primary interface. If the user says "prepare compact",
+   "help me compact", "I want to compact", "save progress", "checkpoint this",
+   "get ready for compact", "我想 compact", "准备 compact", "帮我准备 compact",
+   "保存进度", "做个交接", or "我要 compact 了", run `aiplus compact prepare`.
+2. Use `aiplus compact validate` and `aiplus compact checkpoint` only as fallback
+   backend commands if `prepare` is unavailable.
+3. Suggest compact only after readiness is `READY_TO_COMPACT`:
    Ready to compact.
 
    After compact:
@@ -2485,10 +2839,19 @@ Before context compaction or compact-worthy moments:
    I will resume from here.
 
 After context compaction:
-1. Run `aiplus compact resume` when work continues after compact.
+1. If work continues automatically, or the user says "continue after compact",
+   "resume after compact", continue, resume, refresh, 继续, 刷新, compact 后继续,
+   or similar, run `aiplus compact resume`.
 2. If the user sends a continuation message, accept natural phrasing:
    continue, resume, go on, 继续, 刷新, 接着.
 3. Continue from the reported next safe action.
+
+Beginner UX rule:
+- Do not ask ordinary users to memorize compact CLI commands.
+- The compact CLI is an agent backend, an advanced manual fallback, and a
+  maintainer debugging interface.
+- For ordinary users, say: "In the agent session, say prepare compact or save
+  progress. After compact, say continue."
 
 Limits:
 - AiPlus cannot force host compact.
@@ -2552,6 +2915,7 @@ Current project AiPlus status:
 
 How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
+- If you say "prepare compact", "save progress", or "checkpoint this", I will run aiplus compact prepare.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -2571,6 +2935,7 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 
 我会这样使用：
 - 长任务或 compact 前准备 checkpoint
+- 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 

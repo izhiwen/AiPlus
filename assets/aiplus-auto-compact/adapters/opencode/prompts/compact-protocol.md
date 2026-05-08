@@ -37,7 +37,7 @@ Track:
 - Do not modify `~/.config/opencode/` by default.
 - Treat Plan style work as analysis, checkpoint preparation, and validation.
 - Treat Build style work as implementation only after scope and conflict checks pass.
-- Where a project includes the AiPlus CLI, use `aiplus compact validate`,
+- Where a project includes the AiPlus CLI, use `aiplus compact prepare`, `aiplus compact score`, `aiplus compact validate`,
   `aiplus compact checkpoint`, and `aiplus compact resume` when appropriate.
 
 ## Packet Shape
