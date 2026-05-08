@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Compact Handoff Markdown Contract",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "lastUpdated",
+    "currentGoal",
+    "currentPhase",
+    "completedWork",
+    "openBlockers",
+    "ownerGates",
+    "next3Actions",
+    "doNotDo",
+    "recoveryOrder"
+  ],
+  "properties": {
+    "protocolVersion": { "type": "string", "pattern": "^0\\.1\\.0$" },
+    "lastUpdated": { "type": "string", "minLength": 1 },
+    "currentGoal": { "type": "string", "minLength": 1 },
+    "currentPhase": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "IN_PROGRESS",
+        "NEEDS_VERIFICATION",
+        "BLOCKED_OWNER_GATE",
+        "BLOCKED_MISSING_FILES",
+        "BLOCKED_EXTERNAL_ACCESS",
+        "BLOCKED_UNCLEAR_GOAL"
+      ]
+    },
+    "completedWork": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "openBlockers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "ownerGates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "next3Actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "doNotDo": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "recoveryOrder": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "additionalProperties": false
+}

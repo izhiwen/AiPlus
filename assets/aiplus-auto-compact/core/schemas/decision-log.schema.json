@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decision Log Entry",
+  "type": "object",
+  "required": ["id", "status", "decision", "rationale", "evidence"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^DEC-[0-9]+$" },
+    "status": { "enum": ["DECIDED", "PROVISIONAL", "REVERSED", "NEEDS_VERIFICATION"] },
+    "decision": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string", "minLength": 1 },
+    "evidence": { "type": "string", "pattern": "^EVD-[0-9]+$" }
+  },
+  "additionalProperties": false
+}

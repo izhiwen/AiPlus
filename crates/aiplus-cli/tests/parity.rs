@@ -1,0 +1,394 @@
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+fn bin() -> &'static str {
+    env!("CARGO_BIN_EXE_aiplus")
+}
+
+fn run(cwd: &Path, args: &[&str], expected: i32) -> Output {
+    run_with_path(cwd, args, expected, None)
+}
+
+fn run_with_path(cwd: &Path, args: &[&str], expected: i32, path_override: Option<&Path>) -> Output {
+    let mut command = Command::new(bin());
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env("HOME", cwd.join("fake-home"))
+        .env("CODEX_HOME", cwd.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"));
+    if let Some(path) = path_override {
+        command.env("PATH", path);
+    }
+    let output = command.output().expect("run aiplus");
+    assert_eq!(
+        output.status.code(),
+        Some(expected),
+        "{} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+fn stdout(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+fn digest(dir: &Path) -> String {
+    let mut rows = Vec::new();
+    walk(dir, dir, &mut rows);
+    rows.sort();
+    rows.join("\n")
+}
+
+fn walk(root: &Path, dir: &Path, rows: &mut Vec<String>) {
+    if !dir.exists() {
+        return;
+    }
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("fake-")
+        {
+            continue;
+        }
+        if path.is_dir() {
+            walk(root, &path, rows);
+        } else if path.is_file() {
+            let mut hasher = DefaultHasher::new();
+            fs::read(&path).unwrap().hash(&mut hasher);
+            rows.push(format!(
+                "{}:{:x}",
+                path.strip_prefix(root).unwrap().display(),
+                hasher.finish()
+            ));
+        }
+    }
+}
+
+#[test]
+fn install_status_doctor_update_add_uninstall_codex() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    fs::create_dir(target.join("fake-home")).unwrap();
+    fs::create_dir(target.join("fake-codex-home")).unwrap();
+    fs::create_dir(target.join("fake-xdg")).unwrap();
+
+    let dry_before = digest(target);
+    let dry = run(target, &["install", "codex", "--dry-run"], 0);
+    let dry_out = stdout(&dry);
+    assert!(dry_out.contains("AiPlus install plan for Codex in this project."));
+    assert!(dry_out.contains("No files were changed."));
+    assert!(dry_out.contains("INSTALL_DRY_RUN=PASS"));
+    assert_eq!(digest(target), dry_before);
+
+    let install = run(target, &["install", "codex"], 0);
+    let install_out = stdout(&install);
+    assert!(install_out.contains("AiPlus installed for Codex in this project."));
+    assert!(install_out.contains("AIPLUS_REFRESH_PROMPT=刷新"));
+    assert!(install_out.contains("INSTALL_STATUS=PASS"));
+    assert!(target.join(".aiplus/manifest.json").exists());
+    assert!(target.join(".codex/compact").exists());
+    assert!(target.join("AGENTS.md").exists());
+    assert!(!target
+        .join(".aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs")
+        .exists());
+
+    let status = stdout(&run(target, &["status"], 0));
+    assert!(status.contains("runtimeAdapters=[codex]"));
+    assert!(status.contains("modules=[auto-compact@0.1.0, auto-team-consultant@0.1.2]"));
+    assert!(status.contains("next=For already-open agent sessions, type \"刷新\" or \"refresh\"."));
+    assert!(status.contains("STATUS=PASS"));
+
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(doctor.contains("runtimeAdapters=[codex]"));
+    assert!(doctor.contains("DOCTOR_STATUS=PASS"));
+    assert!(doctor.contains("globalConfig=untouched"));
+    assert!(!doctor.contains("compactctl.mjs"));
+
+    let update = stdout(&run(target, &["update"], 0));
+    assert!(update.contains("UPDATE_STATUS=PASS"));
+    assert!(update.contains("GLOBAL_CONFIG_UNTOUCHED"));
+
+    let add_dry = stdout(&run(
+        target,
+        &["add", "auto-team-consultant", "--dry-run"],
+        0,
+    ));
+    assert!(add_dry.contains("AiPlus module add plan: auto-team-consultant"));
+    assert!(add_dry.contains("No files were changed."));
+    assert!(add_dry.contains("ADD_DRY_RUN=PASS"));
+
+    let unknown = run(target, &["update", "auto-router"], 1);
+    assert!(stderr(&unknown).contains("MODULE_NOT_AVAILABLE auto-router"));
+
+    let uninstall = stdout(&run(target, &["uninstall", "--dry-run"], 0));
+    assert!(uninstall.contains("DRY_RUN_ONLY=YES"));
+    assert!(uninstall.contains("NO_FILES_REMOVED=YES"));
+    assert!(uninstall.contains("UNINSTALL_DRY_RUN=PASS"));
+}
+
+#[test]
+fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
+    for runtime in ["claude-code", "opencode", "all"] {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path();
+        fs::create_dir(target.join("fake-home")).unwrap();
+        fs::create_dir(target.join("fake-codex-home")).unwrap();
+        fs::create_dir(target.join("fake-xdg")).unwrap();
+        let out = stdout(&run(target, &["install", runtime], 0));
+        assert!(out.contains("INSTALL_STATUS=PASS"));
+        let doctor = stdout(&run(target, &["doctor"], 0));
+        assert!(doctor.contains("DOCTOR_STATUS=PASS"), "{runtime}: {doctor}");
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    fs::create_dir(target.join("fake-home")).unwrap();
+    fs::create_dir(target.join("fake-codex-home")).unwrap();
+    fs::create_dir(target.join("fake-xdg")).unwrap();
+    run(target, &["install", "codex"], 0);
+    fs::create_dir(target.join(".aiplus/user-empty-dir")).unwrap();
+    let blocked = run(target, &["uninstall", "--yes"], 1);
+    assert!(stderr(&blocked).contains("unknown entries"));
+    assert!(target.join(".aiplus/user-empty-dir").exists());
+    let forced = stdout(&run(target, &["uninstall", "--yes", "--force"], 0));
+    assert!(forced.contains("UNINSTALL_STATUS=PASS"));
+    assert!(!target.join(".aiplus").exists());
+    assert!(target.join(".codex/compact").exists());
+}
+
+#[test]
+fn runtime_flags_compact_native_and_dangling_symlink_safety() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    fs::create_dir(target.join("fake-home")).unwrap();
+    fs::create_dir(target.join("fake-codex-home")).unwrap();
+    fs::create_dir(target.join("fake-xdg")).unwrap();
+
+    let by_flag = stdout(&run(target, &["install", "--runtime", "codex"], 0));
+    assert!(by_flag.contains("INSTALL_STATUS=PASS"));
+    let validate = stdout(&run(target, &["compact", "validate"], 0));
+    assert!(validate.contains("VALIDATION_PASS"));
+    assert!(validate.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
+
+    let all_temp = tempfile::tempdir().unwrap();
+    let all_target = all_temp.path();
+    fs::create_dir(all_target.join("fake-home")).unwrap();
+    fs::create_dir(all_target.join("fake-codex-home")).unwrap();
+    fs::create_dir(all_target.join("fake-xdg")).unwrap();
+    let all = stdout(&run(all_target, &["install", "--all-runtimes"], 0));
+    assert!(all.contains("AiPlus installed for Claude Code, Codex, OpenCode in this project."));
+    assert!(stdout(&run(all_target, &["doctor"], 0)).contains("DOCTOR_STATUS=PASS"));
+
+    let symlink_temp = tempfile::tempdir().unwrap();
+    let symlink_target = symlink_temp.path();
+    fs::create_dir(symlink_target.join("fake-home")).unwrap();
+    fs::create_dir(symlink_target.join("fake-codex-home")).unwrap();
+    fs::create_dir(symlink_target.join("fake-xdg")).unwrap();
+    let outside = symlink_temp.path().join("outside-agents.md");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, symlink_target.join("AGENTS.md")).unwrap();
+    #[cfg(unix)]
+    {
+        let blocked = run(symlink_target, &["install", "codex"], 1);
+        assert!(stderr(&blocked).contains("ERROR refusing to write through symlink: AGENTS.md"));
+        assert!(!outside.exists());
+
+        let compact_temp = tempfile::tempdir().unwrap();
+        let compact_target = compact_temp.path();
+        fs::create_dir(compact_target.join("fake-home")).unwrap();
+        fs::create_dir(compact_target.join("fake-codex-home")).unwrap();
+        fs::create_dir(compact_target.join("fake-xdg")).unwrap();
+        fs::create_dir_all(compact_target.join(".codex/compact")).unwrap();
+        let outside_compact = compact_temp.path().join("outside-handoff.md");
+        std::os::unix::fs::symlink(
+            &outside_compact,
+            compact_target.join(".codex/compact/current-handoff.md"),
+        )
+        .unwrap();
+        let blocked_compact = run(compact_target, &["compact", "init"], 1);
+        assert!(stderr(&blocked_compact).contains(
+            "ERROR refusing to write through symlink: .codex/compact/current-handoff.md"
+        ));
+        assert!(!outside_compact.exists());
+    }
+}
+
+#[test]
+fn doctor_manifest_diagnostics_are_row_accurate() {
+    let missing = tempfile::tempdir().unwrap();
+    setup_fake_env(missing.path());
+    let missing_doctor = stdout(&run(missing.path(), &["doctor"], 0));
+    assert!(missing_doctor.contains("status=NEEDS_FIX"));
+    assert!(missing_doctor.contains("installed=no"));
+    assert!(missing_doctor.contains("NEEDS_FIX .aiplus/manifest.json exists"));
+    assert!(missing_doctor.contains("NEEDS_FIX manifest parses"));
+    assert!(missing_doctor.contains("NEEDS_FIX manifest installer is aiplus"));
+    assert!(missing_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    let malformed = tempfile::tempdir().unwrap();
+    setup_fake_env(malformed.path());
+    fs::create_dir(malformed.path().join(".aiplus")).unwrap();
+    fs::write(malformed.path().join(".aiplus/manifest.json"), "{ not json").unwrap();
+    let malformed_doctor = stdout(&run(malformed.path(), &["doctor"], 0));
+    assert!(malformed_doctor.contains("PASS .aiplus/manifest.json exists"));
+    assert!(malformed_doctor.contains("NEEDS_FIX manifest parses"));
+    assert!(malformed_doctor.contains("NEEDS_FIX manifest installer is aiplus"));
+    assert!(malformed_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    let wrong = tempfile::tempdir().unwrap();
+    setup_fake_env(wrong.path());
+    fs::create_dir(wrong.path().join(".aiplus")).unwrap();
+    fs::write(
+        wrong.path().join(".aiplus/manifest.json"),
+        r#"{"installer":"other","schemaVersion":"0.1.3","runtimeAdapters":["codex"],"modules":{}}"#,
+    )
+    .unwrap();
+    let wrong_doctor = stdout(&run(wrong.path(), &["doctor"], 0));
+    assert!(wrong_doctor.contains("PASS .aiplus/manifest.json exists"));
+    assert!(wrong_doctor.contains("PASS manifest parses"));
+    assert!(wrong_doctor.contains("NEEDS_FIX manifest installer is aiplus"));
+    assert!(wrong_doctor.contains("installed=no"));
+    assert!(wrong_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
+}
+
+#[test]
+fn compact_native_validate_checkpoint_resume_and_no_node_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    assert!(target.join(".codex/compact/current-handoff.md").exists());
+    assert!(target.join(".codex/compact/compact-policy.json").exists());
+
+    let no_node_path = make_empty_path();
+    let init = stdout(&run_with_path(
+        target,
+        &["compact", "init"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(init.contains("INIT_PASS"));
+    assert!(init.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
+
+    let validate = stdout(&run_with_path(
+        target,
+        &["compact", "validate"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(validate.contains("VALIDATION_PASS"));
+    assert!(validate.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
+
+    let checkpoint = run_with_path(target, &["compact", "checkpoint"], 2, Some(&no_node_path));
+    let checkpoint_out = stdout(&checkpoint);
+    assert!(checkpoint_out.contains("UNKNOWN_NEEDS_REVIEW"));
+    assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+    assert!(checkpoint_out.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
+    let checkpoint_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "json")
+        })
+        .count();
+    assert!(checkpoint_count >= 1);
+
+    let resume = stdout(&run_with_path(
+        target,
+        &["compact", "resume"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(resume.contains("RESUME_READY"));
+    assert!(resume.contains("current_goal="));
+    assert!(resume.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
+
+    let approved = fs::read_to_string(target.join(".codex/compact/current-handoff.md"))
+        .unwrap()
+        .replace("UNKNOWN_PENDING", "APPROVED");
+    fs::write(target.join(".codex/compact/current-handoff.md"), approved).unwrap();
+    for file in [
+        "decision-log.md",
+        "agent-state-ledger.md",
+        "evidence-ledger.md",
+    ] {
+        let next = fs::read_to_string(target.join(".codex/compact").join(file))
+            .unwrap()
+            .replace("UNKNOWN_PENDING", "APPROVED");
+        fs::write(target.join(".codex/compact").join(file), next).unwrap();
+    }
+    let mut policy = fs::read_to_string(target.join(".codex/compact/compact-policy.json")).unwrap();
+    policy = policy.replace(
+        "\"status\": \"UNKNOWN_PENDING\"",
+        "\"status\": \"APPROVED\"",
+    );
+    fs::write(target.join(".codex/compact/compact-policy.json"), policy).unwrap();
+    let safe_checkpoint = stdout(&run_with_path(
+        target,
+        &["compact", "checkpoint"],
+        0,
+        Some(&no_node_path),
+    ));
+    assert!(safe_checkpoint.contains("SAFE_TO_COMPACT"));
+    assert!(safe_checkpoint.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+
+    fs::write(target.join(".codex/compact/compact-policy.json"), "{ bad").unwrap();
+    let bad_policy = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
+    assert!(stderr(&bad_policy).contains("compact-policy.json is invalid JSON"));
+    assert!(stderr(&bad_policy).contains("VALIDATION_FAIL"));
+
+    run(target, &["compact", "init", "--force"], 0);
+    fs::remove_file(target.join(".codex/compact/evidence-ledger.md")).unwrap();
+    let missing = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
+    assert!(stderr(&missing).contains("evidence-ledger.md is missing"));
+
+    run(target, &["compact", "init", "--force"], 0);
+    fs::write(
+        target.join(".codex/compact/evidence-ledger.md"),
+        format!(
+            "{}: Bearer abcdefghijklmnopqrstuvwxyz\n",
+            ["Authori", "zation"].concat()
+        ),
+    )
+    .unwrap();
+    let sensitive = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
+    assert!(stderr(&sensitive).contains("sensitive pattern detected (authorization header)"));
+}
+
+#[test]
+fn compact_source_does_not_invoke_node() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = fs::read_to_string(manifest_dir.join("src/main.rs")).unwrap();
+    assert!(!source.contains("Command::new(\"node\")"));
+    assert!(!source.contains("failed to launch Node compact bridge"));
+    assert!(!source.contains("COMPACT_RUST_NATIVE_STATUS=PARTIAL"));
+}
+
+fn setup_fake_env(target: &Path) {
+    fs::create_dir(target.join("fake-home")).unwrap();
+    fs::create_dir(target.join("fake-codex-home")).unwrap();
+    fs::create_dir(target.join("fake-xdg")).unwrap();
+}
+
+fn make_empty_path() -> PathBuf {
+    tempfile::tempdir().unwrap().keep()
+}

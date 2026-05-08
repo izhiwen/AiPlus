@@ -1,0 +1,91 @@
+{
+  "protocolVersion": "0.1.0",
+  "schemaVersion": "0.1.0",
+  "templateVersion": "0.1.0",
+  "lastUpdated": "<ISO8601_TIMESTAMP>",
+  "currentGoal": "Initialize compact/resume handoff state for <REPO_ROOT>.",
+  "currentPhase": "IN_PROGRESS",
+  "completedWork": [
+    "Seeded compact policy."
+  ],
+  "openBlockers": [
+    "None."
+  ],
+  "ownerGates": [
+    {
+      "status": "UNKNOWN_PENDING",
+      "description": "Owner review of compact policy before first real use."
+    }
+  ],
+  "next3Actions": [
+    "Review compact policy placeholders.",
+    "Run validate.",
+    "Run checkpoint before manual compact."
+  ],
+  "doNotDo": [
+    "Do not store sensitive material in compact files.",
+    "Do not trigger compact automatically."
+  ],
+  "recoveryOrder": [
+    "Read current-handoff.md.",
+    "Read compact-policy.json.",
+    "Review Owner Gates and Open Blockers.",
+    "Run resume."
+  ],
+  "resumeSanityCheck": [
+    "manualCompactOnly is true.",
+    "Allowed enums match protocol.",
+    "No sensitive material is present."
+  ],
+  "manualCompactOnly": true,
+  "allowedOwnerGateStatuses": [
+    "APPROVED",
+    "DENIED",
+    "UNKNOWN_PENDING"
+  ],
+  "allowedDecisionStatuses": [
+    "DECIDED",
+    "PROVISIONAL",
+    "REVERSED",
+    "NEEDS_VERIFICATION"
+  ],
+  "allowedAgentStatuses": [
+    "pending",
+    "running",
+    "blocked",
+    "done",
+    "abandoned"
+  ],
+  "allowedEvidenceConfidence": [
+    "official",
+    "vendor_blog",
+    "github",
+    "measured",
+    "inferred",
+    "unknown"
+  ],
+  "allowedTaskResultStatuses": [
+    "PASS",
+    "FAIL",
+    "IN_PROGRESS",
+    "NEEDS_VERIFICATION",
+    "BLOCKED_OWNER_GATE",
+    "BLOCKED_MISSING_FILES",
+    "BLOCKED_EXTERNAL_ACCESS",
+    "BLOCKED_UNCLEAR_GOAL"
+  ],
+  "redactionPlaceholders": [
+    "<REPO_ROOT>",
+    "<HOME>",
+    "<REDACTED_SECRET>",
+    "<REDACTED_TOKEN>",
+    "<REDACTED_PII>",
+    "<ARTIFACT_ID>"
+  ],
+  "checkpointPolicy": {
+    "validationPassRequired": true,
+    "denyOnDeniedOwnerGate": true,
+    "denyOnSensitivePattern": true,
+    "unknownOnPendingOwnerGate": false
+  }
+}

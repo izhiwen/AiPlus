@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent State Entry",
+  "type": "object",
+  "required": ["agent", "role", "status", "ownedScope", "lastEvidence", "nextAction"],
+  "properties": {
+    "agent": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["pending", "running", "blocked", "done", "abandoned"] },
+    "ownedScope": { "type": "string", "minLength": 1 },
+    "lastEvidence": { "type": "string", "pattern": "^EVD-[0-9]+$" },
+    "nextAction": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

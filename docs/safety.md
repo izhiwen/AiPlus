@@ -1,0 +1,88 @@
+# Safety
+
+The Rust CLI is project-local only.
+
+This document describes boundaries and checks. It is not a safety, privacy,
+compliance, correctness, or release certification.
+
+## Allowed Writes
+
+- `.aiplus/`
+- `.codex/compact/`
+- `.claude/` project adapter files
+- `.opencode/` project adapter files
+- AiPlus managed block in project `AGENTS.md`
+
+## Forbidden Actions
+
+The Rust CLI does not implement:
+
+- npm publish
+- cargo publish
+- registry publish
+- GitHub push, tag, or release
+- Homebrew release
+- shell installer publication
+- marketplace submission
+- global install
+- global Codex, Claude Code, or OpenCode config edits
+- telemetry
+- runtime network calls
+- remote auto-update
+- shell profile edits
+
+## Publication Gates
+
+Owner approval is required before:
+
+- creating a public repo
+- changing license away from Apache-2.0 or changing public legal wording
+- pushing commits to a remote
+- creating or pushing git tags
+- creating GitHub Releases
+- uploading binary artifacts
+- publishing to package registries
+- creating Homebrew formulas or taps
+- publishing shell installers
+- publishing npm compatibility wrappers
+- globally installing binaries
+- modifying `$CODEX_HOME`, `~/.codex`, `~/.claude`, OpenCode global config,
+  shell profiles, `~/.cargo/bin`, `/usr/local/bin`, or system paths
+
+## Write Safety
+
+The CLI rejects absolute paths, `..` traversal, and symlink components in write
+paths, including dangling symlinks. Existing differing files are not overwritten
+unless the command explicitly supports the required force/backup/yes flow.
+
+Uninstall requires an AiPlus manifest and refuses unknown `.aiplus/` entries
+unless `--force` is supplied. `.codex/compact/` is preserved by uninstall.
+
+## Public Wording Boundary
+
+Allowed wording:
+
+- local-only
+- Owner-gated
+- structural validation
+- heuristic scan
+- public-ready candidate
+- release-readiness checklist
+
+Do not claim:
+
+- guaranteed safe
+- certified
+- compliant
+- secure by default
+- production-ready
+- official
+- endorsed
+- privacy guaranteed
+- safety approved
+
+## License Boundary
+
+The Rust mainline/public-ready package is Apache-2.0. Bundled child module
+snapshots preserve their existing licenses. Licensing is not a safety, privacy,
+compliance, correctness, or release certification.

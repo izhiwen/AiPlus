@@ -1,0 +1,20 @@
+# CEO Handoff Template
+
+```text
+CEO_HANDOFF
+OBJECTIVE=
+SOURCE_SESSION_ROLE=Advisor | Reviewer | Builder | Unknown
+RECOMMENDED_WORKFLOW_LEVEL=LIGHT | MEDIUM | HEAVY
+WHY_THIS_LEVEL=
+RECOMMENDED_LENSES=[]
+REQUIRED_DELIVERABLES=[]
+TASK_CARDS_TO_CREATE=[]
+OWNER_GATES=[]
+EXCLUSIONS=[]
+FINAL_OUTPUT_CONTRACT=
+KNOWN_RISKS=[]
+READY_FOR_CEO=YES | NO
+```
+
+Use when an Advisor or Reviewer should hand execution to a CEO session.
+

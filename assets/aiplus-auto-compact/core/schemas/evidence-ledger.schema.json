@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Entry",
+  "type": "object",
+  "required": ["id", "confidence", "source", "finding", "artifact"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^EVD-[0-9]+$" },
+    "confidence": { "enum": ["official", "vendor_blog", "github", "measured", "inferred", "unknown"] },
+    "source": { "type": "string", "minLength": 1 },
+    "finding": { "type": "string", "minLength": 1 },
+    "artifact": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
