@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2
+
+- Added explicit AiPlus refresh triggers for already-open sessions:
+  `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
+  `AiPlus status`, `继续 AiPlus`, and `resume AiPlus`.
+- Added `aiplus refresh` as a concise helper command for agents and users.
+- Strengthened installed `.aiplus/AGENTS.aiplus.md` guidance so AiPlus status is
+  reported before unrelated project refresh when the user asks for AiPlus.
+- Documented project-specific refresh conflict handling while preserving generic
+  `刷新` / `refresh` as AiPlus-first after installation.
+
 ## 0.1.1
 
 - Fixed existing-project `aiplus install codex` upgrades so old AiPlus managed

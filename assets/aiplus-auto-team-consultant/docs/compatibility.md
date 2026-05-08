@@ -14,7 +14,10 @@ cd MyProject
 aiplus install codex
 ```
 
-Then type `刷新` or `refresh` in the already-open agent session.
+Then type `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, or `aiplus status` in
+the already-open agent session. Generic `刷新` / `refresh` should still try
+AiPlus first after installation, but explicit AiPlus triggers are safer when a
+project has its own refresh meaning.
 
 If the project already has an older AiPlus install, `aiplus install codex` safely upgrades AiPlus managed files, backs up replaced managed files under `.aiplus/backups/`, and preserves existing `.codex/compact/` state.
 
@@ -26,7 +29,7 @@ Use:
 aiplus install codex
 ```
 
-Then type `刷新` or `refresh` in the already-open Codex session.
+Then type `AiPlus 刷新` or `aiplus refresh` in the already-open Codex session.
 
 ## Claude Code
 
@@ -36,7 +39,7 @@ Use:
 aiplus install claude-code
 ```
 
-Then type `刷新` or `refresh` in the already-open Claude Code session.
+Then type `AiPlus 刷新` or `aiplus refresh` in the already-open Claude Code session.
 
 ## OpenCode
 
@@ -46,7 +49,7 @@ Use:
 aiplus install opencode
 ```
 
-Then type `刷新` or `refresh` in the already-open OpenCode session.
+Then type `AiPlus 刷新` or `aiplus refresh` in the already-open OpenCode session.
 
 ## Limits
 

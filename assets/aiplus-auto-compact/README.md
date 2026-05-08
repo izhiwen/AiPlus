@@ -51,19 +51,26 @@ The install is project-local. It may write `.aiplus/`, `.codex/compact/`, projec
 Then type this in the already-open Codex, Claude Code, or OpenCode session:
 
 ```text
-刷新
+AiPlus 刷新
 ```
 
-Or:
+Other explicit AiPlus refresh triggers:
 
 ```text
-refresh
+刷新 AiPlus
+aiplus refresh
+aiplus status
+AiPlus status
+继续 AiPlus
+resume AiPlus
 ```
 
-Meaning: treat this as AiPlus refresh first, report Auto Compact and compact
-state, reread `AGENTS.md`, reread `.aiplus/AGENTS.aiplus.md`, read
-`.codex/compact/current-handoff.md` if present, enable AiPlus guidance, and
-continue the current task.
+Generic `刷新` / `refresh` should still try AiPlus first after installation. If
+your project also uses `刷新` for its own state refresh, use `AiPlus 刷新` or
+`aiplus refresh` to avoid ambiguity. Meaning: report Auto Compact and compact
+state before unrelated project refresh, reread `AGENTS.md`, reread
+`.aiplus/AGENTS.aiplus.md`, read `.codex/compact/current-handoff.md` if present,
+enable AiPlus guidance, and continue the current task.
 
 ### Path C: Advanced module-only adoption
 
@@ -99,6 +106,10 @@ After the host compact completes:
 - If the host requires a user message, any natural continuation should work:
 
 ```text
+AiPlus 刷新
+刷新 AiPlus
+aiplus refresh
+aiplus status
 继续
 刷新
 refresh

@@ -2,7 +2,7 @@
 
 Status: `V0_1_0_RELEASE_QA`
 
-This checklist tracks the Owner-approved v0.1.1 GitHub Release QA scope. It
+This checklist tracks the Owner-approved v0.1.2 GitHub Release QA scope. It
 does not approve package registries, Homebrew, marketplace publication,
 telemetry, or system/global install paths.
 
@@ -79,11 +79,11 @@ records. Active source must not implement forbidden actions.
 
 ## Release Readiness Decision
 
-Before the v0.1.1 GitHub Release:
+Before the v0.1.2 GitHub Release:
 
 - Owner reviewed repo name and extraction plan.
 - Owner confirmed Apache-2.0 license/public wording remains correct.
-- Owner approved the `v0.1.1` tag and GitHub Release channel.
+- Owner approved the `v0.1.2` tag and GitHub Release channel.
 - QA matrix is re-run after extraction.
 - Binary artifact matrix is updated with tested status.
 - Checksums are generated for any release artifacts.

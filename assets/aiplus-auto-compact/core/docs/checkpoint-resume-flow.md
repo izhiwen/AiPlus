@@ -44,6 +44,10 @@ If the host waits for a user message, any natural continuation should be enough
 to restart the agent workflow:
 
 ```text
+AiPlus 刷新
+刷新 AiPlus
+aiplus refresh
+aiplus status
 继续
 刷新
 refresh
@@ -52,6 +56,10 @@ resume
 go on
 接着
 ```
+
+Use explicit AiPlus refresh triggers when a project has its own meaning for
+`刷新` or `refresh`; the agent should report AiPlus status before unrelated
+project refresh when AiPlus is mentioned.
 
 This is best-effort automatic resume. AiPlus Auto Compact can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime

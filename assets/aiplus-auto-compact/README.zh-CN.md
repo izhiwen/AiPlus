@@ -49,16 +49,23 @@ aiplus install all
 然后在同一个项目里已经打开的 Codex、Claude Code 或 OpenCode session 输入：
 
 ```text
-刷新
+AiPlus 刷新
 ```
 
-或者：
+其它明确 AiPlus refresh 触发语：
 
 ```text
-refresh
+刷新 AiPlus
+aiplus refresh
+aiplus status
+AiPlus status
+继续 AiPlus
+resume AiPlus
 ```
 
-含义：优先当作 AiPlus refresh，先报告 Auto Compact 和 compact state，再重新读取
+泛用的 `刷新` / `refresh` 在安装后仍应优先尝试 AiPlus refresh。如果项目自己也把
+`刷新` 当作项目状态刷新，请使用 `AiPlus 刷新` 或 `aiplus refresh` 避免歧义。含义：
+先报告 Auto Compact 和 compact state，再处理无关的项目 refresh，重新读取
 `AGENTS.md`、`.aiplus/AGENTS.aiplus.md`，如果存在则读取
 `.codex/compact/current-handoff.md`，启用 AiPlus guidance，并继续当前任务。
 
@@ -94,6 +101,10 @@ host compact 完成后：
 - 如果 host 需要用户发消息，任何自然的继续意图都应该可用：
 
 ```text
+AiPlus 刷新
+刷新 AiPlus
+aiplus refresh
+aiplus status
 继续
 刷新
 refresh

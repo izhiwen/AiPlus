@@ -28,18 +28,25 @@ Then type this in the already-open Codex, Claude Code, or OpenCode session for
 that same project:
 
 ```text
-刷新
+AiPlus 刷新
 ```
 
-English also works:
+Other explicit triggers also work:
 
 ```text
-refresh
+刷新 AiPlus
+aiplus refresh
+aiplus status
+AiPlus status
+继续 AiPlus
+resume AiPlus
 ```
 
-The agent should treat `刷新` / `refresh` as AiPlus refresh first and reply with
-current Auto Compact, Auto Team Consultant, and compact-state status before
-continuing work.
+Generic `刷新` / `refresh` should still try AiPlus first after installation. If
+your project also uses `刷新` for its own state refresh, use `AiPlus 刷新` or
+`aiplus refresh` to avoid ambiguity. The agent should report current Auto
+Compact, Auto Team Consultant, and compact-state status before unrelated project
+refresh when you ask for AiPlus.
 
 For Claude Code:
 
@@ -53,7 +60,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.1.1 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.1.2 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -76,6 +83,7 @@ block, Claude Code uses project `.claude/` files, and OpenCode uses project
 
 ```bash
 aiplus status
+aiplus refresh
 aiplus doctor
 aiplus update
 aiplus uninstall --dry-run
@@ -129,7 +137,7 @@ wake the agent if the host requires user input.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.1.1 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.1.2 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -179,7 +187,7 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 The AiPlus CLI does not implement publish, push, tag, release creation,
 system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.1.1 installer writes only the user-level
+network fetches. The v0.1.2 installer writes only the user-level
 `~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,

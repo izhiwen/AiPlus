@@ -54,16 +54,26 @@ aiplus install codex
 Then in your already-open agent session, type:
 
 ```text
-刷新
+AiPlus 刷新
 ```
 
-or:
+Other explicit AiPlus refresh triggers:
 
 ```text
-refresh
+刷新 AiPlus
+aiplus refresh
+aiplus status
+AiPlus status
+继续 AiPlus
+resume AiPlus
 ```
 
-That tells the current agent session to treat the message as AiPlus refresh first, reload the project-local AiPlus instructions, report Auto Team Consultant status, and use the Auto Team Consultant routing behavior.
+Generic `刷新` / `refresh` should still try AiPlus first after installation. If
+your project also uses `刷新` for its own state refresh, use `AiPlus 刷新` or
+`aiplus refresh` to avoid ambiguity. That tells the current agent session to
+report AiPlus status before unrelated project refresh, reload the project-local
+AiPlus instructions, report Auto Team Consultant status, and use the Auto Team
+Consultant routing behavior.
 
 ## Path C: Advanced Module-Only Adoption
 

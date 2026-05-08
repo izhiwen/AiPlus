@@ -42,9 +42,13 @@ After compact, if Codex returns control automatically:
 aiplus compact resume
 ```
 
-If Codex waits for the user, natural continuation messages such as `继续`,
-`刷新`, `refresh`, `continue`, `resume`, `go on`, or `接着` should restart the
-resume flow. This is best-effort; the adapter cannot wake Codex by itself.
+If Codex waits for the user, explicit AiPlus continuation messages such as
+`AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
+`AiPlus status`, `继续 AiPlus`, or `resume AiPlus` should restart the resume
+flow. Generic messages such as `继续`, `刷新`, `refresh`, `continue`, `resume`,
+`go on`, or `接着` should try AiPlus first when possible; when project-specific
+refresh rules conflict, report AiPlus status before project status. This is
+best-effort; the adapter cannot wake Codex by itself.
 
 ## Shared Core
 

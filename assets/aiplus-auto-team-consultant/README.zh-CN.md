@@ -54,16 +54,25 @@ aiplus install codex
 然后在已经打开的 agent session 里输入：
 
 ```text
-刷新
+AiPlus 刷新
 ```
 
-或：
+其它明确 AiPlus refresh 触发语：
 
 ```text
-refresh
+刷新 AiPlus
+aiplus refresh
+aiplus status
+AiPlus status
+继续 AiPlus
+resume AiPlus
 ```
 
-这会让当前 agent session 优先把消息当作 AiPlus refresh，重新读取项目本地的 AiPlus instructions，报告 Auto Team Consultant 状态，并使用 Auto Team Consultant 的 routing 行为。
+泛用的 `刷新` / `refresh` 在安装后仍应优先尝试 AiPlus refresh。如果项目自己也把
+`刷新` 当作项目状态刷新，请使用 `AiPlus 刷新` 或 `aiplus refresh` 避免歧义。这会
+让当前 agent session 先报告 AiPlus status，再处理无关的项目 refresh，重新读取项目
+本地的 AiPlus instructions，报告 Auto Team Consultant 状态，并使用 Auto Team
+Consultant 的 routing 行为。
 
 ## Path C：高级 module-only 采用
 

@@ -59,3 +59,8 @@ IN_PROGRESS
 - Next safe action is actionable.
 - No sensitive material is present.
 - If the host returns control after compact, run `aiplus compact resume`.
+- If the host waits for a user message, explicit AiPlus refresh triggers include
+  `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
+  `AiPlus status`, `继续 AiPlus`, and `resume AiPlus`.
+- Generic `刷新` / `refresh` should try AiPlus first when possible, but explicit
+  AiPlus triggers are safer when a project has its own refresh meaning.

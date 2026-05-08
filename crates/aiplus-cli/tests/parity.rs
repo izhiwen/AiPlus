@@ -98,6 +98,8 @@ fn install_status_doctor_update_add_uninstall_codex() {
     let install = run(target, &["install", "codex"], 0);
     let install_out = stdout(&install);
     assert!(install_out.contains("AiPlus installed for Codex in this project."));
+    assert!(install_out.contains("AiPlus 刷新"));
+    assert!(install_out.contains("aiplus refresh"));
     assert!(install_out.contains("AIPLUS_REFRESH_PROMPT=刷新"));
     assert!(install_out.contains("INSTALL_STATUS=PASS"));
     assert!(target.join(".aiplus/manifest.json").exists());
@@ -110,8 +112,30 @@ fn install_status_doctor_update_add_uninstall_codex() {
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
     assert!(status.contains("modules=[auto-compact@0.1.0, auto-team-consultant@0.1.2]"));
-    assert!(status.contains("next=For already-open agent sessions, type \"刷新\" or \"refresh\"."));
+    assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
+
+    let refresh = stdout(&run(target, &["refresh"], 0));
+    assert!(refresh.contains("已刷新 AiPlus。"));
+    assert!(refresh.contains("- Auto Compact: 已安装"));
+    assert!(refresh.contains("- Auto Team Consultant: 已安装"));
+    assert!(refresh.contains("- Compact state: present"));
+    assert!(refresh.contains("AIPLUS_REFRESH_STATUS=PASS"));
+
+    let installed_agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    for phrase in [
+        "AiPlus 刷新",
+        "刷新 AiPlus",
+        "aiplus refresh",
+        "aiplus status",
+        "AiPlus status",
+        "继续 AiPlus",
+        "resume AiPlus",
+        "project-specific refresh",
+        "Never bury AiPlus status",
+    ] {
+        assert!(installed_agents.contains(phrase), "missing {phrase}");
+    }
 
     let doctor = stdout(&run(target, &["doctor"], 0));
     assert!(doctor.contains("runtimeAdapters=[codex]"));
@@ -165,6 +189,10 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     assert!(fs::read_to_string(&managed_schema)
         .unwrap()
         .contains("\"$schema\""));
+    let agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    assert!(agents.contains("AiPlus 刷新"));
+    assert!(agents.contains("project-specific refresh"));
+    assert!(agents.contains("Expected response shape"));
 
     let backups = target.join(".aiplus/backups");
     assert!(backups.exists());
