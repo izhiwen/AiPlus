@@ -138,11 +138,17 @@ case "$ASSET" in
   *.tar.gz)
     tar -xzf "$TMP_DIR/$ASSET" -C "$TMP_DIR/extract"
     BIN="$TMP_DIR/extract/aiplus"
+    if [ ! -f "$BIN" ]; then
+      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus | head -n 1)"
+    fi
     ;;
   *.zip)
     need_cmd unzip
     unzip -q "$TMP_DIR/$ASSET" -d "$TMP_DIR/extract"
     BIN="$TMP_DIR/extract/aiplus.exe"
+    if [ ! -f "$BIN" ]; then
+      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus.exe | head -n 1)"
+    fi
     ;;
   *)
     echo "ERROR unsupported asset extension: $ASSET" >&2
