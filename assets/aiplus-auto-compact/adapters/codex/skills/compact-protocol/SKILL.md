@@ -113,6 +113,18 @@ Savings output is an estimate only. It is not billing data or quality proof. Do
 not ask the user to enter model prices. Do not upload prompts, project files,
 checkpoints, savings ledgers, secrets, billing data, or usage history.
 
+If the user says "update AiPlus", "update everything", "升级 AiPlus", or
+"把 AiPlus 全部更新到最新版", report update scope and run:
+
+```bash
+aiplus update all
+```
+
+If the user says "only update this project's AiPlus" or "只更新这个项目的 AiPlus",
+run `aiplus update`. If the user says "update the aiplus command" or
+"更新 aiplus 命令", run `aiplus self update`. Before updating, say that you will
+not edit global agent config or upload project data.
+
 ## After Compact
 
 After compact, if the agent gets control automatically, or if the user says

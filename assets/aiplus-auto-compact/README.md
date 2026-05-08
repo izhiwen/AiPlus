@@ -169,6 +169,30 @@ Savings reports are estimates only, not billing data. AiPlus does not upload
 prompts, project files, checkpoints, savings ledgers, secrets, billing data, or
 usage history.
 
+## Updating AiPlus
+
+Users can say this in an agent session:
+
+```text
+update AiPlus
+```
+
+Default mapping:
+
+```bash
+aiplus update all
+```
+
+More specific mappings:
+
+- `only update this project's AiPlus` -> `aiplus update`
+- `update the aiplus command` -> `aiplus self update`
+- `check AiPlus updates` -> `aiplus self update --dry-run` plus `aiplus status`
+
+Before running updates, the agent should state: "I will update the aiplus CLI
+and this project's AiPlus modules. I will not edit global agent config or upload
+project data."
+
 Existing projects with older `.codex/compact/current-handoff.md` files are
 upgraded conservatively by `aiplus install ...` and `aiplus update`: AiPlus backs
 up the old handoff, preserves user content, and adds missing role-aware sections

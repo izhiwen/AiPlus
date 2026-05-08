@@ -140,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.3.0, auto-team-consultant@0.3.0]"));
+    assert!(status.contains("modules=[auto-compact@0.3.1, auto-team-consultant@0.3.1]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -666,6 +666,22 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
         ],
     ));
     assert!(prepare.contains("PREPARE_STATUS=PASS"));
+    let projected = stdout(&run_with_path(
+        target,
+        &["compact", "savings"],
+        0,
+        Some(&no_network_path),
+    ));
+    assert!(projected.contains("no completed compact cycle yet"));
+    run_with_env(
+        target,
+        &["compact", "resume"],
+        0,
+        &[
+            ("AIPLUS_MODEL", "known-model"),
+            ("PATH", no_network_path.to_str().unwrap()),
+        ],
+    );
     let savings = stdout(&run_with_path(
         target,
         &["compact", "savings"],
@@ -696,6 +712,20 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
     assert_eq!(parsed["status"], "PASS");
     assert_eq!(parsed["billingData"], false);
     assert!(parsed["allTime"]["estimatedTokensSaved"].as_u64().unwrap() > 0);
+    assert_eq!(parsed["allTime"]["completedCycles"].as_u64().unwrap(), 1);
+    assert_eq!(
+        parsed["eventSemantics"]["candidate"],
+        "checkpoint events do not count toward completed savings totals"
+    );
+    run_with_path(target, &["compact", "resume"], 0, Some(&no_network_path));
+    let repeated_json = stdout(&run_with_path(
+        target,
+        &["compact", "savings", "--json"],
+        0,
+        Some(&no_network_path),
+    ));
+    let repeated: serde_json::Value = serde_json::from_str(&repeated_json).unwrap();
+    assert_eq!(repeated["allTime"]["completedCycles"].as_u64().unwrap(), 1);
 
     let unknown = tempfile::tempdir().unwrap();
     let unknown_target = unknown.path();
@@ -709,6 +739,7 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
         0,
         &[("AIPLUS_MODEL", "gpt-new-model")],
     );
+    run(unknown_target, &["compact", "resume"], 0);
     let unknown_savings = stdout(&run(unknown_target, &["compact", "savings"], 0));
     assert!(unknown_savings.contains("Estimated cost saved: unavailable"));
     assert!(unknown_savings.contains("pricing for detected model is not available"));
@@ -723,6 +754,12 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
     run_with_env(
         missing_target,
         &["compact", "prepare"],
+        0,
+        &[("AIPLUS_MODEL", "gpt-new-model")],
+    );
+    run_with_env(
+        missing_target,
+        &["compact", "resume"],
         0,
         &[("AIPLUS_MODEL", "gpt-new-model")],
     );
@@ -789,10 +826,157 @@ fn compact_source_does_not_invoke_node() {
     assert!(!source.contains("COMPACT_RUST_NATIVE_STATUS=PARTIAL"));
 }
 
+#[test]
+fn self_update_and_update_all_are_safe_in_fake_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let install_dir = target.join("fake-bin");
+    fs::create_dir(&install_dir).unwrap();
+    let installed = install_dir.join("aiplus");
+    fs::copy(bin(), &installed).unwrap();
+    let release_dir = seed_release_asset(target, false);
+
+    let before = digest(target);
+    let dry = stdout(&run_with_env(
+        target,
+        &["self", "update", "--dry-run"],
+        0,
+        &[
+            ("AIPLUS_SELF_UPDATE_TARGET", installed.to_str().unwrap()),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", release_dir.display()),
+            ),
+        ],
+    ));
+    assert!(dry.contains("SELF_UPDATE"));
+    assert!(dry.contains("SELF_UPDATE_STATUS=DRY_RUN"));
+    assert_eq!(digest(target), before);
+
+    let updated = stdout(&run_with_env(
+        target,
+        &["self", "update", "--yes"],
+        0,
+        &[
+            ("AIPLUS_SELF_UPDATE_TARGET", installed.to_str().unwrap()),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", release_dir.display()),
+            ),
+        ],
+    ));
+    assert!(updated.contains("checksum_status=PASS"));
+    assert!(updated.contains("backup_path="));
+    assert!(updated.contains("SELF_UPDATE_STATUS=PASS"));
+    assert!(fs::read_dir(&install_dir).unwrap().any(|entry| entry
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .contains(".backup-")));
+
+    let bad_release = seed_release_asset(target, true);
+    let bad = run_with_env(
+        target,
+        &["self", "update", "--yes"],
+        1,
+        &[
+            ("AIPLUS_SELF_UPDATE_TARGET", installed.to_str().unwrap()),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", bad_release.display()),
+            ),
+        ],
+    );
+    assert!(stderr(&bad).contains("ERROR checksum mismatch"));
+
+    run(target, &["install", "codex"], 0);
+    let update_all = stdout(&run_with_env(
+        target,
+        &["update", "all"],
+        0,
+        &[
+            ("AIPLUS_SELF_UPDATE_TARGET", installed.to_str().unwrap()),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", release_dir.display()),
+            ),
+        ],
+    ));
+    assert!(update_all.contains("AIPLUS_UPDATE_ALL"));
+    assert!(update_all.contains("SELF_UPDATE_STATUS=PASS"));
+    assert!(update_all.contains("PROJECT_UPDATE_STATUS=PASS"));
+    assert!(update_all.contains("UPDATE_ALL_STATUS=PASS"));
+    assert!(target.join(".codex/compact").exists());
+
+    let no_project = tempfile::tempdir().unwrap();
+    let no_project_target = no_project.path();
+    setup_fake_env(no_project_target);
+    let no_project_bin = no_project_target.join("fake-bin");
+    fs::create_dir(&no_project_bin).unwrap();
+    let no_project_installed = no_project_bin.join("aiplus");
+    fs::copy(bin(), &no_project_installed).unwrap();
+    let no_project_release = seed_release_asset(no_project_target, false);
+    let no_project_out = stdout(&run_with_env(
+        no_project_target,
+        &["update", "all"],
+        0,
+        &[
+            (
+                "AIPLUS_SELF_UPDATE_TARGET",
+                no_project_installed.to_str().unwrap(),
+            ),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", no_project_release.display()),
+            ),
+        ],
+    ));
+    assert!(no_project_out.contains("SELF_UPDATE_STATUS=PASS"));
+    assert!(no_project_out.contains("PROJECT_UPDATE_STATUS=NO_PROJECT"));
+    assert!(no_project_out.contains("UPDATE_ALL_STATUS=PASS"));
+}
+
 fn setup_fake_env(target: &Path) {
     fs::create_dir(target.join("fake-home")).unwrap();
     fs::create_dir(target.join("fake-codex-home")).unwrap();
     fs::create_dir(target.join("fake-xdg")).unwrap();
+}
+
+fn seed_release_asset(target: &Path, bad_checksum: bool) -> PathBuf {
+    let release = target.join(if bad_checksum {
+        "bad-release"
+    } else {
+        "release"
+    });
+    let root = release.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::copy(bin(), root.join("aiplus")).unwrap();
+    let archive = release.join("aiplus-aarch64-apple-darwin.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&root)
+        .arg("aiplus")
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let output = Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(&archive)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let mut line = String::from_utf8(output.stdout).unwrap();
+    if bad_checksum {
+        line = format!(
+            "0000000000000000000000000000000000000000000000000000000000000000  {}\n",
+            archive.file_name().unwrap().to_string_lossy()
+        );
+    }
+    fs::write(release.join("checksums.txt"), line).unwrap();
+    release
 }
 
 fn make_empty_path() -> PathBuf {
@@ -853,8 +1037,9 @@ fn savings_event_fixture(baseline: u64, saved: u64, reduction: f64, cost: Option
     serde_json::json!({
         "schemaVersion": "0.3.0",
         "timestamp": "test",
-        "event": "checkpoint",
-        "checkpointId": null,
+        "event": "resume",
+        "eventScope": "completed",
+        "checkpointId": format!("fixture-{baseline}"),
         "checkpointLevel": "standard",
         "readinessState": "READY_TO_COMPACT",
         "compactPressure": "HIGH",

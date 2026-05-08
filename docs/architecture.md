@@ -82,7 +82,10 @@ logic.
 
 AiPlus records aggregate savings events in
 `.codex/compact/savings-ledger.jsonl` during `compact prepare`, permitted
-`compact checkpoint`, and `compact resume`. Events store estimated token counts,
+`compact checkpoint`, and `compact resume`. Event semantics are explicit:
+`prepare` is `projected`, `checkpoint` is `candidate`, and successful `resume`
+is `completed`. Only completed resume events count toward all-time totals, and
+they are deduplicated by `checkpointId`. Events store estimated token counts,
 weighted reduction inputs, pricing coverage, model hint confidence, and cost
 estimate availability. They do not store prompt text, transcript text, project
 file contents, raw checkpoint text, billing data, provider account data, or usage
@@ -98,6 +101,17 @@ reduction is weighted:
 network. Pricing data is cached in a user cache such as
 `~/.cache/aiplus/pricing-cache.json` with a default 7-day TTL. Compact commands
 continue when pricing fetch fails, pricing is missing, stale, or unavailable.
+
+## Update Architecture
+
+`aiplus self update` updates the user-level CLI binary from the approved GitHub
+Release asset. It downloads the archive and `checksums.txt`, verifies checksum,
+stages the new binary, backs up the current binary, replaces the target path, and
+smoke-checks `--version`. It does not edit shell profiles or global agent config.
+
+`aiplus update` updates only project-local `.aiplus/` modules and guidance.
+`aiplus update all` runs self update first, then updates the current project if
+an AiPlus manifest is present, and advises `aiplus doctor`.
 
 ## Public Repository Layout
 

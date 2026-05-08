@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed Compact Savings all-time totals so projected `prepare` and candidate
+  `checkpoint` events do not count as completed savings.
+- Defined compact savings event semantics: `prepare=projected`,
+  `checkpoint=candidate`, and successful `resume=completed`.
+- Deduplicated completed compact cycles by `checkpointId`, so repeated resume
+  does not double-count the same compact cycle.
+- Added `aiplus self update` for checksum-verified user-level CLI updates with
+  dry-run, backup, staged replacement, and smoke-check output.
+- Added `aiplus update all` to update the CLI and current project guidance in
+  one command when safe.
+- Clarified pricing update/status output with `pricing_fetch_mode`,
+  `pricing_source`, cache age, `billing_data=no`, and `uploads=none`.
+- Added natural-language update guidance for "update AiPlus", "升级 AiPlus",
+  "update the aiplus command", and project-only update requests.
+
 ## 0.3.0
 
 - Added Compact Savings Estimate with project-local

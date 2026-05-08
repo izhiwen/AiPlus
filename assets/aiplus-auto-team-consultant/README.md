@@ -172,6 +172,21 @@ only, not billing data and not proof of workflow quality. Auto Team Consultant
 may use savings as operating context, but it must not treat savings as evidence
 that a review, CEO plan, or release gate is correct.
 
+For AiPlus updates, users can say:
+
+```text
+update AiPlus
+```
+
+Default mapping is `aiplus update all`. More specific mappings:
+
+- `only update this project's AiPlus` -> `aiplus update`
+- `update the aiplus command` -> `aiplus self update`
+- `check AiPlus updates` -> `aiplus self update --dry-run` plus `aiplus status`
+
+Before running updates, the agent should state that it will not edit global agent
+config or upload project data.
+
 ## Roles In Plain Language
 
 - `Advisor`: gives direct advice, prompt review, strategy, or CEO-ready handoff

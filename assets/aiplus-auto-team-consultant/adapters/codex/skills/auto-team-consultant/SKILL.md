@@ -98,6 +98,13 @@ result as an estimate and operating signal only. It is not billing data,
 guaranteed savings, precise cost measurement, or proof that a review, CEO plan,
 or release gate is correct.
 
+AiPlus update requests such as "update AiPlus", "update everything", "升级
+AiPlus", or "把 AiPlus 全部更新到最新版" should map to `aiplus update all`.
+Project-only requests map to `aiplus update`; command/global CLI requests map to
+`aiplus self update`; update-check requests map to `aiplus self update --dry-run`
+plus `aiplus status`. Before updating, state the scope and confirm no global
+agent config edits or project data upload.
+
 QA means Process / Orchestration QA for prompt, routing, handoff, and governance-like process questions.
 
 Use QA / Regression for tests, bugs, behavior regressions, or verification evidence.

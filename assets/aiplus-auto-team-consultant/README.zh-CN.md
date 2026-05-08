@@ -166,6 +166,20 @@ agent 应映射到 `aiplus compact savings`。Savings 只是 estimates，不是 
 也不是 workflow quality proof。Auto Team Consultant 可以把 savings 当作操作上下文，
 但不能把 savings 当作 review、CEO plan 或 release gate 正确性的证据。
 
+AiPlus update 场景下，用户可以说：
+
+```text
+升级 AiPlus
+```
+
+默认映射是 `aiplus update all`。更具体的映射：
+
+- `只更新这个项目的 AiPlus` -> `aiplus update`
+- `更新 aiplus 命令` -> `aiplus self update`
+- `检查 AiPlus 更新` -> `aiplus self update --dry-run` 加 `aiplus status`
+
+运行 update 前，agent 应说明不会修改全局 agent 配置，也不会上传项目数据。
+
 ## 四种角色
 
 - `Advisor`：直接建议、prompt review、策略判断、CEO-ready handoff

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1 trust and update alignment
+
+- Added natural-language update routing for `aiplus update all`,
+  `aiplus update`, and `aiplus self update`.
+- Clarified that update flows must not edit global agent config or upload
+  project data.
+
 ## v0.3 compact savings alignment
 
 - Documented compact savings requests for team/advisor workflows.

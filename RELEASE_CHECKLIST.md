@@ -2,7 +2,7 @@
 
 Status: `V0_3_0_RELEASE_APPROVED_SCOPE`
 
-This checklist tracks the Owner-approved v0.3.0 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.3.1 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.3.0 source/docs changes.
-- [x] Owner approves creating the `v0.3.0` git tag.
-- [x] Owner approves the `v0.3.0` GitHub Release.
+- [x] Owner approves git push for reviewed v0.3.1 source/docs changes.
+- [x] Owner approves creating the `v0.3.1` git tag.
+- [x] Owner approves the `v0.3.1` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -68,7 +68,7 @@ system/global install paths.
 - [ ] `compact savings` reads cached pricing only by default.
 - [ ] `pricing update` fetches public pricing only and never uploads local data.
 - [ ] No global config writes.
-- [ ] No publication actions outside the Owner-approved v0.3.0 GitHub Release
+- [ ] No publication actions outside the Owner-approved v0.3.1 GitHub Release
       scope executed.
 - [ ] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
@@ -102,4 +102,4 @@ system/global install paths.
 - [ ] Archive contains Apache-2.0 `LICENSE`.
 - [ ] `checksums.txt` matches uploaded artifacts.
 - [ ] `install.sh` downloads only release assets and installs only `aiplus`.
-- [x] Owner approved the v0.3.0 upload scope before release artifact creation.
+- [x] Owner approved the v0.3.1 upload scope before release artifact creation.

@@ -30,6 +30,8 @@ aiplus install codex
 aiplus status
 aiplus doctor
 aiplus update
+aiplus update all
+aiplus self update --dry-run
 aiplus add auto-team-consultant --dry-run
 aiplus compact init
 aiplus compact prepare
@@ -64,6 +66,9 @@ aiplus install all
 - `COMPACT_RUST_NATIVE_STATUS=PASS`
 - `PRICING_STATUS=PASS`
 - `PRICING_UPDATE_STATUS=PASS`
+- `SELF_UPDATE_STATUS=DRY_RUN`
+- `SELF_UPDATE_STATUS=PASS`
+- `UPDATE_ALL_STATUS=PASS`
 - `GLOBAL_CONFIG_UNTOUCHED`
 
 `compact checkpoint` may return `UNKNOWN_NEEDS_REVIEW` when seeded templates

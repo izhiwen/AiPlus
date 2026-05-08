@@ -157,6 +157,29 @@ USD savings 会显示 unavailable 或 partial。
 Savings reports 只是 estimates，不是 billing data。AiPlus 不上传 prompts、project
 files、checkpoints、savings ledgers、secrets、billing data 或 usage history。
 
+## 更新 AiPlus
+
+用户可以在 agent 对话里说：
+
+```text
+升级 AiPlus
+```
+
+默认映射：
+
+```bash
+aiplus update all
+```
+
+更具体的映射：
+
+- `只更新这个项目的 AiPlus` -> `aiplus update`
+- `更新 aiplus 命令` -> `aiplus self update`
+- `检查 AiPlus 更新` -> `aiplus self update --dry-run` 加 `aiplus status`
+
+运行 update 前，agent 应说明：我会更新 aiplus 命令和当前项目里的 AiPlus 模块；不会
+修改全局 agent 配置，也不会上传项目数据。
+
 已有旧 `.codex/compact/current-handoff.md` 的项目会被 `aiplus install ...` 和
 `aiplus update` 保守升级：AiPlus 会先备份旧 handoff，保留用户内容，然后只补缺失的
 role-aware sections，例如 `Session Role`、`Workflow Level` 和 `Output Contract`。

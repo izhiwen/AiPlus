@@ -16,6 +16,19 @@ ledgers, secrets, billing data, provider account data, or usage history. It does
 not connect to provider billing APIs and does not require manual model price
 input.
 
+## Updates
+
+`aiplus self update` may fetch public AiPlus release metadata, the approved
+release asset, and `checksums.txt`. It installs only the user-level `aiplus`
+binary path selected by the command, stages the new binary first, backs up the
+old binary, verifies checksum before replacement, and runs a version smoke
+check. It does not edit shell profiles, system paths, or global Codex, Claude
+Code, or OpenCode configuration.
+
+`aiplus update` updates only the current project's `.aiplus/` modules and
+guidance. `aiplus update all` combines self update and project update when safe.
+Project updates preserve `.codex/compact/` and the savings ledger.
+
 Savings reports are estimates based on local aggregate metrics and cached public
 pricing. They are not billing data, invoices, guaranteed savings, precise cost
 measurements, or quality proof.

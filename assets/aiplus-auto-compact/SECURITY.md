@@ -19,6 +19,11 @@ savings ledgers, billing data, secrets, or usage history.
 Savings reports are not billing data, guaranteed savings, precise cost
 measurement, compliance evidence, or quality proof.
 
+`aiplus self update` may fetch public AiPlus release metadata/assets and
+`checksums.txt`, then update the user-level `aiplus` binary with a backup and
+smoke check. `aiplus update` changes only project-local AiPlus modules/guidance.
+Neither command edits global agent config or uploads project data.
+
 ## Supported Versions
 
 This repository is public on GitHub and versioned `0.1.0` in `package.json`. It

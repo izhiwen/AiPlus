@@ -4,6 +4,10 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added v0.3.1 update guidance for `aiplus self update`, `aiplus update`, and
+  `aiplus update all`.
+- Clarified compact savings event semantics: prepare is projected, checkpoint is
+  candidate, and resume completes one counted compact cycle per checkpoint.
 - Added AiPlus v0.3 Compact Savings Estimate guidance for natural-language
   savings requests.
 - Clarified cache-first pricing behavior, weighted all-time reduction, unknown

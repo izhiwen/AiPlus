@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.3.0 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.3.1 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -103,10 +103,46 @@ aiplus status
 aiplus refresh
 aiplus doctor
 aiplus update
+aiplus update all
+aiplus self update --dry-run
 aiplus compact savings
 aiplus pricing status
 aiplus uninstall --dry-run
 ```
+
+## Updating AiPlus
+
+In an agent session, you can say:
+
+```text
+update AiPlus
+```
+
+The agent should report scope first:
+
+```text
+I will update the aiplus CLI and this project's AiPlus modules. I will not edit
+global agent config or upload project data.
+```
+
+Then it should run:
+
+```bash
+aiplus update all
+```
+
+Specific commands:
+
+```bash
+aiplus self update --dry-run  # check the global/user-level CLI update
+aiplus self update --yes      # update the user-level aiplus command
+aiplus update                 # update only this project's .aiplus/ modules
+aiplus update all             # update CLI, then this project, then advise doctor
+```
+
+Chinese update triggers such as `升级 AiPlus`, `把 AiPlus 全部更新到最新版`,
+`只更新这个项目的 AiPlus`, and `更新 aiplus 命令` are supported in installed
+agent guidance.
 
 ## What Gets Installed
 
@@ -236,6 +272,17 @@ history. If pricing for a detected model is unavailable, AiPlus still reports
 token savings and reduction percentage; USD savings are shown as unavailable or
 partial.
 
+Savings event semantics:
+
+- `prepare`: projected readiness estimate; does not count toward completed
+  all-time savings.
+- `checkpoint`: candidate estimate; does not count toward completed all-time
+  savings by itself.
+- `resume`: completed compact cycle; counts once per `checkpointId`.
+
+Re-running `resume` for the same checkpoint does not double-count all-time
+totals.
+
 Pricing cache policy:
 
 ```bash
@@ -256,7 +303,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.3.0 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.3.1 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

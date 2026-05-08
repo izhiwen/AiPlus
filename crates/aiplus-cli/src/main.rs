@@ -10,7 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.3.0";
+const VERSION: &str = "0.3.1";
+const RELEASE_TAG: &str = "v0.3.1";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -26,7 +27,7 @@ const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
     name = "aiplus",
     version = VERSION,
     disable_version_flag = true,
-    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` may fetch public\n  pricing data. No npm publish, global install, telemetry, user-data upload, or\n  global config edits are implemented."
+    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` and `aiplus self update`\n  may fetch public release/pricing data. No npm publish, global install, telemetry,\n  user-data upload, or global config edits are implemented."
 )]
 struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue)]
@@ -93,6 +94,14 @@ enum Commands {
     Pricing {
         subcommand: Option<String>,
     },
+    #[command(name = "self")]
+    SelfCommand {
+        subcommand: Option<String>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        yes: bool,
+    },
 }
 
 struct CliError {
@@ -139,7 +148,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.3.0",
+        version: "0.3.1",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -150,7 +159,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.3.0",
+        version: "0.3.1",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -251,11 +260,12 @@ struct SavingsEstimate {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 struct SavingsEvent {
     schema_version: String,
     timestamp: String,
     event: String,
+    event_scope: String,
     checkpoint_id: Option<String>,
     checkpoint_level: String,
     readiness_state: String,
@@ -456,12 +466,17 @@ fn run(command: Commands) -> Result<()> {
             force,
         } => command_compact(subcommand, &level, json, force),
         Commands::Pricing { subcommand } => command_pricing(subcommand),
+        Commands::SelfCommand {
+            subcommand,
+            dry_run,
+            yes,
+        } => command_self(subcommand, dry_run, yes),
     }
 }
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` may fetch public\n  pricing data. No npm publish, global install, telemetry, user-data upload, or\n  global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` and `aiplus self update`\n  may fetch public release/pricing data. No npm publish, global install, telemetry,\n  user-data upload, or global config edits are implemented."
     );
 }
 
@@ -533,6 +548,9 @@ fn command_install(
 }
 
 fn command_update(module: Option<String>, dry_run: bool, verbose: bool) -> Result<()> {
+    if module.as_deref() == Some("all") {
+        return command_update_all(dry_run, verbose);
+    }
     let root = target_root()?;
     let existing = read_manifest(&root, false)?;
     if existing.installer.as_deref() != Some(INSTALLER) {
@@ -632,6 +650,27 @@ fn command_update(module: Option<String>, dry_run: bool, verbose: bool) -> Resul
         println!("GLOBAL_CONFIG_UNTOUCHED");
     }
     println!("UPDATE_STATUS=PASS");
+    Ok(())
+}
+
+fn command_update_all(dry_run: bool, verbose: bool) -> Result<()> {
+    println!("AIPLUS_UPDATE_ALL");
+    println!("scope=cli_and_project");
+    println!("global_agent_config_edits=none");
+    println!("uploads=none");
+    command_self_update(dry_run, true)?;
+    match read_manifest(&target_root()?, true) {
+        Ok(manifest) if manifest.installer.as_deref() == Some(INSTALLER) => {
+            command_update(None, dry_run, verbose)?;
+            println!("PROJECT_UPDATE_STATUS=PASS");
+        }
+        _ => {
+            println!("PROJECT_UPDATE_STATUS=NO_PROJECT");
+            println!("No project AiPlus install found in this directory.");
+        }
+    }
+    println!("Run `aiplus doctor` from the project to verify local module state.");
+    println!("UPDATE_ALL_STATUS=PASS");
     Ok(())
 }
 
@@ -1209,6 +1248,104 @@ fn command_pricing(subcommand: Option<String>) -> Result<()> {
             process::exit(2);
         }
     }
+}
+
+fn command_self(subcommand: Option<String>, dry_run: bool, yes: bool) -> Result<()> {
+    match subcommand.as_deref() {
+        Some("update") => command_self_update(dry_run, yes),
+        _ => {
+            println!("Usage: aiplus self update [--dry-run] [--yes]");
+            process::exit(2);
+        }
+    }
+}
+
+fn command_self_update(dry_run: bool, yes: bool) -> Result<()> {
+    let target = self_update_target()?;
+    let old_version = binary_version(&target).unwrap_or_else(|| VERSION.to_string());
+    let new_version =
+        std::env::var("AIPLUS_UPDATE_VERSION").unwrap_or_else(|_| RELEASE_TAG.to_string());
+    let asset = detect_release_asset()?;
+    let base_url = std::env::var("AIPLUS_RELEASE_BASE_URL").unwrap_or_else(|_| {
+        format!("https://github.com/izhiwen/aiplus/releases/download/{new_version}")
+    });
+    println!("SELF_UPDATE");
+    println!("old_version={old_version}");
+    println!("new_version={}", new_version.trim_start_matches('v'));
+    println!("target_path={}", target.display());
+    println!("asset={asset}");
+    println!("shell_profile_edits=none");
+    println!("global_agent_config_edits=none");
+    println!("telemetry=none");
+    println!("uploads=none");
+    if dry_run {
+        println!("DRY_RUN=YES");
+        println!("CHECKSUM_STATUS=NOT_RUN");
+        println!("SELF_UPDATE_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if !yes {
+        return Err(CliError::new(1, "ERROR self update requires --yes or --dry-run").into());
+    }
+
+    let temp = std::env::temp_dir().join(format!("aiplus-self-update-{}", epoch_millis()));
+    fs::create_dir_all(&temp)?;
+    let checksums = temp.join("checksums.txt");
+    let archive = temp.join(&asset);
+    fetch_to(&format!("{base_url}/checksums.txt"), &checksums)?;
+    fetch_to(&format!("{base_url}/{asset}"), &archive)?;
+    verify_checksum_file(&checksums, &archive)?;
+    println!("checksum_status=PASS");
+    println!("CHECKSUM_STATUS=PASS");
+    let extract_dir = temp.join("extract");
+    fs::create_dir_all(&extract_dir)?;
+    extract_release_archive(&archive, &extract_dir)?;
+    let staged = find_release_binary(&extract_dir, cfg!(windows))?;
+    let smoke = binary_version(&staged).unwrap_or_else(|| "unknown".to_string());
+    if smoke == "unknown" {
+        return Err(CliError::new(1, "ERROR staged binary smoke check failed").into());
+    }
+    let backup = target.with_file_name(format!(
+        "{}.backup-{}",
+        target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("aiplus"),
+        epoch_millis()
+    ));
+    if target.exists() {
+        fs::copy(&target, &backup)?;
+    }
+    let staged_target = target.with_file_name(format!(
+        "{}.staged-{}",
+        target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("aiplus"),
+        epoch_millis()
+    ));
+    fs::copy(&staged, &staged_target)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&staged_target, fs::Permissions::from_mode(0o755))?;
+    }
+    fs::rename(&staged_target, &target)?;
+    let final_version = binary_version(&target).unwrap_or_else(|| "unknown".to_string());
+    if final_version == "unknown" {
+        if backup.exists() {
+            let _ = fs::copy(&backup, &target);
+        }
+        return Err(CliError::new(
+            1,
+            "ERROR updated binary smoke check failed; backup retained",
+        )
+        .into());
+    }
+    println!("backup_path={}", backup.display());
+    println!("smoke_version={final_version}");
+    println!("SELF_UPDATE_STATUS=PASS");
+    Ok(())
 }
 
 fn compact_init_command(root: &Path, force: bool) -> Result<()> {
@@ -2090,7 +2227,7 @@ fn compact_validate_state(root: &Path) -> Result<CompactValidation> {
 }
 
 fn compact_checkpoint(root: &Path, level: &str) -> Result<i32> {
-    let (exit_code, _) = compact_checkpoint_with_options(root, level, true)?;
+    let (exit_code, _) = compact_checkpoint_with_options(root, level, true, true)?;
     Ok(exit_code)
 }
 
@@ -2098,6 +2235,7 @@ fn compact_checkpoint_with_options(
     root: &Path,
     level: &str,
     print_output: bool,
+    record_candidate: bool,
 ) -> Result<(i32, String)> {
     let result = compact_validate_state(root)?;
     let readiness = compact_readiness(&result, root);
@@ -2184,7 +2322,17 @@ fn compact_checkpoint_with_options(
         println!("CHECKPOINT_CREATED={rel}");
         println!("checkpoint={rel}");
     }
-    append_savings_event(root, "checkpoint", Some(&rel), level, &readiness).ok();
+    if record_candidate {
+        append_savings_event(
+            root,
+            "checkpoint",
+            "candidate",
+            Some(&rel),
+            level,
+            &readiness,
+        )
+        .ok();
+    }
     Ok((exit_code, rel))
 }
 
@@ -2195,8 +2343,16 @@ fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
     println!("COMPACT_PREPARE");
     print_readiness(&readiness);
     if readiness.state == "READY_TO_COMPACT" {
-        let (_, checkpoint) = compact_checkpoint_with_options(root, level, false)?;
-        append_savings_event(root, "prepare", Some(&checkpoint), level, &readiness).ok();
+        let (_, checkpoint) = compact_checkpoint_with_options(root, level, false, false)?;
+        append_savings_event(
+            root,
+            "prepare",
+            "projected",
+            Some(&checkpoint),
+            level,
+            &readiness,
+        )
+        .ok();
         println!("CHECKPOINT_LEVEL={level}");
         println!("CHECKPOINT_CREATED={checkpoint}");
         println!();
@@ -2272,7 +2428,15 @@ fn compact_resume(root: &Path) -> Result<i32> {
     println!("read_only_recovery_guidance=yes");
     println!("high_risk_actions=manual_owner_approval_required");
     let readiness = compact_readiness(&result, root);
-    append_savings_event(root, "resume", latest.as_deref(), "standard", &readiness).ok();
+    append_savings_event(
+        root,
+        "resume",
+        "completed",
+        latest.as_deref(),
+        "standard",
+        &readiness,
+    )
+    .ok();
     Ok(0)
 }
 
@@ -2478,6 +2642,7 @@ fn latest_checkpoint(root: &Path) -> Result<Option<String>> {
 fn append_savings_event(
     root: &Path,
     event: &str,
+    event_scope: &str,
     checkpoint_id: Option<&str>,
     level: &str,
     readiness: &CompactReadiness,
@@ -2488,6 +2653,7 @@ fn append_savings_event(
         schema_version: VERSION.to_string(),
         timestamp: timestamp(),
         event: event.to_string(),
+        event_scope: event_scope.to_string(),
         checkpoint_id: checkpoint_id.map(str::to_string),
         checkpoint_level: level.to_string(),
         readiness_state: readiness.state.to_string(),
@@ -2566,12 +2732,14 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    let latest = events.last().expect("events not empty");
-    let total_saved: u64 = events
+    let completed = completed_savings_cycles(&events);
+    let latest_event = events.last().expect("events not empty");
+    let latest_completed = completed.last();
+    let total_saved: u64 = completed
         .iter()
         .map(|event| event.estimated_tokens_saved)
         .sum();
-    let total_baseline: u64 = events
+    let total_baseline: u64 = completed
         .iter()
         .map(|event| event.estimated_input_tokens_before)
         .sum();
@@ -2580,16 +2748,15 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
     } else {
         (total_saved as f64 / total_baseline as f64) * 100.0
     };
-    let priced_events = events
+    let priced_events = completed
         .iter()
         .filter(|event| event.cost_estimate_available)
         .count();
-    let unpriced_events = events.len().saturating_sub(priced_events);
-    let total_cost: f64 = events
+    let unpriced_events = completed.len().saturating_sub(priced_events);
+    let total_cost: f64 = completed
         .iter()
         .filter_map(|event| event.estimated_cost_saved_usd)
         .sum();
-    let latest_cost = latest.estimated_cost_saved_usd;
 
     if json {
         println!(
@@ -2597,15 +2764,22 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
             serde_json::json!({
                 "schemaVersion": VERSION,
                 "status": "PASS",
-                "latest": latest,
+                "latestEvent": latest_event,
+                "latestCompleted": latest_completed,
                 "allTime": {
-                    "events": events.len(),
+                    "ledgerEvents": events.len(),
+                    "completedCycles": completed.len(),
                     "estimatedTokensSaved": total_saved,
                     "estimatedBaselineTokens": total_baseline,
                     "weightedReductionPercent": round1(cumulative_reduction),
                     "estimatedCostSavedUsd": if priced_events > 0 { Some(round4(total_cost)) } else { None },
                     "pricedEvents": priced_events,
                     "unpricedEvents": unpriced_events
+                },
+                "eventSemantics": {
+                    "projected": "prepare events do not count toward completed savings totals",
+                    "candidate": "checkpoint events do not count toward completed savings totals",
+                    "completed": "successful resume events count once per checkpointId"
                 },
                 "malformedLines": malformed,
                 "billingData": false,
@@ -2618,6 +2792,29 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
     println!("Compact savings estimate");
     println!();
     println!("This compact:");
+    let Some(latest) = latest_completed else {
+        println!("- Status: no completed compact cycle yet");
+        println!(
+            "- Latest event: {} ({})",
+            latest_event.event,
+            event_scope(latest_event)
+        );
+        println!();
+        println!("All time:");
+        println!("- Tokens saved: ~0 input tokens");
+        println!("- Average reduction: ~0%");
+        println!("- Estimated cost saved: unavailable");
+        println!("- Pricing coverage: 0/0 compacts");
+        println!();
+        println!("pricing_source={}", latest_event.pricing_source);
+        println!("billing_data=no");
+        if malformed > 0 {
+            println!("WARNING malformed ledger lines ignored: {malformed}");
+        }
+        println!("Estimate only, not billing data.");
+        return Ok(());
+    };
+    let latest_cost = latest.estimated_cost_saved_usd;
     println!(
         "- Tokens saved: ~{} input tokens",
         format_tokens(latest.estimated_tokens_saved)
@@ -2659,7 +2856,7 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
     println!(
         "- Pricing coverage: {}/{} compacts",
         priced_events,
-        events.len()
+        completed.len()
     );
     println!();
     println!("pricing_source={}", latest.pricing_source);
@@ -2683,6 +2880,35 @@ fn compact_savings(root: &Path, json: bool) -> Result<()> {
     }
     println!("Estimate only, not billing data.");
     Ok(())
+}
+
+fn completed_savings_cycles(events: &[SavingsEvent]) -> Vec<&SavingsEvent> {
+    let mut by_checkpoint: BTreeMap<String, &SavingsEvent> = BTreeMap::new();
+    for event in events
+        .iter()
+        .filter(|event| is_completed_savings_event(event))
+    {
+        if let Some(checkpoint_id) = event.checkpoint_id.as_deref() {
+            by_checkpoint.insert(checkpoint_id.to_string(), event);
+        }
+    }
+    by_checkpoint.values().copied().collect()
+}
+
+fn is_completed_savings_event(event: &SavingsEvent) -> bool {
+    event.event == "resume" && event_scope(event) == "completed" && event.checkpoint_id.is_some()
+}
+
+fn event_scope(event: &SavingsEvent) -> &str {
+    if event.event_scope.is_empty() && event.event == "resume" {
+        "completed"
+    } else if event.event_scope.is_empty() && event.event == "checkpoint" {
+        "candidate"
+    } else if event.event_scope.is_empty() && event.event == "prepare" {
+        "projected"
+    } else {
+        &event.event_scope
+    }
 }
 
 fn estimate_savings(root: &Path) -> Result<SavingsEstimate> {
@@ -2757,10 +2983,13 @@ fn read_savings_events(root: &Path) -> Result<(Vec<SavingsEvent>, usize)> {
 }
 
 fn pricing_update() -> Result<()> {
-    let catalog = fetch_pricing_catalog().unwrap_or_else(|error| {
-        eprintln!("WARNING pricing fetch failed; using bundled catalog: {error}");
-        bundled_pricing_catalog()
-    });
+    let (catalog, fetch_mode) = match fetch_pricing_catalog() {
+        Ok(catalog) => (catalog, "network"),
+        Err(error) => {
+            eprintln!("WARNING pricing fetch failed; using bundled catalog: {error}");
+            (bundled_pricing_catalog(), "bundled")
+        }
+    };
     let cache = pricing_cache_file()?;
     if let Some(parent) = cache.parent() {
         fs::create_dir_all(parent)?;
@@ -2769,7 +2998,13 @@ fn pricing_update() -> Result<()> {
     println!("AIPLUS_PRICING_UPDATE");
     println!("PRICING_UPDATE_STATUS=PASS");
     println!("cache_path={}", cache.display());
-    println!("source={}", catalog.source);
+    println!("pricing_source={}", catalog.source);
+    println!("pricing_fetch_mode={fetch_mode}");
+    println!(
+        "pricing_cached_at={}",
+        catalog.fetched_at.as_deref().unwrap_or("unavailable")
+    );
+    println!("pricing_age_days=0");
     println!("source_url={}", catalog.source_url);
     println!("models={}", catalog.models.len());
     println!("billing_data=no");
@@ -2788,7 +3023,8 @@ fn pricing_status() -> Result<()> {
     println!("PRICING_STATUS=PASS");
     println!("status={status}");
     println!("cache_path={}", cache.display());
-    println!("source={}", catalog.source);
+    println!("pricing_source={}", catalog.source);
+    println!("pricing_fetch_mode={status}");
     println!("source_url={}", catalog.source_url);
     println!(
         "pricing_cached_at={}",
@@ -2844,6 +3080,149 @@ fn fetch_pricing_catalog() -> Result<PricingCatalog> {
         catalog.source_url = url;
     }
     Ok(catalog)
+}
+
+fn fetch_to(url: &str, dest: &Path) -> Result<()> {
+    if let Some(path) = url.strip_prefix("file://") {
+        fs::copy(path, dest)?;
+        return Ok(());
+    }
+    if command_exists("curl") {
+        let status = Command::new("curl")
+            .args(["-fsSL", url, "-o"])
+            .arg(dest)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(anyhow!("curl failed for {url}"));
+    }
+    if command_exists("wget") {
+        let status = Command::new("wget")
+            .args(["-q", url, "-O"])
+            .arg(dest)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(anyhow!("wget failed for {url}"));
+    }
+    Err(anyhow!("curl or wget is required"))
+}
+
+fn verify_checksum_file(checksums: &Path, asset: &Path) -> Result<()> {
+    let asset_name = asset
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("asset has no filename"))?;
+    let text = fs::read_to_string(checksums)?;
+    let expected = text
+        .lines()
+        .find(|line| line.ends_with(asset_name))
+        .ok_or_else(|| anyhow!("checksum not found for {asset_name}"))?
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| anyhow!("checksum line is malformed"))?;
+    let output = if command_exists("shasum") {
+        Command::new("shasum")
+            .args(["-a", "256"])
+            .arg(asset)
+            .output()?
+    } else if command_exists("sha256sum") {
+        Command::new("sha256sum").arg(asset).output()?
+    } else {
+        return Err(anyhow!("shasum or sha256sum is required"));
+    };
+    if !output.status.success() {
+        return Err(anyhow!("checksum command failed"));
+    }
+    let actual = String::from_utf8(output.stdout)?
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if actual != expected {
+        return Err(CliError::new(1, "ERROR checksum mismatch").into());
+    }
+    Ok(())
+}
+
+fn extract_release_archive(archive: &Path, dest: &Path) -> Result<()> {
+    let name = archive
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if name.ends_with(".tar.gz") {
+        let status = Command::new("tar")
+            .arg("-xzf")
+            .arg(archive)
+            .arg("-C")
+            .arg(dest)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(anyhow!("tar extraction failed"));
+    }
+    if name.ends_with(".zip") {
+        let status = Command::new("unzip")
+            .arg("-q")
+            .arg(archive)
+            .arg("-d")
+            .arg(dest)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(anyhow!("zip extraction failed"));
+    }
+    Err(anyhow!("unsupported release asset: {name}"))
+}
+
+fn find_release_binary(dir: &Path, windows: bool) -> Result<PathBuf> {
+    let wanted = if windows { "aiplus.exe" } else { "aiplus" };
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name().and_then(|name| name.to_str()) == Some(wanted) {
+                return Ok(path);
+            }
+        }
+    }
+    Err(anyhow!("release archive did not contain {wanted}"))
+}
+
+fn detect_release_asset() -> Result<String> {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    match (os, arch) {
+        ("macos", "aarch64") => Ok("aiplus-aarch64-apple-darwin.tar.gz".to_string()),
+        _ => Err(CliError::new(
+            1,
+            format!("ERROR no verified AiPlus {RELEASE_TAG} binary asset for: {os} {arch}"),
+        )
+        .into()),
+    }
+}
+
+fn self_update_target() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("AIPLUS_SELF_UPDATE_TARGET") {
+        return Ok(PathBuf::from(path));
+    }
+    std::env::current_exe().context("locate current executable")
+}
+
+fn binary_version(path: &Path) -> Option<String> {
+    let output = Command::new(path).arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    Some(text.trim().trim_start_matches("aiplus ").to_string())
 }
 
 fn load_pricing_catalog(allow_bundled: bool) -> Result<PricingCatalog> {
@@ -3116,7 +3495,7 @@ fn collect_version_review_items(
 
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
-    if !["0.1.0", "0.2.0", "0.2.1", "0.3.0"].contains(&version) {
+    if !["0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1"].contains(&version) {
         review_items.push(format!(
             "{label} unsupported or unknown: {}",
             if version.is_empty() {
@@ -3129,7 +3508,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 }
 
 fn is_supported_manifest_schema(version: &str) -> bool {
-    matches!(version, "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0")
+    matches!(version, "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1")
 }
 
 fn check_policy_array(
@@ -3575,6 +3954,28 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 
 Then reopen the terminal or ensure `~/.local/bin` is on PATH.
 
+## Update AiPlus
+
+Natural language update mapping:
+
+- "update AiPlus", "update everything", "升级 AiPlus", or
+  "把 AiPlus 全部更新到最新版": report scope, then run `aiplus update all`.
+- "only update this project's AiPlus", "只更新这个项目的 AiPlus", or
+  "只更新项目模块": run `aiplus update`.
+- "update the aiplus command", "更新 aiplus 命令", or "全局更新 AiPlus CLI":
+  run `aiplus self update`.
+- "check AiPlus updates" or "检查 AiPlus 更新": run
+  `aiplus self update --dry-run` and `aiplus status`.
+
+Before running an update, say:
+
+I will update the aiplus CLI and this project's AiPlus modules. I will not edit
+global agent config or upload project data.
+
+Chinese:
+
+我会更新 aiplus 命令和当前项目里的 AiPlus 模块；不会修改全局 agent 配置，也不会上传项目数据。
+
 ## Auto Compact
 
 Read `.codex/compact/current-handoff.md` before long-running work if it exists.
@@ -3725,6 +4126,12 @@ AiPlus CLI not found. Please install AiPlus or fix PATH:
 curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
 
 Then reopen the terminal or ensure ~/.local/bin is on PATH.
+
+Update mapping: "update AiPlus", "update everything", "升级 AiPlus", or
+"把 AiPlus 全部更新到最新版" means run `aiplus update all` after reporting scope.
+"只更新这个项目的 AiPlus" means run `aiplus update`. "更新 aiplus 命令" means run
+`aiplus self update`. Say first: I will update the aiplus CLI and this project's
+AiPlus modules. I will not edit global agent config or upload project data.
 "#
     )
 }
