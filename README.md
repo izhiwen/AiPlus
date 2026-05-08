@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.0 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.1 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -137,6 +137,11 @@ secret value. For tools that need a key, use:
 ```bash
 aiplus secret-broker run -- <command...>
 ```
+
+The child command receives approved secrets in its environment. AiPlus will not
+print or persist those values, but the child command itself could still print,
+log, transmit, or store them. Use `run --` only with commands you trust for the
+specific action.
 
 AiPlus may read `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain
 entry created by `aiplus secret-broker token set`. It does not store Bitwarden
@@ -341,7 +346,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.0 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.1 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

@@ -52,6 +52,9 @@ approved values only into the child process environment. AiPlus may read
 `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain item created by
 `aiplus secret-broker token set`; it must not store that token in plaintext repo
 files, project install files, compact files, logs, docs, or release artifacts.
+The invoked child command is outside AiPlus' control and may print, log,
+transmit, or store environment variables. Use `run --` only with trusted commands
+for explicit action needs.
 
 Secret-broker audit/status output is metadata-only: alias requested, allow/deny
 status, provider status, and timestamp-like operational context. It must never

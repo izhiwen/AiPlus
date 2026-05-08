@@ -1,12 +1,15 @@
 # Changelog
 
-## 0.4.0
+## 0.4.1
 
 - Added user-level `work-with-zhiwen` profile commands for private
   collaboration preferences under `~/.config/aiplus/`.
 - Added `aiplus secret-broker` with mock and Bitwarden `bws` provider paths,
   approved alias mapping, metadata-only status/list/resolve output, and
   child-process environment injection via `run -- <command...>`.
+- Added explicit warnings that `secret-broker run` only keeps AiPlus from
+  printing or persisting secrets; the invoked child command can still print, log,
+  transmit, or store environment variables.
 - Updated installed agent guidance for natural-language profile and secret
   status triggers while keeping secret values out of chat, logs, compact files,
   repos, and release artifacts.
