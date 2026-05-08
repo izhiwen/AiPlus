@@ -35,11 +35,12 @@ Do not store:
 
 ## Validation Limits
 
-`aiplus compact validate` performs structural and heuristic checks. The legacy
-`compactctl.mjs validate` helper is retained for compatibility tests and
-migration review. These checks can catch missing required files, invalid enum
-values, invalid policy JSON, unsupported versions, denied or pending Owner
-gates, and some obvious sensitive patterns.
+`aiplus compact validate` performs structural and heuristic checks. The archived
+legacy `compactctl.mjs` helper is retained only for compatibility tests and
+migration review; it is not an active compact execution path. These checks can
+catch missing required files, invalid enum values, invalid policy JSON,
+unsupported versions, denied or pending Owner gates, and some obvious sensitive
+patterns.
 
 Validation is not a full secret scanner, privacy review, legal review, or project approval process. Review compact state manually before sharing it, committing it, or using it as the basis for a compact recommendation.
 

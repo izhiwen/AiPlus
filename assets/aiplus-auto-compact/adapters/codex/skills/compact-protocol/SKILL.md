@@ -88,8 +88,9 @@ Codex by itself.
 
 ## Legacy Node Helper
 
-`compactctl.mjs` remains available for compatibility audits, but it is not the
-ordinary AiPlus path.
+`compactctl.mjs` remains only as archived history and a compatibility test
+fixture. It is not the ordinary AiPlus path and must not be used as a fallback if
+`aiplus` is missing.
 
 ## Failure Behavior
 

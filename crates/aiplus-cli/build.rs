@@ -40,14 +40,17 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) ->
         if path.is_dir() {
             collect_files(root, &path, files)?;
         } else if path.is_file() {
-            if path.file_name().and_then(|n| n.to_str()) == Some("compactctl.mjs") {
-                continue;
-            }
             let rel = path
                 .strip_prefix(root)
                 .unwrap()
                 .to_string_lossy()
                 .replace('\\', "/");
+            if path.file_name().and_then(|n| n.to_str()) == Some("compactctl.mjs")
+                || rel == "aiplus-auto-compact/package.json"
+                || rel.starts_with("aiplus-auto-compact/tests/")
+            {
+                continue;
+            }
             files.push((rel, path));
         }
     }

@@ -108,10 +108,16 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(!target
         .join(".aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs")
         .exists());
+    assert!(!target
+        .join(".aiplus/modules/aiplus-auto-compact/package.json")
+        .exists());
+    assert!(!target
+        .join(".aiplus/modules/aiplus-auto-compact/tests/compactctl.acceptance.mjs")
+        .exists());
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.1.0, auto-team-consultant@0.1.2]"));
+    assert!(status.contains("modules=[auto-compact@0.1.0, auto-team-consultant@0.1.3]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -133,9 +139,17 @@ fn install_status_doctor_update_add_uninstall_codex() {
         "resume AiPlus",
         "project-specific refresh",
         "Never bury AiPlus status",
+        "AiPlus CLI not found",
+        "fix PATH",
     ] {
         assert!(installed_agents.contains(phrase), "missing {phrase}");
     }
+    assert!(!installed_agents.contains("node .aiplus"));
+    assert!(!installed_agents.contains("node <REPO_ROOT>"));
+    assert!(!installed_agents.contains("node <PROJECT_ROOT>"));
+    assert!(!installed_agents.contains("compactctl.mjs validate"));
+    assert!(!installed_agents.contains("compactctl.mjs checkpoint"));
+    assert!(!installed_agents.contains("compactctl.mjs resume"));
 
     let doctor = stdout(&run(target, &["doctor"], 0));
     assert!(doctor.contains("runtimeAdapters=[codex]"));
@@ -179,6 +193,11 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     fs::write(&checkpoint, b"{\"checkpoint\":\"preserve\"}\n").unwrap();
     let user_note = target.join(".aiplus/user-note.txt");
     fs::write(&user_note, b"do not delete\n").unwrap();
+    fs::write(
+        target.join(".aiplus/AGENTS.aiplus.md"),
+        b"old guidance: node .aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs validate\n",
+    )
+    .unwrap();
 
     let upgrade = stdout(&run(target, &["install", "codex"], 0));
     assert!(upgrade.contains("AiPlus upgraded for Codex in this project."));
@@ -193,6 +212,9 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     assert!(agents.contains("AiPlus 刷新"));
     assert!(agents.contains("project-specific refresh"));
     assert!(agents.contains("Expected response shape"));
+    assert!(agents.contains("AiPlus CLI not found"));
+    assert!(!agents.contains("node .aiplus"));
+    assert!(!agents.contains("compactctl.mjs validate"));
 
     let backups = target.join(".aiplus/backups");
     assert!(backups.exists());

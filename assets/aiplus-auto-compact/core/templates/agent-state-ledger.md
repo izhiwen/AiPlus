@@ -34,7 +34,7 @@ IN_PROGRESS
 
 | Agent | Role | Status | Owned Scope | Last Evidence | Next Action |
 | --- | --- | --- | --- | --- | --- |
-| synthetic-cli-builder | CLI Builder | done | core/scripts/compactctl.mjs | EVD-001 | Review generated output. |
+| synthetic-cli-builder | CLI Builder | done | Rust-native `aiplus compact ...` flow | EVD-001 | Review generated output. |
 
 Allowed status values: pending, running, blocked, done, abandoned.
 

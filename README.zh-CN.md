@@ -58,7 +58,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.1.2 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.1.3 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -127,12 +127,20 @@ host compact 之后，AiPlus 会 best-effort resume：
 AiPlus 不能强制 host compact，不能点击 UI compact，不能代替你调用 `/compact`，也
 不能在 host 要求用户输入时主动唤醒 agent。
 
+如果找不到 `aiplus`，请安装 AiPlus 或修复 PATH，不要 fallback 到 Node：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+然后重新打开 terminal，或确认 `~/.local/bin` 已在 PATH 中。
+
 ## Installer Safety
 
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.1.2 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.1.3 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和
@@ -180,7 +188,7 @@ compact commands 已是 Rust-native。Rust runtime assets 不再 install 或 che
 ## Safety Boundary
 
 AiPlus CLI 不实现 publish、push、tag、release creation、system/global install、
-global config edit、telemetry、auto-update 或 runtime network fetch。v0.1.2
+global config edit、telemetry、auto-update 或 runtime network fetch。v0.1.3
 installer 只写 user-level `~/.local/bin/aiplus` command。
 
 validation 是 structural 和 heuristic，不是 safety、privacy、compliance、

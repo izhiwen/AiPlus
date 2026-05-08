@@ -12,8 +12,8 @@ current audiences:
   adapt the compact workflow.
 - `aiplus-auto-compact` is the independent compact/checkpoint/resume workflow
   module.
-- `core/scripts/compactctl.mjs` is retained as a legacy standalone helper and
-  compatibility reference.
+- `core/scripts/compactctl.mjs` is retained only as archived legacy history and
+  compatibility-test reference, not as an active compact execution path.
 - Runtime adapters live under `<REPO_ROOT>/aiplus-auto-compact/adapters/`.
 
 The core protocol still uses the compatibility state path:
@@ -44,7 +44,7 @@ The tool still cannot trigger Codex UI compact, call `/compact`, or control Clau
 | Protocol templates | `<REPO_ROOT>/aiplus-auto-compact/core/templates/` |
 | Protocol schemas | `<REPO_ROOT>/aiplus-auto-compact/core/schemas/` |
 | Current user CLI | `aiplus compact validate`, `aiplus compact checkpoint`, `aiplus compact resume` |
-| Legacy helper CLI | `<REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs` |
+| Archived legacy helper | `<REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs` retained only for history and compatibility tests |
 | Target project state | `<TARGET_PROJECT>/.codex/compact/` |
 | Codex-specific docs and assets | `<REPO_ROOT>/aiplus-auto-compact/adapters/codex/` |
 | Claude Code command assets | `<REPO_ROOT>/aiplus-auto-compact/adapters/claude-code/` |

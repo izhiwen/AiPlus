@@ -4,6 +4,13 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Removed active Node `compactctl.mjs` command guidance from ordinary-user and
+  module-only compact paths.
+- Clarified that `aiplus compact validate`, `aiplus compact checkpoint`, and
+  `aiplus compact resume` are the only supported active compact execution
+  commands.
+- Added missing-`aiplus` guidance to install AiPlus or fix PATH instead of
+  falling back to Node.
 - Reworked `README.md` for AiPlus CLI (`aiplus`) first ordinary-user guidance.
 - Added `README.zh-CN.md` with matching beginner flow.
 - Clarified naming: `AiPlus` is the product/module brand, while `aiplus` is

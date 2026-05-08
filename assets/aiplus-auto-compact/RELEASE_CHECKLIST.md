@@ -13,8 +13,8 @@ Use this checklist before `<OWNER>` approves any public release, tag, package pu
 ## Pre-Release Checks
 
 - Confirm `README.md` uses only placeholders for paths, owners, and examples.
-- Confirm `README.md` and `README.zh-CN.md` put the AiPlus CLI (`aiplus`)
-  before legacy `compactctl.mjs`.
+- Confirm `README.md` and `README.zh-CN.md` use only the AiPlus CLI (`aiplus`)
+  for active compact execution and do not present `compactctl.mjs` as fallback.
 - Confirm `README.md` and `README.zh-CN.md` explain both identities:
   independent AiPlus subproduct and bundled AiPlus CLI module.
 - Confirm installer docs mark the `install.sh` flow as future/planned until a

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.3
+
+- Removed active Node `compactctl.mjs` guidance from installed and
+  ordinary-user compact paths.
+- Made Rust-native `aiplus compact validate`, `aiplus compact checkpoint`, and
+  `aiplus compact resume` the only supported compact execution commands.
+- Added missing-`aiplus` guidance: install AiPlus or fix PATH instead of falling
+  back to Node.
+- Updated bundled Auto Compact docs so legacy Node references are archived
+  history or compatibility-test fixtures only.
+
 ## 0.1.2
 
 - Added explicit AiPlus refresh triggers for already-open sessions:

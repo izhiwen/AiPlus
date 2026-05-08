@@ -93,8 +93,9 @@ for the user, explicit AiPlus messages such as `AiPlus 刷新`, `刷新 AiPlus`,
 first when possible; when project-specific refresh rules conflict, report AiPlus
 status before project status.
 
-`../../core/scripts/compactctl.mjs` remains a legacy standalone helper for
-audits and compatibility tests, but it is not the ordinary-user path.
+`../../core/scripts/compactctl.mjs` remains only as archived history and a
+compatibility test fixture. It is not the ordinary-user path and must not be
+used as a fallback if `aiplus` is missing.
 
 ## Limits
 

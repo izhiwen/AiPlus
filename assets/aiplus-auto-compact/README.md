@@ -166,7 +166,7 @@ distribution.
 - `adapters/claude-code/`: Claude Code plugin-shaped commands, skill, and optional hook example.
 - `adapters/opencode/`: OpenCode project-local config, commands, agents, and prompts.
 - `examples/`: synthetic examples for all three runtimes.
-- `core/scripts/compactctl.mjs`: legacy standalone Node helper retained for compatibility tests and migration reference.
+- `core/scripts/compactctl.mjs`: archived legacy Node helper retained only for compatibility tests and migration reference; not an active compact path.
 
 ## What It Can Automate
 
@@ -212,19 +212,26 @@ Validation is structural and heuristic. A validation pass means the files satisf
 
 ## Advanced: Legacy Node Reference
 
-The current ordinary-user path is the AiPlus CLI (`aiplus`). The older
-standalone Node helper remains in this repository for compatibility and
-migration review:
+The supported compact execution path is Rust-native AiPlus CLI only:
 
 ```bash
-node <REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs init
-node <REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs validate
-node <REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs checkpoint
-node <REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs resume
+aiplus compact validate
+aiplus compact checkpoint
+aiplus compact resume
 ```
 
-Use this only when you are auditing the legacy workflow or testing this module
-without the AiPlus CLI.
+The older standalone Node helper remains in this repository only as archived
+history and a compatibility test fixture. It is not an ordinary-user path and
+must not be used as a fallback.
+
+If `aiplus` is not found, install AiPlus or fix PATH instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+Then reopen the terminal or ensure `~/.local/bin` is on PATH. Do not fallback to
+Node.
 
 ## Validation
 
@@ -233,7 +240,6 @@ Run package acceptance tests from this repository:
 ```bash
 cd <REPO_ROOT>/aiplus-auto-compact
 npm test
-node --check core/scripts/compactctl.mjs
 ```
 
 Run compact checks from a target project where `aiplus` is available:
@@ -287,7 +293,6 @@ Before proposing a release change:
 ```bash
 cd <REPO_ROOT>/aiplus-auto-compact
 npm test
-node --check core/scripts/compactctl.mjs
 ```
 
 Document behavior changes in `CHANGELOG.md`, update `MODULES.md` when ownership or file layout changes, and update `RELEASE_CHECKLIST.md` before publication review.

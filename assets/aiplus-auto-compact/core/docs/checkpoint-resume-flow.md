@@ -68,14 +68,22 @@ that requires a user message.
 ## Module-Only Or Legacy Reference
 
 Advanced users who adopt only AiPlus Auto Compact can inspect `core/templates/`
-and `core/docs/` directly. The legacy Node helper is retained for compatibility
-audits:
+and `core/docs/` directly, but compact execution should still use Rust-native
+AiPlus CLI:
 
 ```bash
-node <PROJECT_ROOT>/core/scripts/compactctl.mjs init
-node <PROJECT_ROOT>/core/scripts/compactctl.mjs validate
-node <PROJECT_ROOT>/core/scripts/compactctl.mjs checkpoint
-node <PROJECT_ROOT>/core/scripts/compactctl.mjs resume
+aiplus compact validate
+aiplus compact checkpoint
+aiplus compact resume
 ```
 
-This is not the ordinary beginner path.
+The legacy Node helper is retained only as archived history and compatibility
+test fixture. It is not an ordinary-user path and must not be used as a fallback.
+If `aiplus` is missing, install AiPlus or fix PATH:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+Then reopen the terminal or ensure `~/.local/bin` is on PATH. Do not fallback to
+Node.

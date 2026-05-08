@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.1.2";
+const VERSION: &str = "0.1.3";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -138,7 +138,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.1.2",
+        version: "0.1.3",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -2395,6 +2395,19 @@ When continuing:
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 
+## Missing AiPlus CLI
+
+If `aiplus` is not found, do not fallback to Node or `compactctl.mjs`.
+Report this instead:
+
+AiPlus CLI not found. Please install AiPlus or fix PATH:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+Then reopen the terminal or ensure `~/.local/bin` is on PATH.
+
 ## Auto Compact
 
 Read `.codex/compact/current-handoff.md` before long-running work if it exists.
@@ -2488,6 +2501,14 @@ Generic continuation keywords: 刷新, refresh, 继续, continue, resume, go on,
 Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume when compact state exists after host control returns, enable AiPlus, and continue the current task.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
+
+If `aiplus` is not found, do not fallback to Node or compactctl.mjs. Say:
+
+AiPlus CLI not found. Please install AiPlus or fix PATH:
+
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+
+Then reopen the terminal or ensure ~/.local/bin is on PATH.
 "#
     )
 }

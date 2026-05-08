@@ -20,7 +20,7 @@ Run from this repository root unless a row explicitly names the sibling
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Syntax check | `rtk node --check core/scripts/compactctl.mjs` | PASS |
+| Legacy compatibility fixture | `core/scripts/compactctl.mjs` review | PASS, retained only for archived history and package acceptance tests; not an active compact execution path |
 | Acceptance tests | `rtk npm test` | PASS, 15/15 tests passed |
 | AiPlus CLI command truth | `rtk cargo test` from the sibling `../aiplus-rust` checkout | PASS, 6/6 tests passed |
 | AiPlus CLI help | `rtk cargo run -p aiplus-cli -- --help` from the sibling `../aiplus-rust` checkout | PASS, shows `install`, `status`, `doctor`, `compact` |

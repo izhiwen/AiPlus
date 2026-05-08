@@ -62,6 +62,6 @@ The Codex adapter intentionally does not duplicate the core implementation. Shar
 
 This keeps Codex behavior aligned with Claude Code and OpenCode adapters.
 
-`../../core/scripts/compactctl.mjs` remains available as a legacy standalone
-helper for audits and compatibility tests, but it is not the ordinary-user
-AiPlus CLI (`aiplus`) path.
+`../../core/scripts/compactctl.mjs` remains only as archived history and a
+compatibility test fixture. It is not the ordinary-user AiPlus CLI (`aiplus`)
+path and must not be used as a fallback if `aiplus` is missing.

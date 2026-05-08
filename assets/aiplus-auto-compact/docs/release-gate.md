@@ -15,7 +15,7 @@ to `https://github.com/izhiwen/aiplus-auto-compact`.
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| `core/scripts/compactctl.mjs` syntax | PASS | `rtk node --check core/scripts/compactctl.mjs`, exit 0 |
+| Legacy compatibility fixture | PASS | `core/scripts/compactctl.mjs` retained only for archived history and package acceptance tests; not an active compact execution path |
 | Test suite | PASS | `rtk npm test`, 15/15 acceptance tests passed |
 | AiPlus CLI alignment | PASS | `rtk cargo test` from the sibling `../aiplus-rust` checkout, 6/6 tests passed; `cargo run -p aiplus-cli -- --help` shows `compact` |
 | Manifest/config JSON parse | PASS | Parsed package metadata, Codex plugin manifest, Claude plugin manifest, Claude hook example, and OpenCode config example |
@@ -36,7 +36,6 @@ to `https://github.com/izhiwen/aiplus-auto-compact`.
 Run from the final `aiplus-auto-compact` checkout before publication:
 
 ```bash
-rtk node --check core/scripts/compactctl.mjs
 rtk npm test
 rtk node - <<'NODE'
 const fs=require('fs'), path=require('path');
@@ -48,7 +47,7 @@ NODE
 rtk node - <<'NODE'
 const fs=require('fs');
 const required={
-  'core':['scripts/compactctl.mjs','schemas/compact-policy.schema.json','templates/compact-policy.json','docs/protocol.md'],
+  'core':['schemas/compact-policy.schema.json','templates/compact-policy.json','docs/protocol.md'],
   'adapters/codex':['.codex-plugin/plugin.json','skills/compact-protocol/SKILL.md','README.md'],
   'adapters/claude-code':['.claude-plugin/plugin.json','skills/compact-protocol/SKILL.md','commands/compact-checkpoint.md','commands/compact-resume.md','commands/compact-validate.md','README.md'],
   'adapters/opencode':['opencode.json.example','agents/compact-advisor.md','agents/compact-reviewer.md','commands/compact-checkpoint.md','commands/compact-resume.md','commands/compact-validate.md','prompts/compact-protocol.md','README.md'],

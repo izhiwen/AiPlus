@@ -61,7 +61,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.1.2 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.1.3 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -132,13 +132,22 @@ After host compact, AiPlus resumes best-effort:
 AiPlus cannot force host compact, click UI compact, call `/compact` for you, or
 wake the agent if the host requires user input.
 
+If `aiplus` is not found, install AiPlus or fix PATH instead of falling back to
+Node:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+```
+
+Then reopen the terminal or ensure `~/.local/bin` is on PATH.
+
 ## Installer Safety
 
 `install.sh` downloads a GitHub Release asset, verifies `checksums.txt`, and
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.1.2 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.1.3 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -188,7 +197,7 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 The AiPlus CLI does not implement publish, push, tag, release creation,
 system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.1.2 installer writes only the user-level
+network fetches. The v0.1.3 installer writes only the user-level
 `~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,

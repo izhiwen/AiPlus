@@ -20,8 +20,8 @@ Responsibilities:
 - Provide templates and schemas used by AiPlus CLI commands such as
   `aiplus compact init`, `aiplus compact validate`,
   `aiplus compact checkpoint`, and `aiplus compact resume`.
-- Retain `compactctl.mjs` as a legacy standalone helper for compatibility tests
-  and migration reference.
+- Retain `compactctl.mjs` only as archived legacy history and compatibility-test
+  reference, not as an active compact execution path.
 - Document Owner gates and checkpoint/resume flow.
 
 The core is runtime-neutral. It does not depend on Codex, Claude Code, OpenCode, a cloud service, or a remote repository.

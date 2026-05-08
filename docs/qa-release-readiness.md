@@ -1,8 +1,8 @@
 # QA Release Readiness
 
-Status: `V0_1_0_RELEASE_QA`
+Status: `V0_1_3_RELEASE_QA`
 
-This checklist tracks the Owner-approved v0.1.2 GitHub Release QA scope. It
+This checklist tracks the Owner-approved v0.1.3 GitHub Release QA scope. It
 does not approve package registries, Homebrew, marketplace publication,
 telemetry, or system/global install paths.
 
@@ -65,6 +65,7 @@ contain pending Owner gates. That is expected safety behavior.
 
 ```bash
 rg -n 'Command::new\("node"\)' crates tests docs
+rg -n 'node .*compactctl|compactctl\.mjs (init|validate|checkpoint|resume)' README.md README.zh-CN.md docs crates assets
 find . -path './target' -prune -o -name compactctl.mjs -print
 find . -path './target' -prune -o -name .DS_Store -print
 rg -n 'AIPLUS''_SOURCE|/path/to/aiplus/target/release/aiplus' README.md README.zh-CN.md docs
@@ -79,11 +80,11 @@ records. Active source must not implement forbidden actions.
 
 ## Release Readiness Decision
 
-Before the v0.1.2 GitHub Release:
+Before the v0.1.3 GitHub Release:
 
 - Owner reviewed repo name and extraction plan.
 - Owner confirmed Apache-2.0 license/public wording remains correct.
-- Owner approved the `v0.1.2` tag and GitHub Release channel.
+- Owner approved the `v0.1.3` tag and GitHub Release channel.
 - QA matrix is re-run after extraction.
 - Binary artifact matrix is updated with tested status.
 - Checksums are generated for any release artifacts.
