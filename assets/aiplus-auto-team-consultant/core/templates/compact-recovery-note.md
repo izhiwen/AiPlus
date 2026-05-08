@@ -17,4 +17,3 @@ DO_NOT_DO=[]
 ```
 
 Keep it short enough for the next agent to resume without re-reading the whole history.
-

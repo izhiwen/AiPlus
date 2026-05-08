@@ -16,4 +16,3 @@ expected_result_packet:
 ```
 
 Task cards should be scoped tightly enough that agents do not overwrite each other's work.
-

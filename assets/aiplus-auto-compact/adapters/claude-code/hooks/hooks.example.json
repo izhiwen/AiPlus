@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'AiPlus compact reminder: review current task scope, checkpoint packet fields, and workspace state before compaction.' >&2"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'AiPlus compact reminder: if resuming after compaction, read the latest project-local checkpoint before editing.' >&2"
+          }
+        ]
+      }
+    ]
+  }
+}

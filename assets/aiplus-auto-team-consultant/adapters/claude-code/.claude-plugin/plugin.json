@@ -1,0 +1,18 @@
+{
+  "name": "aiplus-auto-team-consultant",
+  "version": "0.1.1",
+  "description": "Project-local Claude Code consultation commands and agents for AiPlus Auto Team Consultant.",
+  "commands": [
+    "commands/team-consult.md",
+    "commands/advisor-handoff.md",
+    "commands/ceo-routing.md",
+    "commands/pressure-test.md"
+  ],
+  "agents": [
+    "agents/team-advisor.md",
+    "agents/process-reviewer.md"
+  ],
+  "skills": [
+    "skills/auto-team-consultant/SKILL.md"
+  ]
+}

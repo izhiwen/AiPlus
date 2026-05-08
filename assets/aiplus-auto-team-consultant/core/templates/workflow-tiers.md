@@ -25,4 +25,3 @@ Limits: up to three rounds, core plus one or two specialist lenses, Consultant P
 Use for major product direction, safety boundaries, external accounts, deployment, public release, high-risk autonomy, unresolved conflict, or Owner-requested team discussion.
 
 Limits: up to five rounds, explicit Owner gates, Full Council only when justified, pressure-test required for user-facing perception.
-

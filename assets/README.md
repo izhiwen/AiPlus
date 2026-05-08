@@ -14,7 +14,7 @@ Update process:
 2. Copy only required scripts, templates, schemas, and Codex skill files.
 3. Do not copy `.git/`, `node_modules/`, checkpoints, screenshots, logs,
    temporary dogfood targets, generated media, or private local artifacts.
-4. Run `cargo test` from the repository root.
+4. Run `cargo test` from `aiplus-rust`.
 
 This snapshot is derived from historical module/vendor content, with stale Node
 runtime scripts removed from the Rust install footprint. Do not fetch from

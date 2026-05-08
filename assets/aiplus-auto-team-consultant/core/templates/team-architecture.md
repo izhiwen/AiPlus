@@ -26,4 +26,3 @@ Define only the lenses needed for the session.
 ## Selection Rule
 
 Use the smallest useful set. Full Council requires HEAVY tier, explicit justification, and a maximum of five rounds.
-

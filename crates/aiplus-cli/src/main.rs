@@ -2,14 +2,15 @@ use anyhow::{anyhow, Context, Result};
 use clap::{ArgAction, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "0.1.0";
+include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
+
+const VERSION: &str = "0.1.1";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -372,24 +373,34 @@ fn command_install(
         return Err(CliError::new(1, "INSTALL_STATUS=NEEDS_RUNTIME").into());
     };
     let root = target_root()?;
+    let upgrade_existing = detects_existing_aiplus_install(&root);
+    let effective_options = if upgrade_existing && !options.force {
+        Options {
+            force: true,
+            backup: true,
+            yes: true,
+        }
+    } else {
+        options.clone()
+    };
     let adapters = runtime_list(runtime);
     let mut plan = Plan {
         dry_run,
         ..Plan::default()
     };
-    install_base(&root, &mut plan, &options, default_module_names())?;
+    install_base(&root, &mut plan, &effective_options, default_module_names())?;
     for adapter in &adapters {
-        install_runtime_adapter(&root, adapter, &mut plan, &options)?;
+        install_runtime_adapter(&root, adapter, &mut plan, &effective_options)?;
     }
     write_manifest(
         &root,
         &mut plan,
-        &options,
+        &effective_options,
         &adapters,
         &default_module_names(),
         &default_module_names(),
     )?;
-    print_install_summary(&plan, verbose, &adapters);
+    print_install_summary(&plan, verbose, &adapters, upgrade_existing);
     Ok(())
 }
 
@@ -441,10 +452,9 @@ fn command_update(module: Option<String>, dry_run: bool, verbose: bool) -> Resul
             skipped.push(format!("{name}:up-to-date"));
             continue;
         }
-        copy_tree_safe(
+        copy_embedded_module(
             &root,
-            &asset_module_dir(spec),
-            spec.path,
+            spec,
             &mut plan,
             &Options {
                 force: true,
@@ -517,13 +527,7 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
     let mut message = format!("AiPlus module added: {requested}");
     if !installed.contains_key(requested) {
         let spec = module_spec(requested).unwrap();
-        copy_tree_safe(
-            &root,
-            &asset_module_dir(spec),
-            spec.path,
-            &mut plan,
-            &Options::default(),
-        )?;
+        copy_embedded_module(&root, spec, &mut plan, &Options::default())?;
         if requested == "auto-compact" {
             compact_init(&root, &mut plan, false)?;
         }
@@ -954,7 +958,7 @@ fn install_base(
     ensure_dir(root, &rel_to_abs(root, ".aiplus/modules")?, plan)?;
     for name in &module_names {
         let spec = module_spec(name).unwrap();
-        copy_tree_safe(root, &asset_module_dir(spec), spec.path, plan, options)?;
+        copy_embedded_module(root, spec, plan, options)?;
     }
     write_file_safe(
         root,
@@ -1051,13 +1055,9 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
         "evidence-ledger.md",
         "compact-policy.json",
     ] {
-        let source = asset_root()
-            .join("aiplus-auto-compact")
-            .join("core/templates")
-            .join(file);
-        let content = fs::read_to_string(&source)
-            .with_context(|| format!("read compact template {}", source.display()))?
-            .replace("<ISO8601_TIMESTAMP>", &timestamp());
+        let asset_path = format!("aiplus-auto-compact/core/templates/{file}");
+        let content =
+            embedded_asset_text(&asset_path)?.replace("<ISO8601_TIMESTAMP>", &timestamp());
         write_compact_template(
             root,
             &format!(".codex/compact/{file}"),
@@ -1222,7 +1222,7 @@ fn write_manifest(
     )
 }
 
-fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String]) {
+fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String], upgraded: bool) {
     let runtime_text = adapters
         .iter()
         .map(|runtime| runtime_label(runtime))
@@ -1249,7 +1249,13 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String]) {
         println!("INSTALL_DRY_RUN=PASS");
         return;
     }
-    println!("AiPlus installed for {runtime_text} in this project.");
+    if upgraded {
+        println!("AiPlus upgraded for {runtime_text} in this project.");
+        println!("Existing AiPlus managed files were backed up before replacement.");
+        println!(".codex/compact/ state was preserved.");
+    } else {
+        println!("AiPlus installed for {runtime_text} in this project.");
+    }
     println!("Next: send \"{REFRESH_PROMPT}\" or \"refresh\" to any already-open agent session.");
     println!("New sessions should pick up project-local runtime files automatically.");
     println!("Optional check: run `aiplus doctor`.");
@@ -1262,7 +1268,32 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String]) {
     } else {
         println!("GLOBAL_CONFIG_UNTOUCHED");
     }
-    println!("INSTALL_STATUS=PASS");
+    if upgraded {
+        println!("UPGRADE_STATUS=PASS");
+    } else {
+        println!("INSTALL_STATUS=PASS");
+    }
+}
+
+fn detects_existing_aiplus_install(root: &Path) -> bool {
+    if read_manifest(root, true)
+        .map(|manifest| manifest.installer.as_deref() == Some(INSTALLER))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    [
+        ".aiplus/AGENTS.aiplus.md",
+        REFRESH_PROMPT_REL,
+        ".aiplus/modules/aiplus-auto-compact",
+        ".aiplus/modules/aiplus-auto-team-consultant",
+    ]
+    .iter()
+    .any(|rel| {
+        rel_to_abs(root, rel)
+            .map(|path| path.exists())
+            .unwrap_or(false)
+    })
 }
 
 fn write_file_safe(
@@ -1432,42 +1463,29 @@ fn ensure_dir(root: &Path, dir: &Path, plan: &mut Plan) -> Result<()> {
     Ok(())
 }
 
-fn copy_tree_safe(
+fn copy_embedded_module(
     root: &Path,
-    source_dir: &Path,
-    dest_rel: &str,
+    spec: ModuleSpec,
     plan: &mut Plan,
     options: &Options,
 ) -> Result<()> {
-    if !source_dir.exists() {
-        return Err(CliError::new(
-            1,
-            format!("ERROR missing vendored source: {}", source_dir.display()),
-        )
-        .into());
-    }
-    for entry in fs::read_dir(source_dir)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let name = entry.file_name();
-        if name == OsStr::new(".git")
-            || name == OsStr::new("node_modules")
-            || name == OsStr::new(".codex")
-        {
+    let prefix = format!("{}/", spec.vendor_name);
+    for (rel, bytes) in ASSET_FILES {
+        let Some(stripped) = rel.strip_prefix(&prefix) else {
             continue;
-        }
-        let dest = format!("{dest_rel}/{}", name.to_string_lossy());
-        if file_type.is_symlink() {
-            continue;
-        }
-        if file_type.is_dir() {
-            copy_tree_safe(root, &entry.path(), &dest, plan, options)?;
-        } else if file_type.is_file() {
-            let bytes = fs::read(entry.path())?;
-            write_file_safe(root, &dest, &bytes, plan, options)?;
-        }
+        };
+        let dest = format!("{}/{}", spec.path, stripped);
+        write_file_safe(root, &dest, bytes, plan, options)?;
     }
     Ok(())
+}
+
+fn embedded_asset_text(rel: &str) -> Result<String> {
+    let bytes = ASSET_FILES
+        .iter()
+        .find_map(|(path, bytes)| (*path == rel).then_some(*bytes))
+        .ok_or_else(|| anyhow!("missing embedded asset: {rel}"))?;
+    String::from_utf8(bytes.to_vec()).with_context(|| format!("decode embedded asset {rel}"))
 }
 
 fn read_manifest(root: &Path, quiet: bool) -> Result<Manifest> {
@@ -2274,8 +2292,29 @@ Use AiPlus Auto Compact and AiPlus Auto Team Consultant when relevant.
 
 ## Refresh Keywords
 
-If the user says a natural continuation such as `继续`, `刷新`, `continue`,
-`resume`, `refresh`, `go on`, or `接着`, treat it as:
+If the user says only `刷新` or `refresh`, treat it as AiPlus refresh first,
+not as a generic project status refresh. Respond in this shape:
+
+已刷新 AiPlus。
+
+当前项目 AiPlus 状态：
+- Auto Compact: 已安装/未安装
+- Auto Team Consultant: 已安装/未安装
+- Compact state: present/missing/review-needed
+
+我会这样使用：
+- 长任务或 compact 前准备 checkpoint
+- compact 后如果宿主交回控制权，我会自动 resume
+- 如果宿主需要消息唤醒，你随便说“继续/刷新/refresh/continue”即可
+- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
+
+边界：
+- AiPlus 不能替你点击 compact
+- 不上传数据
+- 不改全局 agent config
+
+If the user says a natural continuation such as `继续`, `continue`, `resume`,
+`go on`, or `接着`, treat it as:
 
 1. Re-read `AGENTS.md`.
 2. Re-read `.aiplus/AGENTS.aiplus.md`.
@@ -2339,6 +2378,26 @@ fn refresh_prompt_content() -> String {
 
 English: refresh
 
+If the user says only 刷新 or refresh, treat it as AiPlus refresh first. Reply:
+
+已刷新 AiPlus。
+
+当前项目 AiPlus 状态：
+- Auto Compact: 已安装/未安装
+- Auto Team Consultant: 已安装/未安装
+- Compact state: present/missing/review-needed
+
+我会这样使用：
+- 长任务或 compact 前准备 checkpoint
+- compact 后如果宿主交回控制权，我会自动 resume
+- 如果宿主需要消息唤醒，你随便说“继续/刷新/refresh/continue”即可
+- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
+
+边界：
+- AiPlus 不能替你点击 compact
+- 不上传数据
+- 不改全局 agent config
+
 Other continuation keywords: 继续, continue, resume, go on, 接着
 
 Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume when compact state exists after host control returns, enable AiPlus, and continue the current task.
@@ -2357,7 +2416,8 @@ Re-read project-local AiPlus instructions:
 2. Read .aiplus/AGENTS.aiplus.md.
 3. Read .codex/compact/current-handoff.md if present.
 4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for this session.
-5. Continue the current task.
+5. If the user said only 刷新 or refresh, reply with "已刷新 AiPlus。" and summarize Auto Compact, Auto Team Consultant, and compact state.
+6. Continue the current task.
 
 Continuation keywords: 继续, 刷新, continue, resume, refresh, go on, 接着.
 
@@ -2401,14 +2461,6 @@ Continuation keywords for already-open agent sessions: 继续, 刷新, continue,
 resume, refresh, go on, 接着.
 "#
     .to_string()
-}
-
-fn asset_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets")
-}
-
-fn asset_module_dir(spec: ModuleSpec) -> PathBuf {
-    asset_root().join(spec.vendor_name)
 }
 
 fn target_root() -> Result<PathBuf> {

@@ -1,0 +1,11 @@
+{
+  "name": "aiplus-auto-team-consultant",
+  "version": "0.1.1",
+  "description": "Session-local team-routing Skill adapter for Codex.",
+  "skills": [
+    {
+      "name": "auto-team-consultant",
+      "path": "skills/auto-team-consultant/SKILL.md"
+    }
+  ]
+}

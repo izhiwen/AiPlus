@@ -15,4 +15,3 @@ recommended_next_action:
 ```
 
 The CEO or integrator must verify result packet claims before accepting them.
-

@@ -1,0 +1,70 @@
+{
+  "protocolVersion": "0.1.0",
+  "schemaVersion": "0.1.0",
+  "templateVersion": "0.1.0",
+  "lastUpdated": "2026-01-01T00:00:00.000Z",
+  "currentGoal": "Exercise compactctl against a complete local handoff fixture.",
+  "currentPhase": "IN_PROGRESS",
+  "completedWork": [
+    "Seeded acceptance fixture."
+  ],
+  "openBlockers": [
+    "None."
+  ],
+  "ownerGates": [
+    {
+      "status": "APPROVED",
+      "description": "Fixture owner gate is approved for local tests."
+    }
+  ],
+  "next3Actions": [
+    "Run validate.",
+    "Run checkpoint.",
+    "Run resume."
+  ],
+  "doNotDo": [
+    "Do not store sensitive material in compact files."
+  ],
+  "recoveryOrder": [
+    "Read current-handoff.md.",
+    "Read compact-policy.json.",
+    "Run resume."
+  ],
+  "manualCompactOnly": true,
+  "allowedOwnerGateStatuses": [
+    "APPROVED",
+    "DENIED",
+    "UNKNOWN_PENDING"
+  ],
+  "allowedDecisionStatuses": [
+    "DECIDED",
+    "PROVISIONAL",
+    "REVERSED",
+    "NEEDS_VERIFICATION"
+  ],
+  "allowedAgentStatuses": [
+    "pending",
+    "running",
+    "blocked",
+    "done",
+    "abandoned"
+  ],
+  "allowedEvidenceConfidence": [
+    "official",
+    "vendor_blog",
+    "github",
+    "measured",
+    "inferred",
+    "unknown"
+  ],
+  "allowedTaskResultStatuses": [
+    "PASS",
+    "FAIL",
+    "IN_PROGRESS",
+    "NEEDS_VERIFICATION",
+    "BLOCKED_OWNER_GATE",
+    "BLOCKED_MISSING_FILES",
+    "BLOCKED_EXTERNAL_ACCESS",
+    "BLOCKED_UNCLEAR_GOAL"
+  ]
+}

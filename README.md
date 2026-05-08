@@ -20,6 +20,10 @@ Then install AiPlus into your project:
 aiplus install codex
 ```
 
+If the project already has an older AiPlus install, the same command safely
+upgrades AiPlus managed files, creates backups under `.aiplus/backups/`, and
+preserves `.codex/compact/` state.
+
 Then type this in the already-open Codex, Claude Code, or OpenCode session for
 that same project:
 
@@ -33,6 +37,10 @@ English also works:
 refresh
 ```
 
+The agent should treat `刷新` / `refresh` as AiPlus refresh first and reply with
+current Auto Compact, Auto Team Consultant, and compact-state status before
+continuing work.
+
 For Claude Code:
 
 ```bash
@@ -45,7 +53,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.1.0 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.1.1 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -121,7 +129,7 @@ wake the agent if the host requires user input.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.1.0 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.1.1 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -171,7 +179,7 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 The AiPlus CLI does not implement publish, push, tag, release creation,
 system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.1.0 installer writes only the user-level
+network fetches. The v0.1.1 installer writes only the user-level
 `~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,

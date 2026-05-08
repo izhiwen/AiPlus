@@ -17,4 +17,3 @@ READY_FOR_CEO=YES | NO
 ```
 
 Use when an Advisor or Reviewer should hand execution to a CEO session.
-

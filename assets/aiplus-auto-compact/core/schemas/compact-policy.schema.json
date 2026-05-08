@@ -63,32 +63,6 @@
     "doNotDo": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "recoveryOrder": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "resumeSanityCheck": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-    "resumeBehavior": {
-      "type": "object",
-      "required": [
-        "bestEffortAutomaticResume",
-        "runResumeWhenHostControlReturns",
-        "acceptedContinuationKeywords",
-        "exactPhraseRequired",
-        "hostCompactLimitations"
-      ],
-      "properties": {
-        "bestEffortAutomaticResume": { "type": "boolean" },
-        "runResumeWhenHostControlReturns": { "type": "boolean" },
-        "acceptedContinuationKeywords": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "exactPhraseRequired": { "const": false },
-        "hostCompactLimitations": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        }
-      },
-      "additionalProperties": false
-    },
     "manualCompactOnly": { "const": true },
     "allowedOwnerGateStatuses": {
       "type": "array",

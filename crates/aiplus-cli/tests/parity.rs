@@ -142,6 +142,53 @@ fn install_status_doctor_update_add_uninstall_codex() {
 }
 
 #[test]
+fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+
+    run(target, &["install", "codex"], 0);
+    let managed_schema =
+        target.join(".aiplus/modules/aiplus-auto-compact/core/schemas/compact-policy.schema.json");
+    fs::write(&managed_schema, b"{\"old\":\"managed file\"}\n").unwrap();
+    let checkpoint = target.join(".codex/compact/checkpoints/keep-me.json");
+    fs::write(&checkpoint, b"{\"checkpoint\":\"preserve\"}\n").unwrap();
+    let user_note = target.join(".aiplus/user-note.txt");
+    fs::write(&user_note, b"do not delete\n").unwrap();
+
+    let upgrade = stdout(&run(target, &["install", "codex"], 0));
+    assert!(upgrade.contains("AiPlus upgraded for Codex in this project."));
+    assert!(upgrade.contains("UPGRADE_STATUS=PASS"));
+    assert!(upgrade.contains(".codex/compact/ state was preserved."));
+    assert!(checkpoint.exists());
+    assert_eq!(fs::read_to_string(&user_note).unwrap(), "do not delete\n");
+    assert!(fs::read_to_string(&managed_schema)
+        .unwrap()
+        .contains("\"$schema\""));
+
+    let backups = target.join(".aiplus/backups");
+    assert!(backups.exists());
+    let backup_hit = fs::read_dir(&backups)
+        .unwrap()
+        .flat_map(|stamp| {
+            let stamp = stamp.unwrap().path();
+            fs::read_dir(stamp.join(".aiplus/modules/aiplus-auto-compact/core/schemas"))
+                .into_iter()
+                .flatten()
+                .map(|entry| entry.unwrap().path())
+                .collect::<Vec<_>>()
+        })
+        .any(|path| {
+            path.file_name().unwrap() == "compact-policy.schema.json"
+                && fs::read_to_string(path).unwrap().contains("old")
+        });
+    assert!(backup_hit);
+
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(doctor.contains("DOCTOR_STATUS=PASS"));
+}
+
+#[test]
 fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
     for runtime in ["claude-code", "opencode", "all"] {
         let temp = tempfile::tempdir().unwrap();
@@ -364,10 +411,7 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     run(target, &["compact", "init", "--force"], 0);
     fs::write(
         target.join(".codex/compact/evidence-ledger.md"),
-        format!(
-            "{}: Bearer abcdefghijklmnopqrstuvwxyz\n",
-            ["Authori", "zation"].concat()
-        ),
+        "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n",
     )
     .unwrap();
     let sensitive = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));

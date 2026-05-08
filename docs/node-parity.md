@@ -1,7 +1,6 @@
 # Archived Node Reference
 
-Archived reference implementation: legacy Node `aiplus-cli` v0.1.3, retained
-outside this public source package for behavior audits.
+Archived reference implementation: `../aiplus-cli` v0.1.3.
 
 The Rust CLI preserves user-facing command markers and local project workflows:
 

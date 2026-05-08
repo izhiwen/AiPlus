@@ -36,10 +36,10 @@ Owner approval remains required before:
 
 - creating additional public repos
 - changing license away from Apache-2.0 or changing public legal wording
-- pushing commits outside the reviewed v0.1.0 release scope
-- creating or pushing git tags beyond `v0.1.0`
-- creating GitHub Releases beyond `v0.1.0`
-- uploading binary artifacts beyond the verified v0.1.0 macOS Apple Silicon
+- pushing commits outside the reviewed v0.1.1 release scope
+- creating or pushing git tags beyond `v0.1.1`
+- creating GitHub Releases beyond `v0.1.1`
+- uploading binary artifacts beyond the verified v0.1.1 macOS Apple Silicon
   asset and `checksums.txt`
 - publishing to package registries
 - creating Homebrew formulas or taps
@@ -49,7 +49,7 @@ Owner approval remains required before:
 - modifying `$CODEX_HOME`, `~/.codex`, `~/.claude`, OpenCode global config,
   shell profiles, `~/.cargo/bin`, `/usr/local/bin`, or system paths
 
-Owner approved v0.1.0 GitHub Release creation, the verified macOS Apple Silicon
+Owner approved v0.1.1 GitHub Release creation, the verified macOS Apple Silicon
 binary upload, `checksums.txt`, `install.sh`, and user-level installation to
 `~/.local/bin/aiplus`.
 

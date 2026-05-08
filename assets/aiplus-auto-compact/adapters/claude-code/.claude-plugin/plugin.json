@@ -1,0 +1,8 @@
+{
+  "name": "aiplus-auto-compact",
+  "description": "Project-local Claude Code adapter docs for the AiPlus compact checkpoint and resume protocol.",
+  "version": "0.1.0",
+  "author": {
+    "name": "AiPlus"
+  }
+}

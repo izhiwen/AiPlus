@@ -17,4 +17,3 @@ FINAL_INTEGRATOR_GATE=
 ```
 
 CEO rule: coordinate through task cards and result packets when useful, then integrate and verify before final status.
-

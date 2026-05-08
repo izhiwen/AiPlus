@@ -1,0 +1,17 @@
+{
+  "name": "aiplus-auto-team-consultant-example",
+  "description": "Project-local OpenCode example config for AiPlus Auto Team Consultant.",
+  "commands": {
+    "team-consult": "adapters/opencode/commands/team-consult.md",
+    "advisor-handoff": "adapters/opencode/commands/advisor-handoff.md",
+    "ceo-routing": "adapters/opencode/commands/ceo-routing.md",
+    "pressure-test": "adapters/opencode/commands/pressure-test.md"
+  },
+  "agents": {
+    "team-advisor": "adapters/opencode/agents/team-advisor.md",
+    "process-reviewer": "adapters/opencode/agents/process-reviewer.md"
+  },
+  "prompts": {
+    "auto-team-consultant": "adapters/opencode/prompts/auto-team-consultant.md"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "aiplus-auto-compact-codex",
+  "version": "0.1.0",
+  "description": "Codex adapter for AiPlus Auto Compact compact/resume handoff protocol.",
+  "license": "Apache-2.0",
+  "schemaVersion": "0.1.0",
+  "templateVersion": "0.1.0",
+  "skills": [
+    {
+      "name": "compact-protocol",
+      "path": "skills/compact-protocol/SKILL.md"
+    }
+  ],
+  "interface": {
+    "displayName": "AiPlus Auto Compact for Codex",
+    "description": "Prepare, validate, checkpoint, and resume Codex compact handoffs with the shared AiPlus Auto Compact core.",
+    "category": "Productivity"
+  },
+  "compatibility": {
+    "codexCli": {
+      "minimum": "unknown",
+      "tested": [],
+      "policy": "No Codex CLI internals are imported; compatibility is behavioral and documented in the adapter README."
+    },
+    "node": {
+      "minimum": "18.0.0"
+    }
+  }
+}

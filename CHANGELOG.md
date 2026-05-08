@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1
+
+- Fixed existing-project `aiplus install codex` upgrades so old AiPlus managed
+  files are backed up and refreshed without requiring ordinary users to know
+  `--force --backup --yes`.
+- Preserved existing `.codex/compact/` state during install/upgrade.
+- Updated generated refresh guidance so `刷新` and `refresh` are treated as
+  AiPlus refresh first, with a concise installed-status response.
+- Refined Auto Compact checkpoint/resume and Auto Team Consultant activation
+  guidance in generated project instructions and bundled module docs.
+- Kept the v0.1.1 installer on the verified macOS Apple Silicon release asset
+  path with checksum verification and user-level `~/.local/bin/aiplus` install.
+
 ## 0.1.0
 
 - Published v0.1.0 as the first practical binary-installed AiPlus CLI release.

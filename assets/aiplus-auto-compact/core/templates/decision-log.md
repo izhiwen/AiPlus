@@ -34,7 +34,7 @@ IN_PROGRESS
 
 | ID | Status | Decision | Rationale | Evidence |
 | --- | --- | --- | --- | --- |
-| DEC-001 | PROVISIONAL | Use local compact files only. | Local compact workflow avoids cloud, database, and automatic UI compact trigger. | EVD-001 |
+| DEC-001 | PROVISIONAL | Use local compact files only. | MVP avoids cloud, database, and automatic UI compact trigger. | EVD-001 |
 
 Allowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.
 

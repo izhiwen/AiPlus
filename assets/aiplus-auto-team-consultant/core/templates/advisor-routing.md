@@ -15,4 +15,3 @@ CEO_HANDOFF_REQUIRED=YES | NO
 ```
 
 Advisor rule: direct advice is preferred unless risk, ambiguity, or execution handoff justifies escalation.
-

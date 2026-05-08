@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "compact-advisor": {
+      "description": "Plans and prepares compact checkpoints without editing project files.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/compact-protocol.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "compact-reviewer": {
+      "description": "Reviews compact checkpoint and resume packets for scope, omissions, and unsupported claims.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/compact-protocol.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    }
+  },
+  "command": {
+    "compact-checkpoint": {
+      "description": "Create a compact checkpoint packet for the active task.",
+      "agent": "compact-advisor",
+      "subtask": true
+    },
+    "compact-resume": {
+      "description": "Resume a task from a compact checkpoint packet.",
+      "agent": "compact-advisor",
+      "subtask": true
+    },
+    "compact-validate": {
+      "description": "Validate compact adapter files and checkpoint readiness.",
+      "agent": "compact-reviewer",
+      "subtask": true
+    }
+  }
+}
