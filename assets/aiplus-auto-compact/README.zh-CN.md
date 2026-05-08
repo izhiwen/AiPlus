@@ -189,7 +189,7 @@ checkpoint` 会打印 `BLOCKED_DO_NOT_COMPACT`，默认不会创建普通 checkp
 
 ## Private Profile 与 Secret Boundary
 
-AiPlus 可以配合 `work-with-zhiwen` 这类 private user-level profile 和
+AiPlus 可以配合 private user-level profile 和
 Bitwarden-backed `secret-broker` 使用。AiPlus Auto Compact 必须把它们视为 private
 runtime layer，而不是 bundled module content。
 
@@ -208,13 +208,7 @@ aiplus secret-broker status
 child command 会在 environment 里收到 secret，仍可能自己 print、log、transmit 或
 store。只对可信且符合当前 action need 的命令使用 `run --`。
 
-AiPlus v0.4.3 扩展了 approved secret alias table，覆盖常见 AI、search、image 和
-developer providers。示例包括 `openai`、`anthropic`、`gemini`、`github`、
-`cloudflare`、`kimi`、`deepseek`、`qwen`、`openrouter`、`xai`、`groq`、
-`mistral`、`perplexity`、`tavily`、`firecrawl` 和 `volcengine_ark`。当前完整映射以
-`aiplus secret-broker list` 为准。真实 Bitwarden smoke check 需要 Bitwarden
-Secrets Manager `bws` CLI 和 read-only machine account token；如果没有 `bws`，agent
-只能做 mock/local status check，不能 fallback 到打印 secret value。
+Private profile 可以安装 approved secret aliases。当前本地映射以 `aiplus secret-broker list` 为准。真实 Bitwarden smoke check 需要 Bitwarden Secrets Manager `bws` CLI 和 read-only machine account token；如果没有 `bws`，agent 只能做 mock/local status check，不能 fallback 到打印 secret value。
 
 ## 日常命令
 

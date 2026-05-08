@@ -140,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.4.3, auto-team-consultant@0.4.3]"));
+    assert!(status.contains("modules=[auto-compact@0.4.4, auto-team-consultant@0.4.4]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -942,34 +942,64 @@ fn user_profile_and_secret_broker_are_secret_safe() {
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path();
     setup_fake_env(target);
+    let profile_source = target.join("profile-source");
+    fs::create_dir(&profile_source).unwrap();
+    fs::write(
+        profile_source.join("profile.toml"),
+        "name = \"example-private-profile\"\nsecret_values = \"never-store\"\n",
+    )
+    .unwrap();
+    fs::write(
+        profile_source.join("AGENTS.profile.md"),
+        "# example-private-profile\n\nUse aiplus secret-broker status. Do not store secret values.\n",
+    )
+    .unwrap();
+    fs::write(
+        profile_source.join("secret-aliases.tsv"),
+        expected_secret_aliases()
+            .iter()
+            .map(|(alias, secret_name, env_var)| format!("{alias}\t{secret_name}\t{env_var}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
 
     let profile_dry = stdout(&run(
         target,
         &[
             "profile",
             "install",
-            "work-with-zhiwen",
+            "example-private-profile",
             "--user",
+            "--source",
+            profile_source.to_str().unwrap(),
             "--dry-run",
         ],
         0,
     ));
     assert!(profile_dry.contains("PROFILE_INSTALL_STATUS=DRY_RUN"));
     assert!(!target
-        .join("fake-xdg/aiplus/profiles/work-with-zhiwen/profile.toml")
+        .join("fake-xdg/aiplus/profiles/example-private-profile/profile.toml")
         .exists());
 
     let profile_install = stdout(&run(
         target,
-        &["profile", "install", "work-with-zhiwen", "--user", "--yes"],
+        &[
+            "profile",
+            "install",
+            "example-private-profile",
+            "--user",
+            "--source",
+            profile_source.to_str().unwrap(),
+            "--yes",
+        ],
         0,
     ));
     assert!(profile_install.contains("PROFILE_INSTALL_STATUS=PASS"));
     let profile = fs::read_to_string(
-        target.join("fake-xdg/aiplus/profiles/work-with-zhiwen/AGENTS.profile.md"),
+        target.join("fake-xdg/aiplus/profiles/example-private-profile/AGENTS.profile.md"),
     )
     .unwrap();
-    assert!(profile.contains("work-with-zhiwen"));
+    assert!(profile.contains("example-private-profile"));
     assert!(profile.contains("aiplus secret-broker status"));
     assert!(!profile.contains("BWS_ACCESS_TOKEN"));
     assert!(!profile.contains("sk-"));
@@ -981,12 +1011,12 @@ fn user_profile_and_secret_broker_are_secret_safe() {
     run(target, &["install", "codex"], 0);
     let link = stdout(&run(
         target,
-        &["profile", "link", "work-with-zhiwen", "--project"],
+        &["profile", "link", "example-private-profile", "--project"],
         0,
     ));
     assert!(link.contains("PROFILE_LINK_STATUS=PASS"));
     let linked = fs::read_to_string(target.join(".aiplus/PROFILE.aiplus.md")).unwrap();
-    assert!(linked.contains("work-with-zhiwen"));
+    assert!(linked.contains("example-private-profile"));
     assert!(!linked.contains("sk-"));
 
     let broker_status = stdout(&run(target, &["secret-broker", "status"], 0));
@@ -994,72 +1024,7 @@ fn user_profile_and_secret_broker_are_secret_safe() {
     assert!(broker_status.contains("secret_values_printed=no"));
 
     let broker_list = stdout(&run(target, &["secret-broker", "list"], 0));
-    let expected_aliases = [
-        ("openai", "zhiwen/openai/api_key", "OPENAI_API_KEY"),
-        ("anthropic", "zhiwen/anthropic/api_key", "ANTHROPIC_API_KEY"),
-        ("gemini", "zhiwen/gemini/api_key", "GEMINI_API_KEY"),
-        ("github", "zhiwen/github/token", "GITHUB_TOKEN"),
-        (
-            "cloudflare",
-            "zhiwen/cloudflare/token",
-            "CLOUDFLARE_API_TOKEN",
-        ),
-        ("kimi", "zhiwen/kimi/api_key", "KIMI_API_KEY"),
-        ("deepseek", "zhiwen/deepseek/api_key", "DEEPSEEK_API_KEY"),
-        ("minimax", "zhiwen/minimax/api_key", "MINIMAX_API_KEY"),
-        ("qwen", "zhiwen/qwen/api_key", "QWEN_API_KEY"),
-        ("glm", "zhiwen/glm/api_key", "GLM_API_KEY"),
-        (
-            "openrouter",
-            "zhiwen/openrouter/api_key",
-            "OPENROUTER_API_KEY",
-        ),
-        ("xai", "zhiwen/xai/api_key", "XAI_API_KEY"),
-        ("groq", "zhiwen/groq/api_key", "GROQ_API_KEY"),
-        ("mistral", "zhiwen/mistral/api_key", "MISTRAL_API_KEY"),
-        (
-            "perplexity",
-            "zhiwen/perplexity/api_key",
-            "PERPLEXITY_API_KEY",
-        ),
-        ("together", "zhiwen/together/api_key", "TOGETHER_API_KEY"),
-        ("cohere", "zhiwen/cohere/api_key", "COHERE_API_KEY"),
-        (
-            "huggingface",
-            "zhiwen/huggingface/token",
-            "HUGGINGFACE_TOKEN",
-        ),
-        ("voyage", "zhiwen/voyage/api_key", "VOYAGE_API_KEY"),
-        ("jina", "zhiwen/jina/api_key", "JINA_API_KEY"),
-        (
-            "replicate",
-            "zhiwen/replicate/api_token",
-            "REPLICATE_API_TOKEN",
-        ),
-        ("fal", "zhiwen/fal/api_key", "FAL_API_KEY"),
-        ("stability", "zhiwen/stability/api_key", "STABILITY_API_KEY"),
-        (
-            "elevenlabs",
-            "zhiwen/elevenlabs/api_key",
-            "ELEVENLABS_API_KEY",
-        ),
-        ("tavily", "zhiwen/tavily/api_key", "TAVILY_API_KEY"),
-        ("exa", "zhiwen/exa/api_key", "EXA_API_KEY"),
-        ("serper", "zhiwen/serper/api_key", "SERPER_API_KEY"),
-        ("firecrawl", "zhiwen/firecrawl/api_key", "FIRECRAWL_API_KEY"),
-        ("brave", "zhiwen/brave/api_key", "BRAVE_API_KEY"),
-        (
-            "siliconflow",
-            "zhiwen/siliconflow/api_key",
-            "SILICONFLOW_API_KEY",
-        ),
-        (
-            "volcengine_ark",
-            "zhiwen/volcengine_ark/api_key",
-            "VOLCENGINE_ARK_API_KEY",
-        ),
-    ];
-    for (alias, secret_name, env_var) in expected_aliases {
+    for (alias, secret_name, env_var) in expected_secret_aliases() {
         assert!(
             broker_list.contains(&format!("{alias} -> {secret_name} -> {env_var}")),
             "missing alias mapping for {alias}"
@@ -1115,6 +1080,119 @@ fn user_profile_and_secret_broker_are_secret_safe() {
     ));
     assert!(run_out.contains("broker-env-ok"));
     assert!(!run_out.contains("AIPLUS_MOCK_OPENAI"));
+
+    let disable = stdout(&run(
+        target,
+        &[
+            "profile",
+            "disable",
+            "example-private-profile",
+            "--user",
+            "--yes",
+        ],
+        0,
+    ));
+    assert!(disable.contains("PROFILE_DISABLE_STATUS=PASS"));
+
+    let uninstall = stdout(&run(
+        target,
+        &[
+            "profile",
+            "uninstall",
+            "example-private-profile",
+            "--user",
+            "--yes",
+        ],
+        0,
+    ));
+    assert!(uninstall.contains("PROFILE_UNINSTALL_STATUS=PASS"));
+    assert!(uninstall.contains("secret_aliases_removed=yes"));
+    assert!(!target
+        .join("fake-xdg/aiplus/profiles/example-private-profile")
+        .exists());
+    assert!(!target
+        .join("fake-xdg/aiplus/secret-broker/profiles/example-private-profile")
+        .exists());
+}
+
+fn expected_secret_aliases() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![
+        ("openai", "private/openai/api_key", "OPENAI_API_KEY"),
+        (
+            "anthropic",
+            "private/anthropic/api_key",
+            "ANTHROPIC_API_KEY",
+        ),
+        ("gemini", "private/gemini/api_key", "GEMINI_API_KEY"),
+        ("github", "private/github/token", "GITHUB_TOKEN"),
+        (
+            "cloudflare",
+            "private/cloudflare/token",
+            "CLOUDFLARE_API_TOKEN",
+        ),
+        ("kimi", "private/kimi/api_key", "KIMI_API_KEY"),
+        ("deepseek", "private/deepseek/api_key", "DEEPSEEK_API_KEY"),
+        ("minimax", "private/minimax/api_key", "MINIMAX_API_KEY"),
+        ("qwen", "private/qwen/api_key", "QWEN_API_KEY"),
+        ("glm", "private/glm/api_key", "GLM_API_KEY"),
+        (
+            "openrouter",
+            "private/openrouter/api_key",
+            "OPENROUTER_API_KEY",
+        ),
+        ("xai", "private/xai/api_key", "XAI_API_KEY"),
+        ("groq", "private/groq/api_key", "GROQ_API_KEY"),
+        ("mistral", "private/mistral/api_key", "MISTRAL_API_KEY"),
+        (
+            "perplexity",
+            "private/perplexity/api_key",
+            "PERPLEXITY_API_KEY",
+        ),
+        ("together", "private/together/api_key", "TOGETHER_API_KEY"),
+        ("cohere", "private/cohere/api_key", "COHERE_API_KEY"),
+        (
+            "huggingface",
+            "private/huggingface/token",
+            "HUGGINGFACE_TOKEN",
+        ),
+        ("voyage", "private/voyage/api_key", "VOYAGE_API_KEY"),
+        ("jina", "private/jina/api_key", "JINA_API_KEY"),
+        (
+            "replicate",
+            "private/replicate/api_token",
+            "REPLICATE_API_TOKEN",
+        ),
+        ("fal", "private/fal/api_key", "FAL_API_KEY"),
+        (
+            "stability",
+            "private/stability/api_key",
+            "STABILITY_API_KEY",
+        ),
+        (
+            "elevenlabs",
+            "private/elevenlabs/api_key",
+            "ELEVENLABS_API_KEY",
+        ),
+        ("tavily", "private/tavily/api_key", "TAVILY_API_KEY"),
+        ("exa", "private/exa/api_key", "EXA_API_KEY"),
+        ("serper", "private/serper/api_key", "SERPER_API_KEY"),
+        (
+            "firecrawl",
+            "private/firecrawl/api_key",
+            "FIRECRAWL_API_KEY",
+        ),
+        ("brave", "private/brave/api_key", "BRAVE_API_KEY"),
+        (
+            "siliconflow",
+            "private/siliconflow/api_key",
+            "SILICONFLOW_API_KEY",
+        ),
+        (
+            "volcengine_ark",
+            "private/volcengine_ark/api_key",
+            "VOLCENGINE_ARK_API_KEY",
+        ),
+    ]
 }
 
 fn setup_fake_env(target: &Path) {

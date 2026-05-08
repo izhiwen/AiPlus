@@ -125,7 +125,7 @@ run `aiplus update`. If the user says "update the aiplus command" or
 "更新 aiplus 命令", run `aiplus self update`. Before updating, say that you will
 not edit global agent config or upload project data.
 
-If the user asks "work-with-zhiwen status", "我的偏好生效了吗", or "检查我的
+If the user asks "private profile status", "我的偏好生效了吗", or "检查我的
 AiPlus profile", run `aiplus profile status` and keep the answer short. If the
 user asks "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用", run
 `aiplus secret-broker status` or `aiplus secret-broker doctor`. Never print,
@@ -134,11 +134,7 @@ support action needs a key, use `aiplus secret-broker run -- <command...>` so th
 value enters only the child process environment.
 The child command can still print, log, transmit, or store its environment. Use
 `run --` only with trusted commands for the specific action.
-AiPlus v0.4.3 supports expanded aliases such as `kimi`, `deepseek`, `qwen`,
-`openrouter`, `xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and
-`volcengine_ark`; run `aiplus secret-broker list` for the full table. Real
-Bitwarden checks require the `bws` CLI. If `bws` is unavailable, report that real
-Bitwarden smoke is unverified; do not print secret values or invent a fallback.
+Private profiles may install approved secret aliases; run `aiplus secret-broker list` for the current local table. Real Bitwarden checks require the `bws` CLI. If `bws` is unavailable, report that real Bitwarden smoke is unverified; do not print secret values or invent a fallback.
 
 ## After Compact
 

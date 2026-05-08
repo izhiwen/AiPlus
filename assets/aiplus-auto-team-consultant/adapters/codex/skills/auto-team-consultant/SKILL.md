@@ -105,7 +105,7 @@ Project-only requests map to `aiplus update`; command/global CLI requests map to
 plus `aiplus status`. Before updating, state the scope and confirm no global
 agent config edits or project data upload.
 
-Profile requests such as "work-with-zhiwen status", "我的偏好生效了吗", or
+Profile requests such as "private profile status", "我的偏好生效了吗", or
 "检查我的 AiPlus profile" should map to `aiplus profile status`. Secret status
 requests such as "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用"
 should map to `aiplus secret-broker status` or `aiplus secret-broker doctor`.
@@ -115,11 +115,7 @@ explicit action needs a key, prefer `aiplus secret-broker run -- <command...>` s
 approved values enter only the child process environment.
 The child command can still print, log, transmit, or store its environment. Use
 `run --` only with trusted commands for the specific action.
-AiPlus v0.4.3 supports expanded aliases such as `kimi`, `deepseek`, `qwen`,
-`openrouter`, `xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and
-`volcengine_ark`; run `aiplus secret-broker list` for the full table. Real
-Bitwarden checks require the `bws` CLI. If `bws` is unavailable, report that real
-Bitwarden smoke is unverified; do not print secret values or invent a fallback.
+Private profiles may install approved secret aliases; run `aiplus secret-broker list` for the current local table. Real Bitwarden checks require the `bws` CLI. If `bws` is unavailable, report that real Bitwarden smoke is unverified; do not print secret values or invent a fallback.
 
 QA means Process / Orchestration QA for prompt, routing, handoff, and governance-like process questions.
 

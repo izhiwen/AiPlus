@@ -1,24 +1,30 @@
 # Changelog
 
+## Unreleased
+
+## 0.4.4
+
+- Changed private profile installation to a generic source-based flow so public
+  AiPlus no longer embeds private profile content or private Bitwarden alias
+  namespaces.
+- Moved private secret alias inventory to user-installed profile packages.
+- Added `aiplus profile uninstall` for reversible user-level profile removal.
+
 ## 0.4.3
 
-- Expanded `aiplus secret-broker` aliases for common AI, search, image, and
-  developer API providers, including `kimi`, `deepseek`, `qwen`, `openrouter`,
-  `xai`, `groq`, `mistral`, `perplexity`, `tavily`, `firecrawl`, and related
-  provider aliases.
-- Added test coverage that every approved alias appears in
-  `aiplus secret-broker list`, that newly added aliases resolve without printing
-  secret values by default, and that unknown aliases remain blocked.
+- Added private-profile installed alias support for `aiplus secret-broker`.
+- Added test coverage that installed aliases appear in `aiplus secret-broker
+  list`, resolve without printing secret values by default, and unknown aliases
+  remain blocked.
 - Clarified that real Bitwarden smoke checks require the Bitwarden Secrets
-  Manager `bws` CLI plus the read-only `zhiwen-local-aiplus-agent` machine
-  account for project `zhiwen-agent-secrets`.
+  Manager `bws` CLI plus a private read-only machine account token.
 - Kept secret values out of normal `list`, `status`, and default `resolve`
   output. `run -- <command...>` remains the explicit runtime-only injection path.
 
 ## 0.4.2
 
-- Added user-level `work-with-zhiwen` profile commands for private
-  collaboration preferences under `~/.config/aiplus/`.
+- Added user-level private profile commands for collaboration preferences under
+  `~/.config/aiplus/`.
 - Added `aiplus secret-broker` with mock and Bitwarden `bws` provider paths,
   approved alias mapping, metadata-only status/list/resolve output, and
   child-process environment injection via `run -- <command...>`.

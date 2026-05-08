@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.3 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.4 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -118,58 +118,27 @@ AiPlus can also install a user-level private profile and resolve approved
 runtime secrets without putting private content into public repos.
 
 ```bash
-aiplus profile install work-with-zhiwen --user --dry-run
-aiplus profile install work-with-zhiwen --user --yes
+aiplus profile install <private-profile-name> --user --source /path/to/private-profile --dry-run
+aiplus profile install <private-profile-name> --user --source /path/to/private-profile --yes
 aiplus profile status
+aiplus profile disable <private-profile-name> --user --yes
+aiplus profile uninstall <private-profile-name> --user --yes
 aiplus secret-broker status
 ```
 
-The `work-with-zhiwen` profile lives under
-`~/.config/aiplus/profiles/work-with-zhiwen/`. It stores working preferences and
-collaboration rules only. It must not contain API keys, Bitwarden tokens,
-passwords, prompt transcripts, project files, or compact checkpoints.
+Private profiles live under `~/.config/aiplus/profiles/<private-profile-name>/`.
+They store working preferences and collaboration rules only. They must not
+contain API keys, Bitwarden tokens, passwords, prompt transcripts, project files,
+or compact checkpoints.
 
 Secret access goes through `aiplus secret-broker`. By default,
 `aiplus secret-broker resolve <alias>` verifies access without printing the
-secret value. `aiplus secret-broker list` shows approved aliases, including:
+secret value. `aiplus secret-broker list` shows aliases installed by the private
+profile package. Public AiPlus does not bundle private alias namespaces.
 
-```text
-openai -> zhiwen/openai/api_key -> OPENAI_API_KEY
-anthropic -> zhiwen/anthropic/api_key -> ANTHROPIC_API_KEY
-gemini -> zhiwen/gemini/api_key -> GEMINI_API_KEY
-github -> zhiwen/github/token -> GITHUB_TOKEN
-cloudflare -> zhiwen/cloudflare/token -> CLOUDFLARE_API_TOKEN
-kimi -> zhiwen/kimi/api_key -> KIMI_API_KEY
-deepseek -> zhiwen/deepseek/api_key -> DEEPSEEK_API_KEY
-minimax -> zhiwen/minimax/api_key -> MINIMAX_API_KEY
-qwen -> zhiwen/qwen/api_key -> QWEN_API_KEY
-glm -> zhiwen/glm/api_key -> GLM_API_KEY
-openrouter -> zhiwen/openrouter/api_key -> OPENROUTER_API_KEY
-xai -> zhiwen/xai/api_key -> XAI_API_KEY
-groq -> zhiwen/groq/api_key -> GROQ_API_KEY
-mistral -> zhiwen/mistral/api_key -> MISTRAL_API_KEY
-perplexity -> zhiwen/perplexity/api_key -> PERPLEXITY_API_KEY
-together -> zhiwen/together/api_key -> TOGETHER_API_KEY
-cohere -> zhiwen/cohere/api_key -> COHERE_API_KEY
-huggingface -> zhiwen/huggingface/token -> HUGGINGFACE_TOKEN
-voyage -> zhiwen/voyage/api_key -> VOYAGE_API_KEY
-jina -> zhiwen/jina/api_key -> JINA_API_KEY
-replicate -> zhiwen/replicate/api_token -> REPLICATE_API_TOKEN
-fal -> zhiwen/fal/api_key -> FAL_API_KEY
-stability -> zhiwen/stability/api_key -> STABILITY_API_KEY
-elevenlabs -> zhiwen/elevenlabs/api_key -> ELEVENLABS_API_KEY
-tavily -> zhiwen/tavily/api_key -> TAVILY_API_KEY
-exa -> zhiwen/exa/api_key -> EXA_API_KEY
-serper -> zhiwen/serper/api_key -> SERPER_API_KEY
-firecrawl -> zhiwen/firecrawl/api_key -> FIRECRAWL_API_KEY
-brave -> zhiwen/brave/api_key -> BRAVE_API_KEY
-siliconflow -> zhiwen/siliconflow/api_key -> SILICONFLOW_API_KEY
-volcengine_ark -> zhiwen/volcengine_ark/api_key -> VOLCENGINE_ARK_API_KEY
-```
-
-Real Bitwarden smoke checks require the `bws` CLI and a read-only machine account
-token available through `BWS_ACCESS_TOKEN` or the macOS Keychain. For tools that
-need a key, use:
+Real Bitwarden smoke checks require the `bws` CLI and a read-only machine
+account token available through `BWS_ACCESS_TOKEN` or the macOS Keychain. For
+tools that need a key, use:
 
 ```bash
 aiplus secret-broker run -- <command...>
@@ -185,9 +154,8 @@ entry created by `aiplus secret-broker token set`. It does not store Bitwarden
 machine tokens in repo files, `.aiplus/`, `.codex/compact/`, shell profiles,
 logs, docs, compact savings ledgers, or release artifacts.
 
-Natural language mappings in installed agent guidance include `work-with-zhiwen
-status`, `我的偏好生效了吗`, `secret 状态`, `检查 API key`, and `API key 是否可用`.
-The agent should answer with short metadata-only status and never expose secret
+Natural language mappings can be supplied by private profiles. Secret status
+requests should map to short metadata-only checks and must never expose secret
 values.
 
 ## Updating AiPlus
@@ -383,7 +351,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.3 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.4 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

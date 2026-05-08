@@ -7,7 +7,7 @@
 - Clarified that `aiplus secret-broker list` owns the current alias table and
   that real Bitwarden smoke checks require the `bws` CLI plus a read-only
   machine account token.
-- Added natural-language routing for `work-with-zhiwen` profile status and
+- Added natural-language routing for private profile status and
   `aiplus secret-broker` metadata-only secret status checks.
 - Clarified that task cards, result packets, review findings, pressure-tests,
   and final answers must never print, paste, log, summarize, compact, or persist

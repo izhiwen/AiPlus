@@ -88,12 +88,11 @@ aiplus install all
 contain pending Owner gates. That is expected safety behavior.
 
 Real Bitwarden smoke is separate from mock-provider tests. Run it only when the
-Bitwarden Secrets Manager `bws` CLI is installed and a read-only
-`zhiwen-local-aiplus-agent` machine account token for project
-`zhiwen-agent-secrets` is available through `BWS_ACCESS_TOKEN` or the macOS
-Keychain. The smoke should cover `aiplus secret-broker doctor`, `list`, default
-`resolve` for representative aliases, and a harmless `run --` env-presence
-command. It must not print secret values.
+Bitwarden Secrets Manager `bws` CLI is installed and a private read-only machine
+account token is available through `BWS_ACCESS_TOKEN` or the macOS Keychain. The
+smoke should cover `aiplus secret-broker doctor`, `list`, default `resolve` for
+representative aliases, and a harmless `run --` env-presence command. It must
+not print secret values.
 
 ## Static Scans
 
