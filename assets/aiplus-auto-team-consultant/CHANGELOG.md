@@ -2,6 +2,9 @@
 
 ## v0.2 compact readiness alignment
 
+- Added v0.2.1 dogfood-fix notes for legacy compact handoff migration and
+  blocked-checkpoint no-write behavior.
+- Ignored project-local dogfood install artifacts in this public repo.
 - Added natural-language compact readiness guidance so ordinary users can say
   "prepare compact", "save progress", "continue after compact", "帮我准备
   compact", "保存进度", or "继续" instead of memorizing compact CLI commands.

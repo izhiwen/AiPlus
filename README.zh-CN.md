@@ -30,16 +30,26 @@ files，把被替换的 managed files 备份到 `.aiplus/backups/`，并保留
 AiPlus 刷新
 ```
 
-其它明确触发语也可以：
+想 compact 或保存进度时，也是在 agent session 里说：
 
 ```text
-刷新 AiPlus
-aiplus refresh
-aiplus status
-AiPlus status
-继续 AiPlus
-resume AiPlus
+帮我准备 compact
 ```
+
+或者：
+
+```text
+保存进度
+```
+
+compact 后如果 agent 没有自动回复，说：
+
+```text
+继续
+```
+
+English triggers also work: `AiPlus refresh`, `prepare compact`, `save progress`,
+and `continue`.
 
 泛用的 `刷新` / `refresh` 在安装后仍应优先尝试 AiPlus refresh。如果项目自己也把
 `刷新` 当作项目状态刷新，请使用 `AiPlus 刷新` 或 `aiplus refresh` 避免歧义。当你
@@ -58,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.2.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.2.1 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -164,7 +174,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.2.0 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.2.1 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和
@@ -202,7 +212,7 @@ placeholder 原样输入 terminal。
 
 ## Node Reference Status
 
-legacy Node CLI 是 archived/reference-only v0.2.0，不包含在本 public source
+legacy Node CLI 是 archived/reference-only v0.2.1，不包含在本 public source
 package 中。它保留在 private/local AiPlus workspace，用于 behavior audit 和
 emergency reference fixes。新的 CLI work 应进入 Rust。
 
@@ -212,7 +222,7 @@ compact commands 已是 Rust-native。Rust runtime assets 不再 install 或 che
 ## Safety Boundary
 
 AiPlus CLI 不实现 publish、push、tag、release creation、system/global install、
-global config edit、telemetry、auto-update 或 runtime network fetch。v0.2.0
+global config edit、telemetry、auto-update 或 runtime network fetch。v0.2.1
 installer 只写 user-level `~/.local/bin/aiplus` command。
 
 validation 是 structural 和 heuristic，不是 safety、privacy、compliance、

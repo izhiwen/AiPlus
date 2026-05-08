@@ -2,12 +2,12 @@
 
 Status: `V0_1_0_PARTIAL_RELEASE`
 
-v0.2.0 publishes the verified local macOS Apple Silicon asset first. Other
+v0.2.1 publishes the verified local macOS Apple Silicon asset first. Other
 platforms remain planned until they can be built and smoke-tested safely.
 
 | Artifact | Target triple | Build command | Checksum plan | Signature / notarization | Tested status | Owner gate |
 | --- | --- | --- | --- | --- | --- | --- |
-| `aiplus-aarch64-apple-darwin.tar.gz` | `aarch64-apple-darwin` | `cargo build --release --target aarch64-apple-darwin` | included in `checksums.txt` | Not signed or notarized yet | Verified locally for v0.2.0 | Approved for v0.2.0 |
+| `aiplus-aarch64-apple-darwin.tar.gz` | `aarch64-apple-darwin` | `cargo build --release --target aarch64-apple-darwin` | included in `checksums.txt` | Not signed or notarized yet | Verified locally for v0.2.1 | Approved for v0.2.1 |
 | `aiplus-x86_64-apple-darwin.tar.gz` | `x86_64-apple-darwin` | `cargo build --release --target x86_64-apple-darwin` | `shasum -a 256 <artifact> > <artifact>.sha256` | Not signed or notarized yet | Intel macOS or cross-test required | Required before upload |
 | `aiplus-x86_64-unknown-linux-gnu.tar.gz` | `x86_64-unknown-linux-gnu` | `cargo build --release --target x86_64-unknown-linux-gnu` | `sha256sum <artifact> > <artifact>.sha256` | Not signed | Linux x86_64 test required | Required before upload |
 | `aiplus-aarch64-unknown-linux-gnu.tar.gz` | `aarch64-unknown-linux-gnu` | `cargo build --release --target aarch64-unknown-linux-gnu` | `sha256sum <artifact> > <artifact>.sha256` | Not signed | Linux ARM64 test required | Required before upload |
@@ -15,7 +15,7 @@ platforms remain planned until they can be built and smoke-tested safely.
 
 ## Archive Contents
 
-The v0.2.0 macOS Apple Silicon archive contains:
+The v0.2.1 macOS Apple Silicon archive contains:
 
 ```text
 aiplus

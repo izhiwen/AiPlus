@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.2.0";
+const VERSION: &str = "0.2.1";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -131,7 +131,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.2.0",
+        version: "0.2.1",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -142,7 +142,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.2.0",
+        version: "0.2.1",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -280,6 +280,14 @@ const COMPACT_REQUIRED_SECTIONS: &[&str] = &[
 
 const COMPACT_HANDOFF_REQUIRED_SECTIONS: &[&str] =
     &["Session Role", "Workflow Level", "Output Contract"];
+const COMPACT_HANDOFF_MIGRATION_SECTIONS: &[(&str, &str)] = &[
+    ("Session Role", "Unknown"),
+    ("Workflow Level", "Unknown"),
+    (
+        "Output Contract",
+        "Summarize the current goal, blockers, Owner gates, and next safe action before resuming.",
+    ),
+];
 
 const OWNER_GATE_VALUES: &[&str] = &["APPROVED", "DENIED", "UNKNOWN_PENDING"];
 const DECISION_STATUSES: &[&str] = &["DECIDED", "PROVISIONAL", "REVERSED", "NEEDS_VERIFICATION"];
@@ -423,6 +431,7 @@ fn command_install(
     for adapter in &adapters {
         install_runtime_adapter(&root, adapter, &mut plan, &effective_options)?;
     }
+    let handoff_migrated = migrate_compact_handoff_if_needed(&root, &mut plan)?;
     write_manifest(
         &root,
         &mut plan,
@@ -432,6 +441,14 @@ fn command_install(
         &default_module_names(),
     )?;
     print_install_summary(&plan, verbose, &adapters, upgrade_existing);
+    println!(
+        "COMPACT_HANDOFF_MIGRATION={}",
+        if handoff_migrated {
+            "APPLIED"
+        } else {
+            "NOT_NEEDED"
+        }
+    );
     Ok(())
 }
 
@@ -495,6 +512,7 @@ fn command_update(module: Option<String>, dry_run: bool, verbose: bool) -> Resul
         )?;
         updated.push(format!("{name}:{current}->{}", spec.version));
     }
+    let handoff_migrated = migrate_compact_handoff_if_needed(&root, &mut plan)?;
     let module_names: Vec<String> = installed.keys().cloned().collect();
     let touched: Vec<String> = updated
         .iter()
@@ -520,6 +538,14 @@ fn command_update(module: Option<String>, dry_run: bool, verbose: bool) -> Resul
     }
     println!("updated=[{}]", updated.join(","));
     println!("skipped=[{}]", skipped.join(","));
+    println!(
+        "COMPACT_HANDOFF_MIGRATION={}",
+        if handoff_migrated {
+            "APPLIED"
+        } else {
+            "NOT_NEEDED"
+        }
+    );
     if verbose {
         plan_printer(&plan);
     } else {
@@ -1220,6 +1246,51 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
         path: ".codex/compact/".to_string(),
     });
     Ok(())
+}
+
+fn migrate_compact_handoff_if_needed(root: &Path, plan: &mut Plan) -> Result<bool> {
+    let rel = ".codex/compact/current-handoff.md";
+    let path = rel_to_abs(root, rel)?;
+    if !path.exists() {
+        return Ok(false);
+    }
+    assert_no_symlink_path(root, &path)?;
+    let current = fs::read_to_string(&path)?;
+    let missing: Vec<(&str, &str)> = COMPACT_HANDOFF_MIGRATION_SECTIONS
+        .iter()
+        .copied()
+        .filter(|(heading, _)| !has_section(&current, heading))
+        .collect();
+    if missing.is_empty() {
+        return Ok(false);
+    }
+    backup_file(
+        root,
+        rel,
+        current.as_bytes(),
+        plan,
+        &Options {
+            force: true,
+            backup: true,
+            yes: true,
+        },
+    )?;
+    let mut next = current;
+    if !next.ends_with('\n') {
+        next.push('\n');
+    }
+    next.push_str("\n<!-- AiPlus v0.2.1 compact handoff migration: preserved existing content and added missing role-aware sections. -->\n");
+    for (heading, body) in missing {
+        next.push_str(&format!("\n## {heading}\n\n{body}\n"));
+    }
+    plan.items.push(PlanItem {
+        action: "compact-handoff-migrate".to_string(),
+        path: rel.to_string(),
+    });
+    if !plan.dry_run {
+        fs::write(path, next)?;
+    }
+    Ok(true)
 }
 
 fn update_agents_md(root: &Path, plan: &mut Plan, options: &Options) -> Result<()> {
@@ -1931,11 +2002,6 @@ fn compact_checkpoint_with_options(
     level: &str,
     print_output: bool,
 ) -> Result<(i32, String)> {
-    ensure_dir(
-        root,
-        &compact_file(root, "checkpoints")?,
-        &mut Plan::default(),
-    )?;
     let result = compact_validate_state(root)?;
     let readiness = compact_readiness(&result, root);
     let status = if readiness.state == "READY_TO_COMPACT" {
@@ -1946,6 +2012,22 @@ fn compact_checkpoint_with_options(
         readiness.state
     };
     let exit_code = readiness_exit_code(&readiness);
+    if readiness.state == "BLOCKED_BY_OWNER_GATE" {
+        if print_output {
+            print_compact_diagnostics(&result);
+            println!("{status}");
+            print_readiness(&readiness);
+            println!("CHECKPOINT_LEVEL={level}");
+            println!("CHECKPOINT_CREATED=none");
+            println!("checkpoint=none");
+        }
+        return Ok((exit_code, String::new()));
+    }
+    ensure_dir(
+        root,
+        &compact_file(root, "checkpoints")?,
+        &mut Plan::default(),
+    )?;
     let timestamp = timestamp();
     let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
     let evidence = read_compact_text(root, "evidence-ledger.md").unwrap_or_default();
@@ -1953,7 +2035,7 @@ fn compact_checkpoint_with_options(
     let (decisions_made, evidence_pointers, files_or_artifacts) =
         checkpoint_detail_vectors(level, &decision_log, &evidence);
     let checkpoint = CompactCheckpoint {
-        schema_version: "0.2.0".to_string(),
+        schema_version: VERSION.to_string(),
         checkpoint_level: level.to_string(),
         timestamp: timestamp.clone(),
         cwd: "<REPO_ROOT>".to_string(),
@@ -2361,7 +2443,7 @@ fn collect_version_review_items(
 
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
-    if !["0.1.0", "0.2.0"].contains(&version) {
+    if !["0.1.0", "0.2.0", "0.2.1"].contains(&version) {
         review_items.push(format!(
             "{label} unsupported or unknown: {}",
             if version.is_empty() {
@@ -2374,7 +2456,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 }
 
 fn is_supported_manifest_schema(version: &str) -> bool {
-    matches!(version, "0.1.3" | "0.2.0")
+    matches!(version, "0.1.3" | "0.2.0" | "0.2.1")
 }
 
 fn check_policy_array(

@@ -4,6 +4,12 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added v0.2.1 dogfood-fix guidance for legacy compact handoff migration:
+  install/update should back up old handoffs, preserve user content, and add
+  missing `Session Role`, `Workflow Level`, and `Output Contract` sections.
+- Documented blocked checkpoint no-write behavior:
+  `BLOCKED_BY_OWNER_GATE` must not create a normal checkpoint file by default.
+- Ignored project-local dogfood install artifacts in this public repo.
 - Added v0.2 Compact Readiness & Recovery guidance with `aiplus compact prepare`,
   readiness states, `aiplus compact score`, checkpoint levels, and role-aware
   resume context.

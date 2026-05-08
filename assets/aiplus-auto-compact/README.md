@@ -132,6 +132,15 @@ This is best-effort automatic resume. AiPlus Auto Compact can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime
 that is waiting for the user.
 
+Existing projects with older `.codex/compact/current-handoff.md` files are
+upgraded conservatively by `aiplus install ...` and `aiplus update`: AiPlus backs
+up the old handoff, preserves user content, and adds missing role-aware sections
+such as `Session Role`, `Workflow Level`, and `Output Contract`.
+
+If validation is blocked by a real safety problem or denied Owner gate,
+`aiplus compact checkpoint` prints `BLOCKED_DO_NOT_COMPACT` and does not create a
+normal checkpoint file by default.
+
 ## Daily Commands
 
 ```bash

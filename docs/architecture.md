@@ -38,14 +38,14 @@ certification.
 
 ## Manifest
 
-The CLI release is v0.2.0. The installed project manifest schema remains
-`0.2.0` for compatibility with existing local installs:
+The CLI release is v0.2.1. The installed project manifest schema remains
+`0.2.1` for compatibility with existing local installs:
 
 ```json
 {
-  "schemaVersion": "0.2.0",
+  "schemaVersion": "0.2.1",
   "installer": "aiplus",
-  "installerVersion": "0.2.0",
+  "installerVersion": "0.2.1",
   "targetRoot": "...",
   "runtimeAdapters": ["codex"],
   "modules": {

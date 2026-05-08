@@ -1,4 +1,9 @@
 .DS_Store
+/.aiplus/
+/.codex/
+/.claude/
+/.opencode/
+/AGENTS.md
 *.log
 node_modules/
 dist/

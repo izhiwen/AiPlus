@@ -1,7 +1,15 @@
 # Changelog
 
-## 0.2.0
+## 0.2.1
 
+- Fixed dogfood upgrade behavior for legacy compact handoffs by adding missing
+  v0.2 role-aware sections during install/update while preserving existing
+  handoff content and backing up the original file.
+- Changed blocked compact checkpoint behavior so `BLOCKED_BY_OWNER_GATE` does
+  not create a normal checkpoint JSON by default.
+- Added public repo hygiene ignores for project-local dogfood install artifacts
+  such as `.aiplus/`, `.codex/`, `.claude/`, `.opencode/`, and generated
+  `AGENTS.md`.
 - Added v0.2 Compact Readiness & Recovery:
   `aiplus compact prepare`, readiness states, `aiplus compact score`,
   `checkpoint --level light|standard|full`, and role-aware resume guidance.
@@ -75,6 +83,6 @@
   platforms planned.
 - Added migration guide from archived Node CLI.
 - Added QA release-readiness checklist.
-- Kept installed manifest schema `0.2.0` for compatibility.
+- Kept installed manifest schema `0.2.1` for compatibility.
 - Applied Owner-approved Apache-2.0 licensing to the Rust mainline/public-ready
   package metadata and docs.

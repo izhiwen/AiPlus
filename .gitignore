@@ -1,4 +1,9 @@
 /target/
+/.aiplus/
+/.codex/
+/.claude/
+/.opencode/
+/AGENTS.md
 /.DS_Store
 **/.DS_Store
 *.log

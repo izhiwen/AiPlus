@@ -117,7 +117,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.2.0, auto-team-consultant@0.2.0]"));
+    assert!(status.contains("modules=[auto-compact@0.2.1, auto-team-consultant@0.2.1]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -209,10 +209,69 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
         b"old guidance: node .aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs validate\n",
     )
     .unwrap();
+    for file in [
+        "decision-log.md",
+        "agent-state-ledger.md",
+        "evidence-ledger.md",
+        "compact-policy.json",
+    ] {
+        let path = target.join(".codex/compact").join(file);
+        let next = fs::read_to_string(&path)
+            .unwrap()
+            .replace("UNKNOWN_PENDING", "APPROVED");
+        fs::write(path, next).unwrap();
+    }
+    fs::write(
+        target.join(".codex/compact/current-handoff.md"),
+        r#"# Compact Handoff
+
+## Protocol Version
+
+0.1.0
+
+## Last Updated
+
+synthetic-old
+
+## Current Goal
+
+Preserve this old user-authored goal.
+
+## Current Phase
+
+IN_PROGRESS
+
+## Completed Work
+
+- Kept old handoff content.
+
+## Open Blockers
+
+- None.
+
+## Owner Gates
+
+- APPROVED: Synthetic migration test gate.
+
+## Next 3 Actions
+
+1. Continue after migration.
+
+## Do Not Do
+
+- Do not lose user-authored content.
+
+## Recovery Order
+
+1. Resume from this old handoff.
+"#,
+    )
+    .unwrap();
 
     let upgrade = stdout(&run(target, &["install", "codex"], 0));
     assert!(upgrade.contains("AiPlus upgraded for Codex in this project."));
     assert!(upgrade.contains("UPGRADE_STATUS=PASS"));
+    assert!(upgrade.contains("COMPACT_HANDOFF_MIGRATION=APPLIED"));
     assert!(upgrade.contains(".codex/compact/ state was preserved."));
     assert!(checkpoint.exists());
     assert_eq!(fs::read_to_string(&user_note).unwrap(), "do not delete\n");
@@ -231,6 +290,17 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
 
     let backups = target.join(".aiplus/backups");
     assert!(backups.exists());
+    let handoff = fs::read_to_string(target.join(".codex/compact/current-handoff.md")).unwrap();
+    assert!(handoff.contains("Preserve this old user-authored goal."));
+    assert!(handoff.contains("## Session Role"));
+    assert!(handoff.contains("Unknown"));
+    assert!(handoff.contains("## Workflow Level"));
+    assert!(handoff.contains("## Output Contract"));
+    assert!(handoff.contains("AiPlus v0.2.1 compact handoff migration"));
+    let validate = stdout(&run(target, &["compact", "validate"], 0));
+    assert!(validate.contains("VALIDATION_PASS"));
+    let resume = stdout(&run(target, &["compact", "resume"], 0));
+    assert!(resume.contains("RESUME_READY"));
     let backup_hit = fs::read_dir(&backups)
         .unwrap()
         .flat_map(|stamp| {
@@ -503,6 +573,40 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     let bad_policy = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
     assert!(stderr(&bad_policy).contains("compact-policy.json is invalid JSON"));
     assert!(stderr(&bad_policy).contains("VALIDATION_FAIL"));
+    let before_blocked_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "json")
+        })
+        .count();
+    let blocked_checkpoint = run_with_path(
+        target,
+        &["compact", "checkpoint", "--level", "full"],
+        1,
+        Some(&no_node_path),
+    );
+    let blocked_out = stdout(&blocked_checkpoint);
+    assert!(blocked_out.contains("BLOCKED_DO_NOT_COMPACT"));
+    assert!(blocked_out.contains("READINESS_STATE=BLOCKED_BY_OWNER_GATE"));
+    assert!(blocked_out.contains("CHECKPOINT_CREATED=none"));
+    assert!(blocked_out.contains("checkpoint=none"));
+    let after_blocked_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "json")
+        })
+        .count();
+    assert_eq!(before_blocked_count, after_blocked_count);
 
     run(target, &["compact", "init", "--force"], 0);
     fs::remove_file(target.join(".codex/compact/evidence-ledger.md")).unwrap();

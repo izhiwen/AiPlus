@@ -154,6 +154,12 @@ commands. AiPlus Auto Team Consultant should preserve role context in compact
 handoffs: Advisor recommendations, CEO task cards, Reviewer findings, Builder
 changed files, Owner gates, and the next safe action.
 
+For older projects, AiPlus upgrades legacy compact handoffs conservatively during
+`aiplus install ...` and `aiplus update`: it backs up the old handoff, preserves
+user content, and adds missing role-aware fields. If compact readiness is blocked
+by a real safety issue or denied Owner gate, AiPlus should report
+`BLOCKED_DO_NOT_COMPACT` rather than creating an ordinary checkpoint.
+
 ## Roles In Plain Language
 
 - `Advisor`: gives direct advice, prompt review, strategy, or CEO-ready handoff

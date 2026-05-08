@@ -18,7 +18,7 @@ This is a project-local command document. It reads checkpoint context and curren
 4. Compare checkpoint `changed_files`, `not_done`, and `recommended_next_action` against the actual workspace.
 5. Continue only if the claimed scope still permits the next action.
 6. If unrelated edits are present in the claimed directory and the task says to stop on conflict, report blocked.
-7. When the AiPlus CLI is available and the host has returned control, run or
+7. When work continues after compact and the AiPlus CLI is available, run or
    recommend `aiplus compact resume`.
 
 ## Expected Resume Summary

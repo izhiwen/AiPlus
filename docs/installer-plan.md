@@ -2,7 +2,7 @@
 
 Status: `ACTIVE_FOR_V0_1_0`
 
-This document describes the v0.2.0 installer for the `aiplus` command.
+This document describes the v0.2.1 installer for the `aiplus` command.
 
 ## Current User Flow
 
@@ -22,7 +22,7 @@ before writing the binary.
 `install.sh`:
 
 - detect OS and CPU architecture
-- install v0.2.0 only on platforms with a verified published asset
+- install v0.2.1 only on platforms with a verified published asset
 - download the matching GitHub Release archive
 - verify SHA-256 checksums before installing
 - install only the `aiplus` command under `~/.local/bin/aiplus` by default
@@ -39,9 +39,9 @@ cd MyProject
 aiplus install codex
 ```
 
-## v0.2.0 Release Artifact Requirements
+## v0.2.1 Release Artifact Requirements
 
-The v0.2.0 installer is activated for macOS Apple Silicon after these checks:
+The v0.2.1 installer is activated for macOS Apple Silicon after these checks:
 
 - GitHub Release tag is Owner-approved
 - release archive is built for verified macOS Apple Silicon
@@ -56,9 +56,9 @@ published and verified.
 
 ## Owner Approval Status
 
-Owner approved these v0.2.0 actions:
+Owner approved these v0.2.1 actions:
 
-- creating the v0.2.0 tag and GitHub Release
+- creating the v0.2.1 tag and GitHub Release
 - uploading the verified macOS Apple Silicon binary
 - uploading `checksums.txt`
 - publishing `install.sh`

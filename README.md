@@ -29,18 +29,34 @@ Then type this in the already-open Codex, Claude Code, or OpenCode session for
 that same project:
 
 ```text
-aiplus refresh
+AiPlus refresh
 ```
 
-Other explicit triggers also work:
+When you want to compact or save progress, stay in the agent session and say:
 
 ```text
-AiPlus status
-resume AiPlus
+prepare compact
+```
+
+or:
+
+```text
+save progress
+```
+
+After compact, if the agent does not reply, say:
+
+```text
+continue
+```
+
+Chinese equivalents also work:
+
+```text
 AiPlus 刷新
-刷新 AiPlus
-aiplus status
-继续 AiPlus
+帮我准备 compact
+保存进度
+继续
 ```
 
 Generic `刷新` / `refresh` should still try AiPlus first after installation. If
@@ -61,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.2.0 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.2.1 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -174,7 +190,7 @@ Then reopen the terminal or ensure `~/.local/bin` is on PATH.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.2.0 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.2.1 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
@@ -212,7 +228,7 @@ AiPlus repo." Do not type angle-bracket placeholders literally.
 
 ## Node Reference Status
 
-The legacy Node CLI is archived/reference-only at v0.2.0 and is not included in
+The legacy Node CLI is archived/reference-only at v0.2.1 and is not included in
 this public source package. It is retained in the private/local AiPlus workspace
 for behavior audits and emergency reference fixes. New CLI work should target
 Rust.
@@ -224,7 +240,7 @@ Compact commands are Rust-native. Rust runtime assets no longer install or check
 
 The AiPlus CLI does not implement publish, push, tag, release creation,
 system/global install, global config edits, telemetry, auto-update, or runtime
-network fetches. The v0.2.0 installer writes only the user-level
+network fetches. The v0.2.1 installer writes only the user-level
 `~/.local/bin/aiplus` command.
 
 Validation is structural and heuristic. It is not a safety, privacy,

@@ -1,4 +1,9 @@
 .env*
+/.aiplus/
+/.codex/
+/.claude/
+/.opencode/
+/AGENTS.md
 *key*
 *secret*
 *.pem

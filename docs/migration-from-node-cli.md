@@ -3,7 +3,7 @@
 Status: `RUST_MAINLINE`
 
 The Rust `aiplus` binary is the mainline CLI. The legacy Node CLI is
-archived/reference-only at v0.2.0 and is not included in this public source
+archived/reference-only at v0.2.1 and is not included in this public source
 package.
 
 ## What Changes
