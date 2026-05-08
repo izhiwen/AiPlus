@@ -112,9 +112,9 @@ aiplus/
   RELEASE_CHECKLIST.md
 ```
 
-The public user-facing name should be `aiplus`, matching the binary and command.
-The Rust crate package can remain `aiplus-cli` until Owner approves a package
-rename or registry strategy.
+The public user-facing product name is `AiPlus`. The repository, binary, shell
+command, and crate/package identifiers remain lowercase `aiplus`/`aiplus-cli`
+where required by command and package conventions.
 
 ## Archived Node Boundary
 

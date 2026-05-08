@@ -24,16 +24,17 @@ Use temp directories only:
 ```bash
 tmp=$(mktemp -d)
 cd "$tmp"
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- install codex
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- status
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- doctor
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- update
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- add auto-team-consultant --dry-run
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- compact init
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- compact validate
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- compact checkpoint
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- compact resume
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- uninstall --dry-run
+AIPLUS_HOME="$HOME/aiplus"
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- install codex
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- status
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- doctor
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- update
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- add auto-team-consultant --dry-run
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact init
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact validate
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact checkpoint
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- compact resume
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- uninstall --dry-run
 ```
 
 Repeat install + doctor for:
@@ -65,6 +66,7 @@ contain pending Owner gates. That is expected safety behavior.
 rg -n 'Command::new\("node"\)' crates tests docs
 find . -path './target' -prune -o -name compactctl.mjs -print
 find . -path './target' -prune -o -name .DS_Store -print
+rg -n 'AIPLUS''_SOURCE|/path/to/aiplus/target/release/aiplus' README.md README.zh-CN.md docs
 rg -n 'UNLICENSED' .
 rg -n 'Apache-2.0|LICENSE' README.md README.zh-CN.md Cargo.toml crates docs
 rg -n 'guaranteed safe|certified|compliant|secure by default|production-ready|official|endorsed|privacy guaranteed|safety approved' .

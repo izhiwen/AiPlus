@@ -67,6 +67,9 @@ This checklist prepares for Owner review. It does not approve publication.
 - [ ] Node CLI is clearly archived/reference-only.
 - [ ] Public release docs state no release has happened.
 - [ ] Owner gates are explicit.
+- [ ] Beginner README commands avoid undefined placeholders.
+- [ ] Future installer path is documented as Owner-gated until release artifacts
+      and checksums exist.
 
 ## Binary Artifact Gates
 

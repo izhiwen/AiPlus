@@ -23,7 +23,7 @@ aiplus install codex
 For local source testing:
 
 ```bash
-cd <AIPLUS_SOURCE>
+cd "$HOME/aiplus"
 cargo run -p aiplus-cli -- install codex
 ```
 

@@ -32,9 +32,10 @@ Date: 2026-05-08
 ```bash
 tmp=$(mktemp -d)
 cd "$tmp"
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- install codex
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- status
-cargo run --manifest-path <AIPLUS_SOURCE>/Cargo.toml -p aiplus-cli -- doctor
+AIPLUS_HOME="$HOME/aiplus"
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- install codex
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- status
+cargo run --manifest-path "$AIPLUS_HOME/Cargo.toml" -p aiplus-cli -- doctor
 ```
 
 ## Compact Status

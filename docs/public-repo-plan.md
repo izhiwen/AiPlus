@@ -75,6 +75,8 @@ aiplus/
 - [ ] Preserve `assets/` as bundled snapshots with provenance notes.
 - [ ] Preserve `LICENSE` and Apache-2.0 Cargo metadata.
 - [ ] Document bundled child module licenses.
+- [ ] Keep README beginner commands copy-pasteable without undefined
+      placeholders.
 - [ ] Keep archived Node reference in this local workspace or a clearly labeled
       archive location only if Owner approves moving it.
 - [ ] Re-run QA matrix after extraction.

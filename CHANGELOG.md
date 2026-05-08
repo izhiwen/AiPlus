@@ -2,6 +2,12 @@
 
 ## 0.1.3-rust-mainline
 
+- Rewrote public README and README.zh-CN beginner flow to use copy-pasteable
+  source-build commands instead of undefined `<AIPLUS_SOURCE>` placeholders.
+- Standardized human-facing product naming to `AiPlus` while keeping the
+  command, binary, repo, and crate identifiers as `aiplus`/`aiplus-cli`.
+- Added an Owner-gated installer plan for future GitHub Release binaries and
+  checksum-verifying install script.
 - Added Rust-first `aiplus` CLI workspace.
 - Added local vendored AiPlus module asset snapshot.
 - Added project-local install/update/add/status/doctor/uninstall workflows.

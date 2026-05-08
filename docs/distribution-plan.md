@@ -9,19 +9,10 @@ perform publication.
 
 Audience: Owner review and technical testers.
 
-Install path:
+Current copy-paste path from the target project:
 
 ```bash
-git clone <approved-aiplus-repo-url>
-cd aiplus
-cargo build --release
-```
-
-Then from a target project:
-
-```bash
-cd MyProject
-/path/to/aiplus/target/release/aiplus install codex
+AIPLUS_HOME="$HOME/aiplus"; test -d "$AIPLUS_HOME" || git clone https://github.com/izhiwen/aiplus.git "$AIPLUS_HOME"; (cd "$AIPLUS_HOME" && cargo build --release); "$AIPLUS_HOME/target/release/aiplus" install codex
 ```
 
 If the binary is already on PATH in a local test environment:
@@ -56,6 +47,7 @@ Owner gate before v0.1 public source:
 Planned channel: GitHub Releases with prebuilt archives and checksums.
 
 Artifacts are listed in [binary-artifact-matrix.md](binary-artifact-matrix.md).
+The installer design is listed in [installer-plan.md](installer-plan.md).
 
 Required before upload:
 
@@ -74,7 +66,7 @@ approved:
 - Homebrew tap/formula
 - `cargo install` or crates.io package, if license and packaging strategy are
   approved
-- checksum-verifying shell installer
+- checksum-verifying shell installer after Owner approval
 - npm wrapper as a compatibility bridge only, not the mainline implementation
 
 ## Update Strategy
