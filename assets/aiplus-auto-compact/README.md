@@ -198,6 +198,26 @@ upgraded conservatively by `aiplus install ...` and `aiplus update`: AiPlus back
 up the old handoff, preserves user content, and adds missing role-aware sections
 such as `Session Role`, `Workflow Level`, and `Output Contract`.
 
+## Private Profile And Secrets Boundary
+
+AiPlus may be used with a private user-level profile such as `work-with-zhiwen`
+and a Bitwarden-backed `secret-broker`. AiPlus Auto Compact must treat those as
+private runtime layers, not bundled module content.
+
+Compact handoffs, checkpoints, and savings ledgers must never store secret
+values, Bitwarden machine tokens, auth headers, provider response bodies, or raw
+profile-private material. If a compact flow needs to know whether secrets are
+available, agents should run metadata-only checks such as:
+
+```bash
+aiplus profile status
+aiplus secret-broker status
+```
+
+Secret-consuming tools should be run through `aiplus secret-broker run --
+<command...>` only for an explicit action need. Do not print resolved secret
+values in compact guidance or handoff files.
+
 If validation is blocked by a real safety problem or denied Owner gate,
 `aiplus compact checkpoint` prints `BLOCKED_DO_NOT_COMPACT` and does not create a
 normal checkpoint file by default.

@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.3.1 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -97,8 +97,45 @@ aiplus update all
 aiplus self update --dry-run
 aiplus compact savings
 aiplus pricing status
+aiplus profile status
+aiplus secret-broker status
 aiplus uninstall --dry-run
 ```
+
+## 私有用户 Profile 与 Secret Broker
+
+AiPlus 也可以安装 user-level private profile，并通过受控 broker 解析运行时
+secret，而不会把 private content 放进 public repo。
+
+```bash
+aiplus profile install work-with-zhiwen --user --dry-run
+aiplus profile install work-with-zhiwen --user --yes
+aiplus profile status
+aiplus secret-broker status
+```
+
+`work-with-zhiwen` profile 位于
+`~/.config/aiplus/profiles/work-with-zhiwen/`。它只存工作偏好和协作规则，不应包含
+API key、Bitwarden token、password、prompt transcript、project file 或 compact
+checkpoint。
+
+secret 访问统一走 `aiplus secret-broker`。支持的 alias 是 `openai`、
+`anthropic`、`gemini`、`github` 和 `cloudflare`。默认
+`aiplus secret-broker resolve <alias>` 只验证访问，不打印 secret value。需要把 key
+传给工具时，使用：
+
+```bash
+aiplus secret-broker run -- <command...>
+```
+
+AiPlus 可以读取当前进程里的 `BWS_ACCESS_TOKEN`，也可以读取由
+`aiplus secret-broker token set` 创建的 macOS Keychain entry。它不会把 Bitwarden
+machine token 存到 repo files、`.aiplus/`、`.codex/compact/`、shell profiles、
+logs、docs、compact savings ledger 或 release artifacts。
+
+installed agent guidance 支持自然语言：`work-with-zhiwen status`、
+`我的偏好生效了吗`、`secret 状态`、`检查 API key`、`API key 是否可用`。agent 应只返回
+metadata-only status，绝不暴露 secret value。
 
 ## 更新 AiPlus
 
@@ -279,7 +316,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.3.1 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.0 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

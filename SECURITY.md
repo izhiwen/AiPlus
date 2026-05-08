@@ -29,6 +29,35 @@ Code, or OpenCode configuration.
 guidance. `aiplus update all` combines self update and project update when safe.
 Project updates preserve `.codex/compact/` and the savings ledger.
 
+## Private Profiles And Secret Broker
+
+`aiplus profile install work-with-zhiwen --user --yes` writes user-level
+preference files under `~/.config/aiplus/profiles/work-with-zhiwen/`. These
+files are for collaboration preferences only and must not contain secret values,
+Bitwarden machine tokens, prompt transcripts, compact checkpoints, project file
+contents, or provider responses.
+
+`aiplus secret-broker` is the only supported secret access path. It maps approved
+aliases to Bitwarden Secrets Manager names and child-process environment
+variables:
+
+- `openai` -> `zhiwen/openai/api_key` -> `OPENAI_API_KEY`
+- `anthropic` -> `zhiwen/anthropic/api_key` -> `ANTHROPIC_API_KEY`
+- `gemini` -> `zhiwen/gemini/api_key` -> `GEMINI_API_KEY`
+- `github` -> `zhiwen/github/token` -> `GITHUB_TOKEN`
+- `cloudflare` -> `zhiwen/cloudflare/token` -> `CLOUDFLARE_API_TOKEN`
+
+By default, `resolve` does not print secret values. `run -- <command...>` injects
+approved values only into the child process environment. AiPlus may read
+`BWS_ACCESS_TOKEN` for the current process or a macOS Keychain item created by
+`aiplus secret-broker token set`; it must not store that token in plaintext repo
+files, project install files, compact files, logs, docs, or release artifacts.
+
+Secret-broker audit/status output is metadata-only: alias requested, allow/deny
+status, provider status, and timestamp-like operational context. It must never
+include raw tokens, auth headers, Bitwarden response bodies, decrypted material,
+or secret values.
+
 Savings reports are estimates based on local aggregate metrics and cached public
 pricing. They are not billing data, invoices, guaranteed savings, precise cost
 measurements, or quality proof.

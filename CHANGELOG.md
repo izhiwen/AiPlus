@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- Added user-level `work-with-zhiwen` profile commands for private
+  collaboration preferences under `~/.config/aiplus/`.
+- Added `aiplus secret-broker` with mock and Bitwarden `bws` provider paths,
+  approved alias mapping, metadata-only status/list/resolve output, and
+  child-process environment injection via `run -- <command...>`.
+- Updated installed agent guidance for natural-language profile and secret
+  status triggers while keeping secret values out of chat, logs, compact files,
+  repos, and release artifacts.
+- Preserved v0.3.1 compact savings and update semantics.
+
 ## 0.3.1
 
 - Fixed Compact Savings all-time totals so projected `prepare` and candidate

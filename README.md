@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.3.1 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.0 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -107,8 +107,46 @@ aiplus update all
 aiplus self update --dry-run
 aiplus compact savings
 aiplus pricing status
+aiplus profile status
+aiplus secret-broker status
 aiplus uninstall --dry-run
 ```
+
+## Private User Profile And Secret Broker
+
+AiPlus can also install a user-level private profile and resolve approved
+runtime secrets without putting private content into public repos.
+
+```bash
+aiplus profile install work-with-zhiwen --user --dry-run
+aiplus profile install work-with-zhiwen --user --yes
+aiplus profile status
+aiplus secret-broker status
+```
+
+The `work-with-zhiwen` profile lives under
+`~/.config/aiplus/profiles/work-with-zhiwen/`. It stores working preferences and
+collaboration rules only. It must not contain API keys, Bitwarden tokens,
+passwords, prompt transcripts, project files, or compact checkpoints.
+
+Secret access goes through `aiplus secret-broker`. Supported aliases are
+`openai`, `anthropic`, `gemini`, `github`, and `cloudflare`. By default,
+`aiplus secret-broker resolve <alias>` verifies access without printing the
+secret value. For tools that need a key, use:
+
+```bash
+aiplus secret-broker run -- <command...>
+```
+
+AiPlus may read `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain
+entry created by `aiplus secret-broker token set`. It does not store Bitwarden
+machine tokens in repo files, `.aiplus/`, `.codex/compact/`, shell profiles,
+logs, docs, compact savings ledgers, or release artifacts.
+
+Natural language mappings in installed agent guidance include `work-with-zhiwen
+status`, `我的偏好生效了吗`, `secret 状态`, `检查 API key`, and `API key 是否可用`.
+The agent should answer with short metadata-only status and never expose secret
+values.
 
 ## Updating AiPlus
 
@@ -303,7 +341,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.3.1 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.0 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

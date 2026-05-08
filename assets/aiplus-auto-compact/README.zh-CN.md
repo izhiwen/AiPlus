@@ -187,6 +187,25 @@ role-aware sections，例如 `Session Role`、`Workflow Level` 和 `Output Contr
 如果 validation 因真实安全问题或 denied Owner gate 被阻塞，`aiplus compact
 checkpoint` 会打印 `BLOCKED_DO_NOT_COMPACT`，默认不会创建普通 checkpoint file。
 
+## Private Profile 与 Secret Boundary
+
+AiPlus 可以配合 `work-with-zhiwen` 这类 private user-level profile 和
+Bitwarden-backed `secret-broker` 使用。AiPlus Auto Compact 必须把它们视为 private
+runtime layer，而不是 bundled module content。
+
+compact handoff、checkpoint 和 savings ledger 绝不能存 secret value、Bitwarden
+machine token、auth header、provider response body 或 raw profile-private
+material。如果 compact flow 需要知道 secret 是否可用，agent 应运行 metadata-only
+检查：
+
+```bash
+aiplus profile status
+aiplus secret-broker status
+```
+
+只有在明确 action need 下，才用 `aiplus secret-broker run -- <command...>` 给子进程
+注入 secret。不要在 compact guidance 或 handoff files 里打印 resolved secret value。
+
 ## 日常命令
 
 ```bash

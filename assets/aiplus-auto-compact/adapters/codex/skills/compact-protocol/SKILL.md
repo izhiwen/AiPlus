@@ -125,6 +125,14 @@ run `aiplus update`. If the user says "update the aiplus command" or
 "更新 aiplus 命令", run `aiplus self update`. Before updating, say that you will
 not edit global agent config or upload project data.
 
+If the user asks "work-with-zhiwen status", "我的偏好生效了吗", or "检查我的
+AiPlus profile", run `aiplus profile status` and keep the answer short. If the
+user asks "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用", run
+`aiplus secret-broker status` or `aiplus secret-broker doctor`. Never print,
+paste, compact, summarize, persist, or log secret values. If an explicit compact
+support action needs a key, use `aiplus secret-broker run -- <command...>` so the
+value enters only the child process environment.
+
 ## After Compact
 
 After compact, if the agent gets control automatically, or if the user says

@@ -140,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.3.1, auto-team-consultant@0.3.1]"));
+    assert!(status.contains("modules=[auto-compact@0.4.0, auto-team-consultant@0.4.0]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -935,6 +935,102 @@ fn self_update_and_update_all_are_safe_in_fake_home() {
     assert!(no_project_out.contains("SELF_UPDATE_STATUS=PASS"));
     assert!(no_project_out.contains("PROJECT_UPDATE_STATUS=NO_PROJECT"));
     assert!(no_project_out.contains("UPDATE_ALL_STATUS=PASS"));
+}
+
+#[test]
+fn user_profile_and_secret_broker_are_secret_safe() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+
+    let profile_dry = stdout(&run(
+        target,
+        &[
+            "profile",
+            "install",
+            "work-with-zhiwen",
+            "--user",
+            "--dry-run",
+        ],
+        0,
+    ));
+    assert!(profile_dry.contains("PROFILE_INSTALL_STATUS=DRY_RUN"));
+    assert!(!target
+        .join("fake-xdg/aiplus/profiles/work-with-zhiwen/profile.toml")
+        .exists());
+
+    let profile_install = stdout(&run(
+        target,
+        &["profile", "install", "work-with-zhiwen", "--user", "--yes"],
+        0,
+    ));
+    assert!(profile_install.contains("PROFILE_INSTALL_STATUS=PASS"));
+    let profile = fs::read_to_string(
+        target.join("fake-xdg/aiplus/profiles/work-with-zhiwen/AGENTS.profile.md"),
+    )
+    .unwrap();
+    assert!(profile.contains("work-with-zhiwen"));
+    assert!(profile.contains("aiplus secret-broker status"));
+    assert!(!profile.contains("BWS_ACCESS_TOKEN"));
+    assert!(!profile.contains("sk-"));
+
+    let profile_status = stdout(&run(target, &["profile", "status"], 0));
+    assert!(profile_status.contains("installed=yes"));
+    assert!(profile_status.contains("secret_values=none"));
+
+    run(target, &["install", "codex"], 0);
+    let link = stdout(&run(
+        target,
+        &["profile", "link", "work-with-zhiwen", "--project"],
+        0,
+    ));
+    assert!(link.contains("PROFILE_LINK_STATUS=PASS"));
+    let linked = fs::read_to_string(target.join(".aiplus/PROFILE.aiplus.md")).unwrap();
+    assert!(linked.contains("work-with-zhiwen"));
+    assert!(!linked.contains("sk-"));
+
+    let broker_status = stdout(&run(target, &["secret-broker", "status"], 0));
+    assert!(broker_status.contains("SECRET_BROKER_STATUS=PASS"));
+    assert!(broker_status.contains("secret_values_printed=no"));
+
+    let broker_list = stdout(&run(target, &["secret-broker", "list"], 0));
+    assert!(broker_list.contains("openai -> zhiwen/openai/api_key -> OPENAI_API_KEY"));
+    assert!(broker_list.contains("SECRET_ALIAS_STATUS=PASS"));
+    assert!(!broker_list.contains("AIPLUS_MOCK_OPENAI"));
+
+    let resolve = stdout(&run_with_env(
+        target,
+        &["secret-broker", "resolve", "openai"],
+        0,
+        &[("AIPLUS_SECRET_PROVIDER", "mock")],
+    ));
+    assert!(resolve.contains("SECRET_RESOLVE_STATUS=PASS"));
+    assert!(resolve.contains("secret_value_printed=no"));
+    assert!(!resolve.contains("AIPLUS_MOCK_OPENAI"));
+
+    let denied_print = run_with_env(
+        target,
+        &["secret-broker", "resolve", "openai", "--print"],
+        1,
+        &[("AIPLUS_SECRET_PROVIDER", "mock")],
+    );
+    assert!(stderr(&denied_print).contains("--print is disabled"));
+
+    let run_out = stdout(&run_with_env(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && echo broker-env-ok",
+        ],
+        0,
+        &[("AIPLUS_SECRET_PROVIDER", "mock")],
+    ));
+    assert!(run_out.contains("broker-env-ok"));
+    assert!(!run_out.contains("AIPLUS_MOCK_OPENAI"));
 }
 
 fn setup_fake_env(target: &Path) {

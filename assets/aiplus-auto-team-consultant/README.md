@@ -187,6 +187,26 @@ Default mapping is `aiplus update all`. More specific mappings:
 Before running updates, the agent should state that it will not edit global agent
 config or upload project data.
 
+For private profile and secret status, users can say:
+
+```text
+work-with-zhiwen status
+secret status
+check API keys
+```
+
+The agent should map those to metadata-only checks such as
+`aiplus profile status`, `aiplus secret-broker status`, or
+`aiplus secret-broker doctor`. Auto Team Consultant may use a user-level profile
+as lower priority than the current Owner message and project rules, but it must
+not copy private profile material into public docs, task packets, compact files,
+or result packets.
+
+If a task explicitly needs a key, the agent should prefer
+`aiplus secret-broker run -- <command...>` so approved values enter only the
+child process environment. It must never print, paste, log, summarize, compact,
+or persist secret values.
+
 ## Roles In Plain Language
 
 - `Advisor`: gives direct advice, prompt review, strategy, or CEO-ready handoff

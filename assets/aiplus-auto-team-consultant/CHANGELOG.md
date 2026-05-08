@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added natural-language routing for `work-with-zhiwen` profile status and
+  `aiplus secret-broker` metadata-only secret status checks.
+- Clarified that task cards, result packets, review findings, pressure-tests,
+  and final answers must never print, paste, log, summarize, compact, or persist
+  secret values.
+
 ## v0.3.1 trust and update alignment
 
 - Added natural-language update routing for `aiplus update all`,

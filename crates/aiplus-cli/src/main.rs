@@ -3,15 +3,15 @@ use clap::{ArgAction, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.3.1";
-const RELEASE_TAG: &str = "v0.3.1";
+const VERSION: &str = "0.4.0";
+const RELEASE_TAG: &str = "v0.4.0";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -21,13 +21,16 @@ const PRICING_CATALOG_URL: &str =
 const MANAGED_BEGIN: &str = "<!-- BEGIN AIPLUS MANAGED BLOCK -->";
 const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
+const PERSONAL_PROFILE: &str = "work-with-zhiwen";
+const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
+const SECRET_BROKER_ACCOUNT: &str = "zhiwen-local-aiplus-agent";
 
 #[derive(Parser)]
 #[command(
     name = "aiplus",
     version = VERSION,
     disable_version_flag = true,
-    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` and `aiplus self update`\n  may fetch public release/pricing data. No npm publish, global install, telemetry,\n  user-data upload, or global config edits are implemented."
+    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
 )]
 struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue)]
@@ -94,6 +97,27 @@ enum Commands {
     Pricing {
         subcommand: Option<String>,
     },
+    Profile {
+        subcommand: Option<String>,
+        profile: Option<String>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        user: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        project: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        yes: bool,
+    },
+    #[command(name = "secret-broker")]
+    SecretBroker {
+        subcommand: Option<String>,
+        arg: Option<String>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        print: bool,
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     #[command(name = "self")]
     SelfCommand {
         subcommand: Option<String>,
@@ -148,7 +172,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.3.1",
+        version: "0.4.0",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -159,7 +183,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.3.1",
+        version: "0.4.0",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -466,6 +490,20 @@ fn run(command: Commands) -> Result<()> {
             force,
         } => command_compact(subcommand, &level, json, force),
         Commands::Pricing { subcommand } => command_pricing(subcommand),
+        Commands::Profile {
+            subcommand,
+            profile,
+            user,
+            project,
+            dry_run,
+            yes,
+        } => command_profile(subcommand, profile, user, project, dry_run, yes),
+        Commands::SecretBroker {
+            subcommand,
+            arg,
+            print,
+            command,
+        } => command_secret_broker(subcommand, arg, print, command),
         Commands::SelfCommand {
             subcommand,
             dry_run,
@@ -476,7 +514,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. `aiplus pricing update` and `aiplus self update`\n  may fetch public release/pricing data. No npm publish, global install, telemetry,\n  user-data upload, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  profile status|install|update|link|disable|doctor\n  secret-broker status|doctor|list|resolve|run|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1248,6 +1286,619 @@ fn command_pricing(subcommand: Option<String>) -> Result<()> {
             process::exit(2);
         }
     }
+}
+
+fn command_profile(
+    subcommand: Option<String>,
+    profile: Option<String>,
+    user: bool,
+    project: bool,
+    dry_run: bool,
+    yes: bool,
+) -> Result<()> {
+    match subcommand.as_deref() {
+        Some("status") => profile_status(),
+        Some("install") => profile_install(profile, user, dry_run, yes),
+        Some("update") => profile_install(profile, user, false, true),
+        Some("link") => profile_link(profile, project),
+        Some("disable") => profile_disable(profile, user, dry_run),
+        Some("doctor") => profile_doctor(),
+        _ => {
+            println!("Usage: aiplus profile status|install|update|link|disable|doctor");
+            process::exit(2);
+        }
+    }
+}
+
+fn profile_status() -> Result<()> {
+    let dir = profile_dir(PERSONAL_PROFILE)?;
+    println!("PROFILE_STATUS");
+    println!("profile={PERSONAL_PROFILE}");
+    println!("scope=user");
+    println!("config_dir={}", dir.display());
+    println!("installed={}", yes_no(dir.join("profile.toml").exists()));
+    println!(
+        "agents_profile={}",
+        yes_no(dir.join("AGENTS.profile.md").exists())
+    );
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    println!("PROFILE_STATUS=PASS");
+    Ok(())
+}
+
+fn profile_install(profile: Option<String>, user: bool, dry_run: bool, yes: bool) -> Result<()> {
+    require_profile_name(profile)?;
+    if !user {
+        return Err(CliError::new(1, "ERROR profile install currently requires --user").into());
+    }
+    let dir = profile_dir(PERSONAL_PROFILE)?;
+    println!("PROFILE_INSTALL");
+    println!("profile={PERSONAL_PROFILE}");
+    println!("scope=user");
+    println!("target_dir={}", dir.display());
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    if dry_run {
+        println!("DRY_RUN=YES");
+        println!("PROFILE_INSTALL_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if !yes {
+        return Err(CliError::new(1, "ERROR profile install requires --yes or --dry-run").into());
+    }
+    fs::create_dir_all(&dir)?;
+    write_file_atomic(
+        &dir.join("profile.toml"),
+        work_with_zhiwen_profile_toml().as_bytes(),
+    )?;
+    write_file_atomic(
+        &dir.join("AGENTS.profile.md"),
+        work_with_zhiwen_agents_profile().as_bytes(),
+    )?;
+    println!("PROFILE_INSTALL_STATUS=PASS");
+    Ok(())
+}
+
+fn profile_link(profile: Option<String>, project: bool) -> Result<()> {
+    require_profile_name(profile)?;
+    if !project {
+        return Err(CliError::new(1, "ERROR profile link currently requires --project").into());
+    }
+    let root = std::env::current_dir()?;
+    let aiplus_dir = root.join(".aiplus");
+    if !aiplus_dir.exists() {
+        return Err(CliError::new(1, "ERROR no project AiPlus install found").into());
+    }
+    let profile_ref = ".aiplus/PROFILE.aiplus.md";
+    let body = format!(
+        "# AiPlus Project Profile Link\n\nThis project may use the user-level `{PERSONAL_PROFILE}` profile when available.\n\nLoad order:\n1. Current Owner message\n2. Project rules\n3. User profile at `~/.config/aiplus/profiles/{PERSONAL_PROFILE}/AGENTS.profile.md`\n4. AiPlus generic guidance\n\nSecret values must not be loaded from the profile. Use `aiplus secret-broker` only for explicit secret actions.\n"
+    );
+    write_file_atomic(&root.join(profile_ref), body.as_bytes())?;
+    println!("PROFILE_LINK");
+    println!("profile={PERSONAL_PROFILE}");
+    println!("scope=project");
+    println!("path={profile_ref}");
+    println!("secret_values=none");
+    println!("PROFILE_LINK_STATUS=PASS");
+    Ok(())
+}
+
+fn profile_disable(profile: Option<String>, user: bool, dry_run: bool) -> Result<()> {
+    require_profile_name(profile)?;
+    if !user {
+        return Err(CliError::new(1, "ERROR profile disable currently requires --user").into());
+    }
+    let marker = profile_dir(PERSONAL_PROFILE)?.join("disabled");
+    println!("PROFILE_DISABLE");
+    println!("profile={PERSONAL_PROFILE}");
+    println!("scope=user");
+    println!("path={}", marker.display());
+    if dry_run {
+        println!("DRY_RUN=YES");
+        println!("PROFILE_DISABLE_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if let Some(parent) = marker.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    write_file_atomic(&marker, b"disabled=true\n")?;
+    println!("PROFILE_DISABLE_STATUS=PASS");
+    Ok(())
+}
+
+fn profile_doctor() -> Result<()> {
+    let dir = profile_dir(PERSONAL_PROFILE)?;
+    let installed = dir.join("profile.toml").exists() && dir.join("AGENTS.profile.md").exists();
+    println!("PROFILE_DOCTOR");
+    println!("profile={PERSONAL_PROFILE}");
+    println!("installed={}", yes_no(installed));
+    println!("private_content_in_public_assets=not_checked_by_command");
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    println!(
+        "PROFILE_DOCTOR_STATUS={}",
+        if installed { "PASS" } else { "NEEDS_INSTALL" }
+    );
+    Ok(())
+}
+
+fn command_secret_broker(
+    subcommand: Option<String>,
+    arg: Option<String>,
+    print_secret: bool,
+    command: Vec<String>,
+) -> Result<()> {
+    match subcommand.as_deref() {
+        Some("status") => secret_broker_status(),
+        Some("doctor") => secret_broker_doctor(),
+        Some("list") => secret_broker_list(),
+        Some("resolve") => secret_broker_resolve(arg, print_secret),
+        Some("run") => secret_broker_run(command),
+        Some("token") => secret_broker_token(arg),
+        _ => {
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run -- <command...>|token set|delete");
+            process::exit(2);
+        }
+    }
+}
+
+fn secret_broker_status() -> Result<()> {
+    let source = token_source();
+    println!("SECRET_BROKER_STATUS");
+    println!("provider={}", provider_name());
+    println!("bitwarden_project=zhiwen-agent-secrets");
+    println!("machine_account={SECRET_BROKER_ACCOUNT}");
+    println!("token_source={source}");
+    println!("aliases={}", secret_aliases().len());
+    println!("secret_values_printed=no");
+    println!("secret_values_persisted=no");
+    println!("audit_log=metadata_only");
+    println!("SECRET_BROKER_STATUS=PASS");
+    Ok(())
+}
+
+fn secret_broker_doctor() -> Result<()> {
+    println!("SECRET_BROKER_DOCTOR");
+    println!("provider={}", provider_name());
+    println!("bws_cli={}", yes_no(command_available("bws")));
+    println!("token_source={}", token_source());
+    println!("keychain_supported={}", yes_no(cfg!(target_os = "macos")));
+    println!("secret_values_printed=no");
+    println!("SECRET_BROKER_DOCTOR_STATUS=PASS");
+    Ok(())
+}
+
+fn secret_broker_list() -> Result<()> {
+    println!("SECRET_BROKER_LIST");
+    for alias in secret_aliases() {
+        println!(
+            "{} -> {} -> {}",
+            alias.alias, alias.bitwarden_name, alias.env_var
+        );
+    }
+    println!("secret_values_printed=no");
+    println!("SECRET_ALIAS_STATUS=PASS");
+    Ok(())
+}
+
+fn secret_broker_resolve(alias: Option<String>, print_secret: bool) -> Result<()> {
+    if print_secret
+        && std::env::var("AIPLUS_SECRET_BROKER_ALLOW_PRINT")
+            .ok()
+            .as_deref()
+            != Some("1")
+    {
+        return Err(CliError::new(1, "ERROR --print is disabled by default").into());
+    }
+    let alias = resolve_alias(alias)?;
+    let provider = load_secret_provider()?;
+    let value = provider.resolve(alias)?;
+    println!("SECRET_RESOLVE");
+    println!("alias={}", alias.alias);
+    println!("env_var={}", alias.env_var);
+    println!("provider_status=PASS");
+    println!("secret_value_printed={}", yes_no(print_secret));
+    if print_secret {
+        println!("{}", value.expose_for_explicit_print());
+    }
+    println!("SECRET_RESOLVE_STATUS=PASS");
+    Ok(())
+}
+
+fn secret_broker_run(command: Vec<String>) -> Result<()> {
+    if command.is_empty() {
+        return Err(CliError::new(2, "ERROR secret-broker run requires a command after --").into());
+    }
+    let provider = load_secret_provider()?;
+    let mut child = Command::new(&command[0]);
+    if command.len() > 1 {
+        child.args(&command[1..]);
+    }
+    for alias in secret_aliases() {
+        let value = provider.resolve(alias)?;
+        child.env(alias.env_var, value.value);
+    }
+    let status = child.status().context("run child command")?;
+    if !status.success() {
+        return Err(CliError::new(status.code().unwrap_or(1), "ERROR child command failed").into());
+    }
+    Ok(())
+}
+
+fn secret_broker_token(action: Option<String>) -> Result<()> {
+    match action.as_deref() {
+        Some("set") => token_set(),
+        Some("delete") => token_delete(),
+        _ => {
+            println!("Usage: aiplus secret-broker token set|delete");
+            process::exit(2);
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SecretAlias {
+    alias: &'static str,
+    bitwarden_name: &'static str,
+    env_var: &'static str,
+}
+
+struct SecretValue {
+    value: String,
+}
+
+impl SecretValue {
+    fn expose_for_explicit_print(self) -> String {
+        self.value
+    }
+}
+
+trait SecretsProvider {
+    fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue>;
+}
+
+struct MockProvider;
+
+impl SecretsProvider for MockProvider {
+    fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue> {
+        Ok(SecretValue {
+            value: format!("AIPLUS_MOCK_{}", alias.alias.to_ascii_uppercase()),
+        })
+    }
+}
+
+struct BwsProvider {
+    token: String,
+}
+
+impl SecretsProvider for BwsProvider {
+    fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue> {
+        let output = Command::new("bws")
+            .args(["secret", "get", alias.bitwarden_name, "--output", "json"])
+            .env("BWS_ACCESS_TOKEN", &self.token)
+            .output()
+            .context("run bws secret get")?;
+        if !output.status.success() {
+            return Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=unavailable_or_denied",
+                    alias.alias
+                ),
+            )
+            .into());
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
+            CliError::new(
+                1,
+                "SECRET_RESOLVE_STATUS=FAIL provider=bws reason=invalid_json",
+            )
+        })?;
+        let value = json.get("value").and_then(|v| v.as_str()).ok_or_else(|| {
+            CliError::new(
+                1,
+                "SECRET_RESOLVE_STATUS=FAIL provider=bws reason=missing_value",
+            )
+        })?;
+        Ok(SecretValue {
+            value: value.to_string(),
+        })
+    }
+}
+
+fn secret_aliases() -> &'static [SecretAlias] {
+    &[
+        SecretAlias {
+            alias: "openai",
+            bitwarden_name: "zhiwen/openai/api_key",
+            env_var: "OPENAI_API_KEY",
+        },
+        SecretAlias {
+            alias: "anthropic",
+            bitwarden_name: "zhiwen/anthropic/api_key",
+            env_var: "ANTHROPIC_API_KEY",
+        },
+        SecretAlias {
+            alias: "gemini",
+            bitwarden_name: "zhiwen/gemini/api_key",
+            env_var: "GEMINI_API_KEY",
+        },
+        SecretAlias {
+            alias: "github",
+            bitwarden_name: "zhiwen/github/token",
+            env_var: "GITHUB_TOKEN",
+        },
+        SecretAlias {
+            alias: "cloudflare",
+            bitwarden_name: "zhiwen/cloudflare/token",
+            env_var: "CLOUDFLARE_API_TOKEN",
+        },
+    ]
+}
+
+fn resolve_alias(alias: Option<String>) -> Result<&'static SecretAlias> {
+    let alias = alias.ok_or_else(|| CliError::new(2, "ERROR missing secret alias"))?;
+    secret_aliases()
+        .iter()
+        .find(|item| item.alias == alias)
+        .ok_or_else(|| CliError::new(1, format!("SECRET_ALIAS_NOT_ALLOWED {alias}")).into())
+}
+
+fn load_secret_provider() -> Result<Box<dyn SecretsProvider>> {
+    if provider_name() == "mock" {
+        return Ok(Box::new(MockProvider));
+    }
+    let token = get_bws_token()?;
+    Ok(Box::new(BwsProvider { token }))
+}
+
+fn provider_name() -> String {
+    std::env::var("AIPLUS_SECRET_PROVIDER").unwrap_or_else(|_| "bws".to_string())
+}
+
+fn token_source() -> &'static str {
+    if std::env::var("BWS_ACCESS_TOKEN").is_ok() {
+        "env"
+    } else if read_keychain_token().ok().flatten().is_some() {
+        "keychain"
+    } else {
+        "not_configured"
+    }
+}
+
+fn get_bws_token() -> Result<String> {
+    if let Ok(token) = std::env::var("BWS_ACCESS_TOKEN") {
+        if !token.trim().is_empty() {
+            return Ok(token);
+        }
+    }
+    if let Some(token) = read_keychain_token()? {
+        return Ok(token);
+    }
+    Err(CliError::new(
+        1,
+        "SECRET_BROKER_TOKEN_MISSING set BWS_ACCESS_TOKEN for this session or run `aiplus secret-broker token set`",
+    )
+    .into())
+}
+
+fn token_set() -> Result<()> {
+    let mut token = String::new();
+    io::stdin().read_to_string(&mut token)?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(CliError::new(1, "ERROR no token received on stdin").into());
+    }
+    write_keychain_token(token)?;
+    println!("SECRET_BROKER_TOKEN_SET");
+    println!("token_storage=keychain");
+    println!("secret_value_printed=no");
+    println!("TOKEN_SET_STATUS=PASS");
+    Ok(())
+}
+
+fn token_delete() -> Result<()> {
+    delete_keychain_token()?;
+    println!("SECRET_BROKER_TOKEN_DELETE");
+    println!("token_storage=keychain");
+    println!("TOKEN_DELETE_STATUS=PASS");
+    Ok(())
+}
+
+fn read_keychain_token() -> Result<Option<String>> {
+    if !cfg!(target_os = "macos") {
+        return Ok(None);
+    }
+    let output = Command::new("security")
+        .args([
+            "find-generic-password",
+            "-a",
+            SECRET_BROKER_ACCOUNT,
+            "-s",
+            SECRET_BROKER_SERVICE,
+            "-w",
+        ])
+        .output()
+        .context("read macOS keychain")?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if token.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(token))
+    }
+}
+
+fn write_keychain_token(token: &str) -> Result<()> {
+    if !cfg!(target_os = "macos") {
+        return Err(CliError::new(
+            1,
+            "ERROR keychain token storage is only implemented on macOS",
+        )
+        .into());
+    }
+    let status = Command::new("security")
+        .args([
+            "add-generic-password",
+            "-U",
+            "-a",
+            SECRET_BROKER_ACCOUNT,
+            "-s",
+            SECRET_BROKER_SERVICE,
+            "-w",
+            token,
+        ])
+        .status()
+        .context("write macOS keychain")?;
+    if !status.success() {
+        return Err(CliError::new(1, "TOKEN_SET_STATUS=FAIL reason=keychain_write_failed").into());
+    }
+    Ok(())
+}
+
+fn delete_keychain_token() -> Result<()> {
+    if !cfg!(target_os = "macos") {
+        return Err(CliError::new(
+            1,
+            "ERROR keychain token storage is only implemented on macOS",
+        )
+        .into());
+    }
+    let _ = Command::new("security")
+        .args([
+            "delete-generic-password",
+            "-a",
+            SECRET_BROKER_ACCOUNT,
+            "-s",
+            SECRET_BROKER_SERVICE,
+        ])
+        .status();
+    Ok(())
+}
+
+fn command_available(name: &str) -> bool {
+    Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|output| {
+            output.status.success() || !output.stdout.is_empty() || !output.stderr.is_empty()
+        })
+        .unwrap_or(false)
+}
+
+fn require_profile_name(profile: Option<String>) -> Result<()> {
+    match profile.as_deref() {
+        Some(PERSONAL_PROFILE) => Ok(()),
+        Some(other) => Err(CliError::new(1, format!("PROFILE_NOT_AVAILABLE {other}")).into()),
+        None => Err(CliError::new(2, "ERROR missing profile name").into()),
+    }
+}
+
+fn profile_dir(profile: &str) -> Result<PathBuf> {
+    Ok(config_home()?.join("aiplus").join("profiles").join(profile))
+}
+
+fn config_home() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("XDG_CONFIG_HOME") {
+        if !path.trim().is_empty() {
+            return Ok(PathBuf::from(path));
+        }
+    }
+    let home = std::env::var("HOME").context("HOME is required")?;
+    Ok(PathBuf::from(home).join(".config"))
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+fn write_file_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let temp = path.with_extension(format!("tmp-{}", epoch_millis()));
+    fs::write(&temp, bytes)?;
+    fs::rename(temp, path)?;
+    Ok(())
+}
+
+fn work_with_zhiwen_profile_toml() -> String {
+    r#"# AiPlus private user profile metadata.
+# This file intentionally contains preferences only, never secret values.
+
+name = "work-with-zhiwen"
+version = "0.1.0"
+owner = "Zhiwen"
+secret_values = "never-store"
+
+[priority]
+current_owner_message = 1
+project_rules = 2
+user_profile = 3
+aiplus_generic_guidance = 4
+model_defaults = 5
+
+[defaults]
+owner_facing_language = "Chinese"
+public_docs_language = "English-first"
+communication_style = "concise, conclusion-first, evidence-based"
+
+[owner_gates]
+secret_values = "never print or persist"
+global_agent_config = "ask before changing"
+publication = "requires explicit Owner approval"
+"#
+    .to_string()
+}
+
+fn work_with_zhiwen_agents_profile() -> String {
+    r#"# work-with-zhiwen
+
+This is a user-level AiPlus profile. It stores collaboration preferences only.
+It must not contain API keys, tokens, passwords, secret values, private logs, or
+Bitwarden machine credentials.
+
+Load order:
+1. Current Owner message
+2. Project rules such as AGENTS.md, CLAUDE.md, or OpenCode project rules
+3. work-with-zhiwen profile
+4. AiPlus generic guidance
+5. Model defaults
+
+Default Owner-facing style:
+- Use concise Chinese for progress and final summaries.
+- Keep commands, paths, schema keys, status enums, repo names, model names, and
+  secret aliases in English.
+- Report decisions, evidence, blockers, and next actions only.
+
+Natural language mappings:
+- "我的偏好生效了吗", "work-with-zhiwen status", or "检查我的 AiPlus profile":
+  run `aiplus profile status` and summarize briefly.
+- "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用":
+  run `aiplus secret-broker status` or `aiplus secret-broker doctor`.
+- "update AiPlus", "升级 AiPlus", or "更新 AiPlus": run `aiplus update all`.
+- "保存进度", "准备 compact", or "做个交接": run `aiplus compact prepare`.
+- "继续", "resume", "refresh", or "刷新" after compact: run
+  `aiplus compact resume` when appropriate.
+
+Secret handling:
+- Use `aiplus secret-broker run -- <command>` for explicit runtime secret needs.
+- Do not print, log, persist, compact, summarize, or paste secret values.
+- If secret access is unavailable, report one exact fix command.
+
+Session-local opt out:
+- If the Owner says "本次忽略我的偏好", "关闭 work-with-zhiwen", or "只看项目规则",
+  ignore this profile for the current session.
+"#
+    .to_string()
 }
 
 fn command_self(subcommand: Option<String>, dry_run: bool, yes: bool) -> Result<()> {
@@ -3495,7 +4146,7 @@ fn collect_version_review_items(
 
 fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut Vec<String>) {
     let version = actual.unwrap_or("").trim();
-    if !["0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1"].contains(&version) {
+    if !["0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0"].contains(&version) {
         review_items.push(format!(
             "{label} unsupported or unknown: {}",
             if version.is_empty() {
@@ -3508,7 +4159,10 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
 }
 
 fn is_supported_manifest_schema(version: &str) -> bool {
-    matches!(version, "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1")
+    matches!(
+        version,
+        "0.1.3" | "0.2.0" | "0.2.1" | "0.3.0" | "0.3.1" | "0.4.0"
+    )
 }
 
 fn check_policy_array(
@@ -3898,6 +4552,8 @@ How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", "checkpoint this", "帮我准备 compact", or "保存进度", I will run aiplus compact prepare.
 - If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
+- If you ask "work-with-zhiwen status", "我的偏好生效了吗", or "检查我的 AiPlus profile", I will run aiplus profile status.
+- If you ask "secret status", "检查 API key", "刷新 secret", or "API key 是否可用", I will run aiplus secret-broker status or doctor without printing values.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -3919,6 +4575,8 @@ Chinese response shape when the user uses Chinese such as `刷新` or `AiPlus �
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
+- 如果你问“我的偏好生效了吗”或“检查我的 AiPlus profile”，我会运行 aiplus profile status。
+- 如果你问“secret 状态”“检查 API key”或“API key 是否可用”，我会运行 aiplus secret-broker status 或 doctor，不打印 secret value。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
@@ -3975,6 +4633,38 @@ global agent config or upload project data.
 Chinese:
 
 我会更新 aiplus 命令和当前项目里的 AiPlus 模块；不会修改全局 agent 配置，也不会上传项目数据。
+
+## User Profile
+
+If `work-with-zhiwen` is installed, load it after project rules and before
+generic AiPlus guidance:
+
+`~/.config/aiplus/profiles/work-with-zhiwen/AGENTS.profile.md`
+
+Natural language profile mapping:
+
+- "我的偏好生效了吗", "work-with-zhiwen status", or "检查我的 AiPlus profile":
+  run `aiplus profile status`.
+- "本次忽略我的偏好", "关闭 work-with-zhiwen", or "只看项目规则":
+  ignore the user-level profile for this session.
+
+Do not copy profile content into public repos or compact files. Do not treat the
+profile as approval to override project rules or the current Owner message.
+
+## Secret Broker
+
+Natural language secret mapping:
+
+- "secret 状态", "看看 secret", "检查 API key", "API key 是否可用",
+  "刷新 secret", or "更新 secret": run `aiplus secret-broker status` or
+  `aiplus secret-broker doctor`.
+- When an explicit action needs a key, prefer `aiplus secret-broker run --
+  <command...>` so the value enters only the child process environment.
+
+Never print, paste, log, summarize, compact, or persist secret values. Do not run
+`aiplus secret-broker resolve <alias> --print` in normal agent guidance. If a
+secret is unavailable, report one exact fix command and continue without exposing
+values.
 
 ## Auto Compact
 
@@ -4084,6 +4774,8 @@ How I will use it:
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", or "checkpoint this", I will run aiplus compact prepare.
 - If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
+- If you ask "work-with-zhiwen status" or "我的偏好生效了吗", I will run aiplus profile status.
+- If you ask "secret status", "检查 API key", or "API key 是否可用", I will run aiplus secret-broker status or doctor without printing values.
 - After compact, if I do not reply, send: continue
 - Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.
 
@@ -4105,6 +4797,8 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
+- 如果你问“我的偏好生效了吗”或“检查我的 AiPlus profile”，我会运行 aiplus profile status。
+- 如果你问“secret 状态”“检查 API key”或“API key 是否可用”，我会运行 aiplus secret-broker status 或 doctor，不打印 secret value。
 - compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。
 - CEO Prompt / review / brainstorm 时使用 Auto Team Consultant
 
@@ -4132,6 +4826,18 @@ Update mapping: "update AiPlus", "update everything", "升级 AiPlus", or
 "只更新这个项目的 AiPlus" means run `aiplus update`. "更新 aiplus 命令" means run
 `aiplus self update`. Say first: I will update the aiplus CLI and this project's
 AiPlus modules. I will not edit global agent config or upload project data.
+
+Profile mapping: "我的偏好生效了吗", "work-with-zhiwen status", or "检查我的
+AiPlus profile" means run `aiplus profile status`. Load
+~/.config/aiplus/profiles/work-with-zhiwen/AGENTS.profile.md only after project
+rules. If the Owner says "本次忽略我的偏好", "关闭 work-with-zhiwen", or
+"只看项目规则", ignore that profile for this session.
+
+Secret mapping: "secret 状态", "看看 secret", "检查 API key", "API key 是否可用",
+"刷新 secret", or "更新 secret" means run `aiplus secret-broker status` or
+`aiplus secret-broker doctor`. Never print, paste, log, compact, or persist
+secret values. Use `aiplus secret-broker run -- <command...>` only for explicit
+runtime secret needs.
 "#
     )
 }

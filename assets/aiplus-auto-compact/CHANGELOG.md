@@ -4,6 +4,11 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added guidance for user-level private profiles and `aiplus secret-broker`
+  metadata-only checks.
+- Clarified that compact handoffs, checkpoints, and savings ledgers must never
+  store secret values, Bitwarden tokens, auth headers, provider response bodies,
+  or raw profile-private material.
 - Added v0.3.1 update guidance for `aiplus self update`, `aiplus update`, and
   `aiplus update all`.
 - Clarified compact savings event semantics: prepare is projected, checkpoint is

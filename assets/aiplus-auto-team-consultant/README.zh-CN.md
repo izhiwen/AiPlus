@@ -180,6 +180,24 @@ AiPlus update 场景下，用户可以说：
 
 运行 update 前，agent 应说明不会修改全局 agent 配置，也不会上传项目数据。
 
+private profile 和 secret status 场景下，用户可以说：
+
+```text
+work-with-zhiwen status
+secret 状态
+检查 API key
+```
+
+agent 应映射到 metadata-only checks，例如 `aiplus profile status`、
+`aiplus secret-broker status` 或 `aiplus secret-broker doctor`。Auto Team
+Consultant 可以使用 user-level profile，但优先级必须低于当前 Owner message 和项目规
+则，而且不能把 private profile material 复制到 public docs、task packets、compact
+files 或 result packets。
+
+如果任务明确需要 key，agent 应优先使用 `aiplus secret-broker run -- <command...>`，
+让 approved values 只进入 child process environment。绝不能 print、paste、log、
+summarize、compact 或 persist secret values。
+
 ## 四种角色
 
 - `Advisor`：直接建议、prompt review、策略判断、CEO-ready handoff
