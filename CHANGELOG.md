@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.4.8
+
+- Rejected empty, whitespace-only, and `PENDING_OWNER_INPUT_DO_NOT_USE`
+  Bitwarden secret values as not configured.
+- Preserved metadata-only output while returning
+  `reason=secret_placeholder_or_empty` for placeholder or empty requested
+  aliases.
+- Kept unrequested placeholder aliases from blocking best-effort
+  `secret-broker run -- <command...>` and selective runs for valid aliases.
+
 ## 0.4.7
 
 - Added selective `secret-broker run` injection with `--aliases a,b` and

@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.7";
-const RELEASE_TAG: &str = "v0.4.7";
+const VERSION: &str = "0.4.8";
+const RELEASE_TAG: &str = "v0.4.8";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -1738,12 +1738,13 @@ fn secret_broker_run(
                 child.env(&alias.env_var, value.value);
                 injected_env.push(alias.env_var);
             }
-            Err(_) if requested_mode => {
+            Err(error) if requested_mode => {
                 return Err(CliError::new(
                     1,
                     format!(
-                        "SECRET_BROKER_RUN_STATUS=FAIL alias={} reason=resolve_failed",
-                        alias.alias
+                        "SECRET_BROKER_RUN_STATUS=FAIL alias={} reason={}",
+                        alias.alias,
+                        secret_error_reason(&error)
                     ),
                 )
                 .into());
@@ -1865,9 +1866,13 @@ impl SecretsProvider for BwsProvider {
         let value = json.get("value").and_then(|v| v.as_str()).ok_or_else(|| {
             CliError::new(
                 1,
-                "SECRET_RESOLVE_STATUS=FAIL provider=bws reason=missing_value",
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=missing_value",
+                    alias.alias
+                ),
             )
         })?;
+        validate_secret_value(&alias.alias, value)?;
         Ok(SecretValue {
             value: value.to_string(),
         })
@@ -2123,6 +2128,35 @@ fn provider_metadata(alias: &str) -> Option<ProviderMetadata> {
         }),
         _ => None,
     }
+}
+
+fn validate_secret_value(alias: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() || value.trim() == "PENDING_OWNER_INPUT_DO_NOT_USE" {
+        return Err(CliError::new(
+            1,
+            format!(
+                "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=secret_placeholder_or_empty",
+                alias
+            ),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn secret_error_reason(error: &anyhow::Error) -> String {
+    let message = error.to_string();
+    if let Some(reason) = message.split("reason=").nth(1) {
+        let reason = reason
+            .split_whitespace()
+            .next()
+            .unwrap_or("resolve_failed")
+            .trim_matches(|c: char| c == ',' || c == ';');
+        if !reason.is_empty() {
+            return reason.to_string();
+        }
+    }
+    "resolve_failed".to_string()
 }
 
 fn load_secret_provider() -> Result<Box<dyn SecretsProvider>> {
@@ -4681,7 +4715,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     let version = actual.unwrap_or("").trim();
     if ![
         "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
-        "0.4.5", "0.4.6", "0.4.7",
+        "0.4.5", "0.4.6", "0.4.7", "0.4.8",
     ]
     .contains(&version)
     {
@@ -4712,6 +4746,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.5"
             | "0.4.6"
             | "0.4.7"
+            | "0.4.8"
     )
 }
 

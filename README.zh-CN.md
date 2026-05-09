@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.7 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.8 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -147,7 +147,8 @@ aiplus secret-broker run --aliases openai,kimi,deepseek -- <command...>
 也可以使用 `--alias openai --alias kimi`。如果省略 `--aliases`，AiPlus 会使用
 best-effort compatibility mode：注入能解析的 aliases，跳过不可用的 optional aliases，
 这样没填的 placeholder provider 不会阻塞无关命令。provider-specific 或敏感操作建议显
-式使用 `--aliases`。
+式使用 `--aliases`。Bitwarden value 如果是 empty、whitespace-only 或
+`PENDING_OWNER_INPUT_DO_NOT_USE`，AiPlus 会视为未配置，并且不会注入。
 
 child command 会在环境变量里收到 approved secrets。AiPlus 只打印
 `injected_env=[...]`、`skipped_aliases=[...]`、`secret_values_printed=no` 等
@@ -360,7 +361,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.7 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.8 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

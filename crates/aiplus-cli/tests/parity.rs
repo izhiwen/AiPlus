@@ -1299,6 +1299,138 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
 }
 
 #[test]
+fn bws_resolver_rejects_placeholder_and_empty_values() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let profile_source = target.join("profile-source");
+    fs::create_dir(&profile_source).unwrap();
+    fs::write(
+        profile_source.join("profile.toml"),
+        "name = \"example-private-profile\"\n",
+    )
+    .unwrap();
+    fs::write(profile_source.join("AGENTS.profile.md"), "# example\n").unwrap();
+    fs::write(
+        profile_source.join("secret-aliases.tsv"),
+        "openai\tprivate/openai/api_key\tOPENAI_API_KEY\nxai\tprivate/xai/api_key\tXAI_API_KEY\nempty\tprivate/empty/api_key\tEMPTY_API_KEY\nblank\tprivate/blank/api_key\tBLANK_API_KEY\n",
+    )
+    .unwrap();
+    run(
+        target,
+        &[
+            "profile",
+            "install",
+            "example-private-profile",
+            "--user",
+            "--source",
+            profile_source.to_str().unwrap(),
+            "--yes",
+        ],
+        0,
+    );
+    let fake_bin = target.join("fake-bin");
+    fs::create_dir(&fake_bin).unwrap();
+    write_fake_bws(&fake_bin.join("bws"), "placeholder");
+    let path_value = format!("{}:/usr/bin:/bin", fake_bin.display());
+
+    for alias in ["xai", "empty", "blank"] {
+        let resolve = run_with_env_and_path(
+            target,
+            &["secret-broker", "resolve", alias],
+            1,
+            &[
+                ("BWS_ACCESS_TOKEN", "fixture-token"),
+                ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+            ],
+            Path::new(&path_value),
+        );
+        let err = stderr(&resolve);
+        assert!(err.contains(&format!(
+            "SECRET_RESOLVE_STATUS=FAIL alias={alias} provider=bws reason=secret_placeholder_or_empty"
+        )));
+        assert!(!err.contains("PENDING_OWNER_INPUT_DO_NOT_USE"));
+        assert!(!err.contains("fixture-secret-value"));
+    }
+
+    let requested_placeholder = run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--aliases",
+            "xai",
+            "--",
+            "sh",
+            "-c",
+            "echo should-not-run",
+        ],
+        1,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    );
+    let err = stderr(&requested_placeholder);
+    assert!(
+        err.contains("SECRET_BROKER_RUN_STATUS=FAIL alias=xai reason=secret_placeholder_or_empty")
+    );
+    assert!(!err.contains("PENDING_OWNER_INPUT_DO_NOT_USE"));
+    assert!(!err.contains("fixture-secret-value"));
+
+    let selective_valid = stdout(&run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--aliases",
+            "openai",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && test -z \"${XAI_API_KEY+x}\" && echo valid-only-ok",
+        ],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(selective_valid.contains("requested_aliases=[openai]"));
+    assert!(selective_valid.contains("injected_env=[OPENAI_API_KEY]"));
+    assert!(selective_valid.contains("valid-only-ok"));
+    assert!(selective_valid.contains("SECRET_BROKER_RUN_STATUS=PASS"));
+    assert!(!selective_valid.contains("PENDING_OWNER_INPUT_DO_NOT_USE"));
+    assert!(!selective_valid.contains("fixture-secret-value"));
+
+    let best_effort = stdout(&run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && test -z \"${XAI_API_KEY+x}\" && test -z \"${EMPTY_API_KEY+x}\" && test -z \"${BLANK_API_KEY+x}\" && echo placeholders-skipped",
+        ],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(best_effort.contains("requested_aliases=[]"));
+    assert!(best_effort.contains("skipped_aliases=[blank,empty,xai]"));
+    assert!(best_effort.contains("placeholders-skipped"));
+    assert!(best_effort.contains("SECRET_BROKER_RUN_STATUS=PASS"));
+    assert!(!best_effort.contains("PENDING_OWNER_INPUT_DO_NOT_USE"));
+    assert!(!best_effort.contains("fixture-secret-value"));
+}
+
+#[test]
 fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path();
@@ -1431,7 +1563,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         Path::new(&path_value),
     );
     assert!(stderr(&requested_missing)
-        .contains("SECRET_BROKER_RUN_STATUS=FAIL alias=voyage reason=resolve_failed"));
+        .contains("SECRET_BROKER_RUN_STATUS=FAIL alias=voyage reason=secret_key_not_found"));
 
     let unknown_alias = run_with_env_and_path(
         target,
@@ -1589,6 +1721,10 @@ if [ "$2" = "list" ]; then
     printf '[{{"id":"other-id","key":"private/other/api_key","value":"fixture-secret-value"}}]'
     exit 0
   fi
+  if [ "$mode" = "placeholder" ]; then
+    printf '[{{"id":"secret-openai-id","key":"private/openai/api_key","value":"fixture-secret-value"}},{{"id":"secret-xai-id","key":"private/xai/api_key","value":"PENDING_OWNER_INPUT_DO_NOT_USE"}},{{"id":"secret-empty-id","key":"private/empty/api_key","value":""}},{{"id":"secret-blank-id","key":"private/blank/api_key","value":"   "}}]'
+    exit 0
+  fi
   printf '[{{"id":"secret-kimi-id","key":"private/kimi/api_key","value":"fixture-secret-value"}},{{"id":"secret-openai-id","key":"private/openai/api_key","value":"fixture-secret-value"}}]'
   exit 0
 fi
@@ -1599,6 +1735,18 @@ if [ "$2" = "get" ]; then
   fi
   if [ "$3" = "secret-openai-id" ]; then
     printf '{{"id":"secret-openai-id","key":"private/openai/api_key","value":"fixture-secret-value"}}'
+    exit 0
+  fi
+  if [ "$3" = "secret-xai-id" ]; then
+    printf '{{"id":"secret-xai-id","key":"private/xai/api_key","value":"PENDING_OWNER_INPUT_DO_NOT_USE"}}'
+    exit 0
+  fi
+  if [ "$3" = "secret-empty-id" ]; then
+    printf '{{"id":"secret-empty-id","key":"private/empty/api_key","value":""}}'
+    exit 0
+  fi
+  if [ "$3" = "secret-blank-id" ]; then
+    printf '{{"id":"secret-blank-id","key":"private/blank/api_key","value":"   "}}'
     exit 0
   fi
   exit 1

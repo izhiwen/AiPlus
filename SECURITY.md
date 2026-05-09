@@ -56,6 +56,9 @@ aliases that resolve and skips unavailable optional aliases. AiPlus may read
 `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain item created by
 `aiplus secret-broker token set`; it must not store that token in plaintext repo
 files, project install files, compact files, logs, docs, or release artifacts.
+Empty, whitespace-only, and `PENDING_OWNER_INPUT_DO_NOT_USE` Bitwarden secret
+values are treated as not configured and must not be injected into child
+processes.
 For Bitwarden, AiPlus resolves an alias key/name to the Bitwarden secret ID in
 memory before fetching the value through `bws`. Default output may report
 `secret_id_found=yes`, but must not print the secret ID or secret value.

@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.7 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.8 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -159,6 +159,8 @@ aiplus secret-broker run --aliases openai,kimi,deepseek -- <command...>
 uses a best-effort compatibility mode: it injects aliases that resolve and skips
 unavailable optional aliases so placeholder providers do not block unrelated
 commands. For sensitive or provider-specific work, prefer explicit `--aliases`.
+Empty, whitespace-only, and `PENDING_OWNER_INPUT_DO_NOT_USE` Bitwarden values
+are treated as not configured and are never injected.
 
 The child command receives approved secrets in its environment. AiPlus prints
 only metadata such as `injected_env=[...]`, `skipped_aliases=[...]`, and
@@ -389,7 +391,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.7 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.8 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
