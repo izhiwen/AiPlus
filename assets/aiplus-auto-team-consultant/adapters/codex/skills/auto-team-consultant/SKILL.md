@@ -109,6 +109,9 @@ Profile requests such as "private profile status", "我的偏好生效了吗", o
 "检查我的 AiPlus profile" should map to `aiplus profile status`. Secret status
 requests such as "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用"
 should map to `aiplus secret-broker status` or `aiplus secret-broker doctor`.
+If profile status shows `legacy_profiles=[...]`, tell the user that
+`aiplus profile cleanup --user --yes` backs up and removes legacy active profile
+registrations after the canonical profile is installed.
 Never print, paste, log, summarize, compact, or persist secret values in task
 cards, result packets, review findings, pressure-tests, or final answers. If an
 explicit action needs a key, prefer `aiplus secret-broker run -- <command...>` so

@@ -38,6 +38,13 @@ collaboration preferences only and must not contain secret values, Bitwarden
 machine tokens, prompt transcripts, compact checkpoints, project file contents,
 or provider responses.
 
+Use `aiplus profile cleanup --user --yes` or
+`aiplus profile migrate <legacy-profile> <canonical-profile> --user --yes` to
+back up and remove legacy active profile registrations after the canonical
+profile has been installed. Cleanup removes only AiPlus user-level profile
+registration files and matching local alias metadata; it must not delete
+Bitwarden secrets or secret values.
+
 `aiplus secret-broker` is the only supported secret access path. Private profile
 packages may install a local alias table under AiPlus user config. Public AiPlus
 does not bundle private Bitwarden namespaces or account identifiers.
@@ -55,6 +62,10 @@ Real Bitwarden smoke checks require the Bitwarden Secrets Manager `bws` CLI plus
 a read-only machine account token configured by the private profile owner. If
 `bws` is missing, mock-provider tests can verify alias policy and no-print
 behavior, but real Bitwarden read access remains unverified.
+If `bws` is installed but no token is configured, `aiplus secret-broker doctor`
+prints `token_source=not_configured` and the next step:
+`aiplus secret-broker token set`. Paste the token into the Terminal prompt only;
+never paste it into chat or repo files.
 
 Secret-broker audit/status output is metadata-only: alias requested, allow/deny
 status, provider status, and timestamp-like operational context. It must never

@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.4";
-const RELEASE_TAG: &str = "v0.4.4";
+const VERSION: &str = "0.4.5";
+const RELEASE_TAG: &str = "v0.4.5";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -99,6 +99,7 @@ enum Commands {
     Profile {
         subcommand: Option<String>,
         profile: Option<String>,
+        target_profile: Option<String>,
         #[arg(long)]
         source: Option<PathBuf>,
         #[arg(long, action = ArgAction::SetTrue)]
@@ -173,7 +174,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.4.4",
+        version: "0.4.5",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -184,7 +185,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.4.4",
+        version: "0.4.5",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -494,12 +495,22 @@ fn run(command: Commands) -> Result<()> {
         Commands::Profile {
             subcommand,
             profile,
+            target_profile,
             source,
             user,
             project,
             dry_run,
             yes,
-        } => command_profile(subcommand, profile, source, user, project, dry_run, yes),
+        } => command_profile(ProfileCommandArgs {
+            subcommand,
+            profile,
+            target_profile,
+            source,
+            user,
+            project,
+            dry_run,
+            yes,
+        }),
         Commands::SecretBroker {
             subcommand,
             arg,
@@ -516,7 +527,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|doctor\n  secret-broker status|doctor|list|resolve|run|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor\n  secret-broker status|doctor|list|resolve|run|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1290,25 +1301,40 @@ fn command_pricing(subcommand: Option<String>) -> Result<()> {
     }
 }
 
-fn command_profile(
+struct ProfileCommandArgs {
     subcommand: Option<String>,
     profile: Option<String>,
+    target_profile: Option<String>,
     source: Option<PathBuf>,
     user: bool,
     project: bool,
     dry_run: bool,
     yes: bool,
-) -> Result<()> {
-    match subcommand.as_deref() {
-        Some("status") => profile_status(profile),
-        Some("install") => profile_install(profile, source, user, dry_run, yes),
-        Some("update") => profile_install(profile, source, user, false, true),
-        Some("link") => profile_link(profile, project),
-        Some("disable") => profile_disable(profile, user, dry_run, yes),
-        Some("uninstall") => profile_uninstall(profile, user, dry_run, yes),
-        Some("doctor") => profile_doctor(profile),
+}
+
+fn command_profile(args: ProfileCommandArgs) -> Result<()> {
+    match args.subcommand.as_deref() {
+        Some("status") => profile_status(args.profile),
+        Some("install") => {
+            profile_install(args.profile, args.source, args.user, args.dry_run, args.yes)
+        }
+        Some("update") => profile_install(args.profile, args.source, args.user, false, true),
+        Some("link") => profile_link(args.profile, args.project),
+        Some("disable") => profile_disable(args.profile, args.user, args.dry_run, args.yes),
+        Some("uninstall") => profile_uninstall(args.profile, args.user, args.dry_run, args.yes),
+        Some("migrate") => profile_migrate(
+            args.profile,
+            args.target_profile,
+            args.user,
+            args.dry_run,
+            args.yes,
+        ),
+        Some("cleanup") => profile_cleanup(args.user, args.dry_run, args.yes),
+        Some("doctor") => profile_doctor(args.profile),
         _ => {
-            println!("Usage: aiplus profile status|install|update|link|disable|uninstall|doctor");
+            println!(
+                "Usage: aiplus profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor"
+            );
             process::exit(2);
         }
     }
@@ -1325,6 +1351,11 @@ fn profile_status(profile: Option<String>) -> Result<()> {
         let profiles = installed_profile_names(&profiles_root)?;
         println!("installed={}", yes_no(!profiles.is_empty()));
         println!("profiles=[{}]", profiles.join(","));
+        let legacy_profiles = legacy_profile_names(&profiles_root)?;
+        if !legacy_profiles.is_empty() {
+            println!("legacy_profiles=[{}]", legacy_profiles.join(","));
+            println!("next=run aiplus profile cleanup --user --yes");
+        }
     } else {
         validate_profile_name(&profile)?;
         let dir = profile_dir(&profile)?;
@@ -1472,6 +1503,84 @@ fn profile_uninstall(profile: Option<String>, user: bool, dry_run: bool, yes: bo
     Ok(())
 }
 
+fn profile_migrate(
+    legacy: Option<String>,
+    canonical: Option<String>,
+    user: bool,
+    dry_run: bool,
+    yes: bool,
+) -> Result<()> {
+    let legacy = require_profile_name(legacy)?;
+    let canonical = require_profile_name(canonical)?;
+    if !user {
+        return Err(CliError::new(1, "ERROR profile migrate currently requires --user").into());
+    }
+    let legacy_dir = profile_dir(&legacy)?;
+    let canonical_dir = profile_dir(&canonical)?;
+    println!("PROFILE_MIGRATE");
+    println!("legacy_profile={legacy}");
+    println!("canonical_profile={canonical}");
+    println!("scope=user");
+    println!("legacy_present={}", yes_no(legacy_dir.exists()));
+    println!("canonical_present={}", yes_no(canonical_dir.exists()));
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    if dry_run {
+        println!("DRY_RUN=YES");
+        println!("PROFILE_MIGRATE_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if !yes {
+        return Err(CliError::new(1, "ERROR profile migrate requires --yes or --dry-run").into());
+    }
+    if !canonical_dir.join("profile.toml").exists() {
+        return Err(CliError::new(
+            1,
+            format!("PROFILE_MIGRATE_STATUS=BLOCKED canonical_missing={canonical}"),
+        )
+        .into());
+    }
+    remove_profile_registration(&legacy)?;
+    println!("PROFILE_MIGRATE_STATUS=PASS");
+    Ok(())
+}
+
+fn profile_cleanup(user: bool, dry_run: bool, yes: bool) -> Result<()> {
+    if !user {
+        return Err(CliError::new(1, "ERROR profile cleanup currently requires --user").into());
+    }
+    let legacy = "work-with-zhiwen";
+    let canonical = "aiplus-work-with-zhiwen";
+    let legacy_dir = profile_dir(legacy)?;
+    let canonical_dir = profile_dir(canonical)?;
+    println!("PROFILE_CLEANUP");
+    println!("scope=user");
+    println!("legacy_profile={legacy}");
+    println!("canonical_profile={canonical}");
+    println!("legacy_present={}", yes_no(legacy_dir.exists()));
+    println!("canonical_present={}", yes_no(canonical_dir.exists()));
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    if dry_run {
+        println!("DRY_RUN=YES");
+        println!("PROFILE_CLEANUP_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if !yes {
+        return Err(CliError::new(1, "ERROR profile cleanup requires --yes or --dry-run").into());
+    }
+    if !canonical_dir.join("profile.toml").exists() {
+        return Err(CliError::new(
+            1,
+            "PROFILE_CLEANUP_STATUS=BLOCKED canonical_missing=aiplus-work-with-zhiwen",
+        )
+        .into());
+    }
+    remove_profile_registration(legacy)?;
+    println!("PROFILE_CLEANUP_STATUS=PASS");
+    Ok(())
+}
+
 fn profile_doctor(profile: Option<String>) -> Result<()> {
     let profile = profile.unwrap_or_else(|| "all".to_string());
     let installed = if profile == "all" {
@@ -1534,7 +1643,11 @@ fn secret_broker_doctor() -> Result<()> {
     println!("SECRET_BROKER_DOCTOR");
     println!("provider={}", provider_name());
     println!("bws_cli={}", yes_no(command_available("bws")));
-    println!("token_source={}", token_source());
+    let source = token_source();
+    println!("token_source={source}");
+    if source == "not_configured" {
+        println!("next=run aiplus secret-broker token set in Terminal");
+    }
     println!("keychain_supported={}", yes_no(cfg!(target_os = "macos")));
     println!("secret_values_printed=no");
     println!("SECRET_BROKER_DOCTOR_STATUS=PASS");
@@ -1951,12 +2064,40 @@ fn installed_profile_names(profiles_root: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(profiles_root)? {
         let entry = entry?;
-        if entry.path().join("profile.toml").exists() {
-            names.push(entry.file_name().to_string_lossy().to_string());
+        let path = entry.path();
+        if path.join("profile.toml").exists() && !path.join("disabled").exists() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !is_legacy_profile_name(&name) {
+                names.push(name);
+            }
         }
     }
     names.sort();
     Ok(names)
+}
+
+fn legacy_profile_names(profiles_root: &Path) -> Result<Vec<String>> {
+    if !profiles_root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut names = Vec::new();
+    for entry in fs::read_dir(profiles_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if path.join("profile.toml").exists()
+            && !path.join("disabled").exists()
+            && is_legacy_profile_name(&name)
+        {
+            names.push(name);
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn is_legacy_profile_name(profile: &str) -> bool {
+    profile == "work-with-zhiwen"
 }
 
 fn resolve_profile_source(source: Option<PathBuf>) -> Result<PathBuf> {
@@ -1988,6 +2129,25 @@ fn backup_profile_dir(profile: &str, dir: &Path) -> Result<()> {
     fs::create_dir_all(&backup_root)?;
     let backup_dir = backup_root.join(format!("{profile}-{}", epoch_millis()));
     copy_dir_recursive(dir, &backup_dir)?;
+    Ok(())
+}
+
+fn remove_profile_registration(profile: &str) -> Result<()> {
+    let dir = profile_dir(profile)?;
+    if dir.exists() {
+        backup_profile_dir(profile, &dir)?;
+        fs::remove_dir_all(&dir)?;
+        println!("profile_removed={profile}");
+    }
+    let alias_dir = config_home()?
+        .join("aiplus")
+        .join("secret-broker")
+        .join("profiles")
+        .join(profile);
+    if alias_dir.exists() {
+        fs::remove_dir_all(&alias_dir)?;
+        println!("secret_aliases_removed={profile}");
+    }
     Ok(())
 }
 
@@ -4281,6 +4441,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     let version = actual.unwrap_or("").trim();
     if ![
         "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
+        "0.4.5",
     ]
     .contains(&version)
     {
@@ -4308,6 +4469,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.2"
             | "0.4.3"
             | "0.4.4"
+            | "0.4.5"
     )
 }
 

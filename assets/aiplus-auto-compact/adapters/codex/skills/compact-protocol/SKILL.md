@@ -127,6 +127,9 @@ not edit global agent config or upload project data.
 
 If the user asks "private profile status", "我的偏好生效了吗", or "检查我的
 AiPlus profile", run `aiplus profile status` and keep the answer short. If the
+status shows `legacy_profiles=[...]`, tell the user that
+`aiplus profile cleanup --user --yes` backs up and removes legacy active profile
+registrations after the canonical profile is installed. If the
 user asks "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用", run
 `aiplus secret-broker status` or `aiplus secret-broker doctor`. Never print,
 paste, compact, summarize, persist, or log secret values. If an explicit compact

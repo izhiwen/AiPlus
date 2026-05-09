@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.4 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.5 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -111,6 +111,9 @@ secret，而不会把 private content 放进 public repo。
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --dry-run
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --yes
 aiplus profile status
+aiplus profile cleanup --user --dry-run
+aiplus profile cleanup --user --yes
+aiplus profile migrate <legacy-profile> <canonical-profile> --user --yes
 aiplus profile disable <private-profile-name> --user --yes
 aiplus profile uninstall <private-profile-name> --user --yes
 aiplus secret-broker status
@@ -119,6 +122,11 @@ aiplus secret-broker status
 private profile 位于 `~/.config/aiplus/profiles/<private-profile-name>/`。它只
 存工作偏好和协作规则，不应包含 API key、Bitwarden token、password、prompt
 transcript、project file 或 compact checkpoint。
+
+`aiplus profile status` 会把 active canonical profiles 放在 `profiles=[...]`。
+legacy compatibility profiles 可能单独出现在 `legacy_profiles=[...]`；canonical
+profile 安装后，运行 `aiplus profile cleanup --user --yes` 会先备份再移除 legacy
+active registration。
 
 secret 访问统一走 `aiplus secret-broker`。默认
 `aiplus secret-broker resolve <alias>` 只验证访问，不打印 secret value。
@@ -323,7 +331,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.4 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.5 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

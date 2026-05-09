@@ -203,6 +203,10 @@ aiplus profile status
 aiplus secret-broker status
 ```
 
+如果 `aiplus profile status` 报告 `legacy_profiles=[...]`，canonical private
+profile 安装后运行 `aiplus profile cleanup --user --yes`。Compact flow 应使用
+canonical active profile，不应把 private profile material 写入 handoff 或 checkpoint。
+
 只有在明确 action need 下，才用 `aiplus secret-broker run -- <command...>` 给子进程
 注入 secret。不要在 compact guidance 或 handoff files 里打印 resolved secret value。
 child command 会在 environment 里收到 secret，仍可能自己 print、log、transmit 或

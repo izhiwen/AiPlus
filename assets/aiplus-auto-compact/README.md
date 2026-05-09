@@ -214,6 +214,11 @@ aiplus profile status
 aiplus secret-broker status
 ```
 
+If `aiplus profile status` reports `legacy_profiles=[...]`, run
+`aiplus profile cleanup --user --yes` after the canonical private profile is
+installed. Compact flows should use the canonical active profile and should not
+copy private profile material into handoff or checkpoint files.
+
 Secret-consuming tools should be run through `aiplus secret-broker run --
 <command...>` only for an explicit action need. Do not print resolved secret
 values in compact guidance or handoff files.

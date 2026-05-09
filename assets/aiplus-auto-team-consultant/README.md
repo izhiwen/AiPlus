@@ -202,6 +202,10 @@ as lower priority than the current Owner message and project rules, but it must
 not copy private profile material into public docs, task packets, compact files,
 or result packets.
 
+If `aiplus profile status` reports `legacy_profiles=[...]`, run
+`aiplus profile cleanup --user --yes` after the canonical private profile is
+installed. Advisor/CEO routing should use the canonical active profile.
+
 If a task explicitly needs a key, the agent should prefer
 `aiplus secret-broker run -- <command...>` so approved values enter only the
 child process environment. It must never print, paste, log, summarize, compact,
@@ -209,7 +213,11 @@ or persist secret values.
 The child command can still print, log, transmit, or store its environment. Use
 `run --` only with trusted commands for the specific action.
 
-Private profiles may install approved secret aliases. Run `aiplus secret-broker list` for the current local mapping. Real Bitwarden smoke checks require the Bitwarden Secrets Manager `bws` CLI plus a read-only machine account token; without `bws`, review and CEO flows should report real Bitwarden verification as unverified instead of asking for or printing secret values.
+Private profiles may install approved secret aliases. Run `aiplus secret-broker
+list` for the current local mapping. Real Bitwarden smoke checks require the
+Bitwarden Secrets Manager `bws` CLI plus a read-only machine account token;
+without `bws`, review and CEO flows should report real Bitwarden verification as
+unverified instead of asking for or printing secret values.
 
 ## Roles In Plain Language
 

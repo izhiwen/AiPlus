@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.4.5
+
+- Added `aiplus profile migrate` and `aiplus profile cleanup` so legacy
+  `work-with-zhiwen` user-level profile registrations can be backed up and
+  removed after the canonical `aiplus-work-with-zhiwen` profile is installed.
+- Updated `aiplus profile status` to report only active canonical profiles in
+  `profiles=[...]` while listing legacy registrations separately with the cleanup
+  next step.
+- Clarified `aiplus secret-broker doctor` output when `bws` is installed but the
+  Bitwarden token is not configured.
+
 ## 0.4.4
 
 - Changed private profile installation to a generic source-based flow so public

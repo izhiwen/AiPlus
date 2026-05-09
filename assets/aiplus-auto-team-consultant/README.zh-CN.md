@@ -194,6 +194,10 @@ Consultant 可以使用 user-level profile，但优先级必须低于当前 Owne
 则，而且不能把 private profile material 复制到 public docs、task packets、compact
 files 或 result packets。
 
+如果 `aiplus profile status` 报告 `legacy_profiles=[...]`，canonical private
+profile 安装后运行 `aiplus profile cleanup --user --yes`。Advisor/CEO routing 应使用
+canonical active profile。
+
 如果任务明确需要 key，agent 应优先使用 `aiplus secret-broker run -- <command...>`，
 让 approved values 只进入 child process environment。绝不能 print、paste、log、
 summarize、compact 或 persist secret values。

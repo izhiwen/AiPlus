@@ -140,7 +140,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.4.4, auto-team-consultant@0.4.4]"));
+    assert!(status.contains("modules=[auto-compact@0.4.5, auto-team-consultant@0.4.5]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -1115,6 +1115,63 @@ fn user_profile_and_secret_broker_are_secret_safe() {
         .exists());
 }
 
+#[test]
+fn canonical_profile_cleanup_and_migrate_legacy_registration() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    seed_installed_profile(target, "aiplus-work-with-zhiwen", "canonical");
+    seed_installed_profile(target, "work-with-zhiwen", "legacy");
+
+    let status = stdout(&run(target, &["profile", "status"], 0));
+    assert!(status.contains("profiles=[aiplus-work-with-zhiwen]"));
+    assert!(status.contains("legacy_profiles=[work-with-zhiwen]"));
+    assert!(status.contains("next=run aiplus profile cleanup --user --yes"));
+
+    let dry = stdout(&run(
+        target,
+        &["profile", "cleanup", "--user", "--dry-run"],
+        0,
+    ));
+    assert!(dry.contains("PROFILE_CLEANUP_STATUS=DRY_RUN"));
+    assert!(target
+        .join("fake-xdg/aiplus/profiles/work-with-zhiwen/profile.toml")
+        .exists());
+
+    let cleanup = stdout(&run(target, &["profile", "cleanup", "--user", "--yes"], 0));
+    assert!(cleanup.contains("PROFILE_CLEANUP_STATUS=PASS"));
+    assert!(cleanup.contains("profile_removed=work-with-zhiwen"));
+    assert!(!target
+        .join("fake-xdg/aiplus/profiles/work-with-zhiwen")
+        .exists());
+    assert!(target
+        .join("fake-xdg/aiplus/profiles/aiplus-work-with-zhiwen/profile.toml")
+        .exists());
+    assert!(target.join("fake-xdg/aiplus/profile-backups").exists());
+
+    seed_installed_profile(target, "work-with-zhiwen", "legacy-again");
+    let migrate = stdout(&run(
+        target,
+        &[
+            "profile",
+            "migrate",
+            "work-with-zhiwen",
+            "aiplus-work-with-zhiwen",
+            "--user",
+            "--yes",
+        ],
+        0,
+    ));
+    assert!(migrate.contains("PROFILE_MIGRATE_STATUS=PASS"));
+    assert!(!target
+        .join("fake-xdg/aiplus/profiles/work-with-zhiwen")
+        .exists());
+
+    let final_status = stdout(&run(target, &["profile", "status"], 0));
+    assert!(final_status.contains("profiles=[aiplus-work-with-zhiwen]"));
+    assert!(!final_status.contains("legacy_profiles=[work-with-zhiwen]"));
+}
+
 fn expected_secret_aliases() -> Vec<(&'static str, &'static str, &'static str)> {
     vec![
         ("openai", "private/openai/api_key", "OPENAI_API_KEY"),
@@ -1199,6 +1256,30 @@ fn setup_fake_env(target: &Path) {
     fs::create_dir(target.join("fake-home")).unwrap();
     fs::create_dir(target.join("fake-codex-home")).unwrap();
     fs::create_dir(target.join("fake-xdg")).unwrap();
+}
+
+fn seed_installed_profile(target: &Path, profile: &str, marker: &str) {
+    let dir = target.join("fake-xdg/aiplus/profiles").join(profile);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("profile.toml"),
+        format!("name = \"{profile}\"\nmarker = \"{marker}\"\n"),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("AGENTS.profile.md"),
+        format!("# {profile}\n\nmarker={marker}\n"),
+    )
+    .unwrap();
+    let alias_dir = target
+        .join("fake-xdg/aiplus/secret-broker/profiles")
+        .join(profile);
+    fs::create_dir_all(&alias_dir).unwrap();
+    fs::write(
+        alias_dir.join("secret-aliases.tsv"),
+        "openai\tprivate/openai/api_key\tOPENAI_API_KEY\n",
+    )
+    .unwrap();
 }
 
 fn seed_release_asset(target: &Path, bad_checksum: bool) -> PathBuf {

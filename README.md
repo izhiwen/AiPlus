@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.4 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.5 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -121,6 +121,9 @@ runtime secrets without putting private content into public repos.
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --dry-run
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --yes
 aiplus profile status
+aiplus profile cleanup --user --dry-run
+aiplus profile cleanup --user --yes
+aiplus profile migrate <legacy-profile> <canonical-profile> --user --yes
 aiplus profile disable <private-profile-name> --user --yes
 aiplus profile uninstall <private-profile-name> --user --yes
 aiplus secret-broker status
@@ -130,6 +133,11 @@ Private profiles live under `~/.config/aiplus/profiles/<private-profile-name>/`.
 They store working preferences and collaboration rules only. They must not
 contain API keys, Bitwarden tokens, passwords, prompt transcripts, project files,
 or compact checkpoints.
+
+`aiplus profile status` lists active canonical profiles in `profiles=[...]`.
+Legacy compatibility profiles may appear separately in `legacy_profiles=[...]`;
+run `aiplus profile cleanup --user --yes` after the canonical profile is
+installed to back up and remove legacy active registrations.
 
 Secret access goes through `aiplus secret-broker`. By default,
 `aiplus secret-broker resolve <alias>` verifies access without printing the
@@ -351,7 +359,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.4 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.5 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and
