@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Agent Memory Audit Event",
+  "type": "object",
+  "required": ["schemaVersion", "event", "target", "timestamp", "secretValues"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "event": { "type": "string" },
+    "target": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "secretValues": { "const": "none" }
+  },
+  "additionalProperties": false
+}

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.5.0
+
+- Added the public `aiplus-agent-memory` Agent Continuity foundation for local
+  Memory Context, Role Identity, and Skill Candidate governance.
+- Added `aiplus memory`, `aiplus identity`, and `aiplus skill-candidate`
+  foundation commands with project-local stores under `.aiplus/`.
+- Added schemas, templates, adapters, synthetic examples, fake-HOME tests,
+  project isolation tests, redaction guards, and public/private asset checks.
+
 ## 0.4.8
 
 - Rejected empty, whitespace-only, and `PENDING_OWNER_INPUT_DO_NOT_USE`

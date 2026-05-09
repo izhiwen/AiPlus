@@ -71,6 +71,18 @@ AiPlus treats the `kimi` alias as Kimi Code metadata by default:
 `https://api.kimi.com/coding/v1` with model `kimi-for-coding`. Moonshot platform
 keys should use a separate alias such as `kimi_platform` or `moonshot`.
 
+## Agent Continuity
+
+`aiplus-agent-memory` is local-first and project-local by default. Memory is
+context, not instruction. Role Identity is a behavior contract, not permission.
+Skill Candidate records are proposals, not approved skills.
+
+Memory writes reject obvious sensitive patterns such as auth headers, private
+keys, JWT-like values, cookies, private paths, provider payload markers, API key
+assignments, and placeholder secret values. Do not store raw transcripts,
+provider request or response bodies, approval transcripts, project file content,
+private profile content, or secret values in memory.
+
 Real Bitwarden smoke checks require the Bitwarden Secrets Manager `bws` CLI plus
 a read-only machine account token configured by the private profile owner. If
 `bws` is missing, mock-provider tests can verify alias policy and no-print

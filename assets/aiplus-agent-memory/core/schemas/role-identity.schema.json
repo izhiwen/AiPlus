@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Role Identity",
+  "type": "object",
+  "required": ["id", "role", "version", "scope", "activation", "output_contract", "owner_gates", "inherits"],
+  "properties": {
+    "id": { "type": "string" },
+    "role": { "enum": ["Advisor", "CEO", "Reviewer", "Builder"] },
+    "version": { "const": "0.1.0" },
+    "scope": { "enum": ["project", "profile"] },
+    "activation": { "type": "array", "items": { "type": "string" } },
+    "output_contract": { "type": "string" },
+    "owner_gates": { "type": "array", "items": { "type": "string" } },
+    "inherits": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

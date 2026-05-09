@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Approved Skill",
+  "type": "object",
+  "required": ["schemaVersion", "id", "sourceCandidateId", "approvedBy", "approvedAt", "qaEvidence"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "id": { "type": "string" },
+    "sourceCandidateId": { "type": "string" },
+    "approvedBy": { "type": "string" },
+    "approvedAt": { "type": "string" },
+    "qaEvidence": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

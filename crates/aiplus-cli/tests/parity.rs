@@ -171,7 +171,8 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
+    assert!(status
+        .contains("modules=[agent-memory@0.5.0, auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 

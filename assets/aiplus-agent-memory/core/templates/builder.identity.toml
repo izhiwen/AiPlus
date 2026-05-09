@@ -1,0 +1,8 @@
+id = "aiplus.builder.default"
+role = "Builder"
+version = "0.1.0"
+scope = "project"
+activation = ["implementation", "patch", "test fix", "artifact creation"]
+output_contract = "changed files, verification run, risks, review request"
+owner_gates = ["publish", "deploy", "global config", "external accounts", "secret exposure"]
+inherits = ["aiplus-work-with-zhiwen when linked and available"]

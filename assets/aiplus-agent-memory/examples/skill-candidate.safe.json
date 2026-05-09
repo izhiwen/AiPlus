@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "skill-candidate/safe-example",
+  "title": "Release readiness checklist reviewer",
+  "status": "candidate_proposed",
+  "sourceMemoryIds": ["mem_safe_example"],
+  "problemPattern": "Repeated release tasks need the same local QA checklist.",
+  "proposedSkillName": "release-readiness-reviewer",
+  "repeatabilityEvidence": {
+    "occurrenceCount": 2,
+    "syntheticReplayAvailable": false
+  },
+  "triggerDesign": {
+    "positiveTriggers": ["release review", "QA checklist"],
+    "negativeTriggers": ["publish without Owner approval"]
+  },
+  "scope": {
+    "allowedActions": ["read local release checklist", "summarize missing checks"],
+    "forbiddenActions": ["publish", "deploy", "edit global config"]
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsPrivatePaths": false,
+    "redactionRequired": false
+  },
+  "qa": {
+    "requiredChecks": ["fake HOME test", "secret scan"],
+    "status": "pending"
+  },
+  "ownerGate": {
+    "requiredForApproval": true,
+    "approvedBy": null,
+    "approvedAt": null
+  }
+}

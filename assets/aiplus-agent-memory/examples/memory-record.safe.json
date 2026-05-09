@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "mem_safe_example",
+  "scope": "project",
+  "kind": "preference",
+  "subject": "workflow",
+  "content": "Owner prefers concise, conclusion-first Chinese summaries for release status.",
+  "source": "owner",
+  "confidence": "owner_asserted",
+  "visibility": "project-local",
+  "status": "active",
+  "createdAt": "1970-01-01T00:00:00Z",
+  "updatedAt": "1970-01-01T00:00:00Z",
+  "expiresAt": null,
+  "reviewAfter": null,
+  "redaction": "none",
+  "hash": "hash:safe-example"
+}

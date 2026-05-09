@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Memory Record",
+  "type": "object",
+  "required": ["schemaVersion", "id", "scope", "kind", "subject", "content", "source", "confidence", "visibility", "status", "createdAt", "updatedAt", "redaction", "hash"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "id": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]+" },
+    "scope": { "enum": ["session", "project", "profile", "global"] },
+    "kind": { "enum": ["preference", "project_fact", "decision_summary", "constraint", "handoff_note", "evidence_pointer"] },
+    "subject": { "enum": ["communication", "workflow", "tools", "review", "privacy", "project_map", "release", "security"] },
+    "content": { "type": "string", "minLength": 1 },
+    "source": { "enum": ["owner", "agent", "profile", "compact", "manual"] },
+    "confidence": { "enum": ["owner_asserted", "verified", "inferred", "stale"] },
+    "visibility": { "enum": ["private", "project-local", "public-safe"] },
+    "status": { "enum": ["active", "tentative", "superseded", "rejected", "expired"] },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "expiresAt": { "type": ["string", "null"] },
+    "reviewAfter": { "type": ["string", "null"] },
+    "redaction": { "enum": ["none", "required", "done", "blocked"] },
+    "hash": { "type": "string" }
+  },
+  "additionalProperties": false
+}

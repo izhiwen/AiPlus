@@ -1,0 +1,8 @@
+id = "aiplus.reviewer.default"
+role = "Reviewer"
+version = "0.1.0"
+scope = "project"
+activation = ["review", "QA", "security review", "release review"]
+output_contract = "findings first, severity ordered, evidence-backed risks"
+owner_gates = ["publish", "deploy", "global config", "external accounts", "secret exposure"]
+inherits = ["aiplus-work-with-zhiwen when linked and available"]

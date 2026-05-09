@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "skill-candidate/rejected-oneoff",
+  "title": "One-off task transcript replay",
+  "status": "rejected",
+  "sourceMemoryIds": [],
+  "problemPattern": "One-off transcript content is not a repeatable workflow.",
+  "proposedSkillName": "one-off-transcript-replay",
+  "repeatabilityEvidence": {
+    "occurrenceCount": 1,
+    "syntheticReplayAvailable": false
+  },
+  "triggerDesign": {
+    "positiveTriggers": [],
+    "negativeTriggers": ["raw transcript", "private data"]
+  },
+  "scope": {
+    "allowedActions": [],
+    "forbiddenActions": ["store raw transcript", "promote to active skill"]
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsPrivatePaths": false,
+    "redactionRequired": true
+  },
+  "qa": {
+    "requiredChecks": [],
+    "status": "rejected"
+  },
+  "ownerGate": {
+    "requiredForApproval": true,
+    "approvedBy": null,
+    "approvedAt": null
+  }
+}

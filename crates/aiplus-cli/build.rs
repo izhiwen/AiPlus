@@ -51,8 +51,37 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) ->
             {
                 continue;
             }
+            enforce_public_asset_policy(&rel);
             files.push((rel, path));
         }
     }
     Ok(())
+}
+
+fn enforce_public_asset_policy(rel: &str) {
+    let forbidden = [
+        "aiplus-work-with-zhiwen",
+        "work-with-zhiwen",
+        "AGENTS.profile.md",
+        "profile.toml",
+        "secret-aliases.tsv",
+        ".codex/compact/checkpoints",
+        ".har",
+        ".webrtcdump",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".log",
+        ".mp4",
+        ".mov",
+        ".m4a",
+        ".wav",
+        ".zip",
+        ".tar",
+        ".tgz",
+    ];
+    if forbidden.iter().any(|needle| rel.contains(needle)) {
+        panic!("refusing to embed private or generated asset: {rel}");
+    }
 }

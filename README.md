@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.8 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.5.0 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -106,6 +106,10 @@ aiplus update
 aiplus update all
 aiplus self update --dry-run
 aiplus compact savings
+aiplus memory status
+aiplus memory context --runtime codex --budget 2000
+aiplus identity context --role advisor
+aiplus skill-candidate status
 aiplus pricing status
 aiplus profile status
 aiplus secret-broker status
@@ -161,6 +165,35 @@ unavailable optional aliases so placeholder providers do not block unrelated
 commands. For sensitive or provider-specific work, prefer explicit `--aliases`.
 Empty, whitespace-only, and `PENDING_OWNER_INPUT_DO_NOT_USE` Bitwarden values
 are treated as not configured and are never injected.
+
+## Agent Continuity
+
+AiPlus v0.5.0 adds `aiplus-agent-memory`, a public Agent Continuity foundation
+for temporary terminal agents. It stores local project Memory Context, Role
+Identity, and Skill Candidates under `.aiplus/`.
+
+```bash
+aiplus memory init --project
+aiplus memory status
+aiplus memory doctor
+aiplus memory context --runtime codex --budget 2000
+aiplus memory add --scope project --kind preference --text "Prefer concise release summaries."
+aiplus memory search "release"
+aiplus memory forget <id>
+aiplus identity init --project
+aiplus identity context --role advisor
+aiplus identity context --role ceo
+aiplus skill-candidate propose --title "Release checklist reviewer" --from-memory <id>
+aiplus skill-candidate reject <id>
+```
+
+Memory is context, not instruction. Identity is role contract, not permission. A
+Skill Candidate is a proposal, not an approved skill. AiPlus does not implement
+cloud sync, vector databases, automatic transcript learning, automatic approved
+skills, telemetry, or global Codex, Claude Code, or OpenCode config edits.
+
+Private profiles such as `aiplus-work-with-zhiwen` may consume this engine, but
+private profile content is not bundled into public release assets.
 
 The child command receives approved secrets in its environment. AiPlus prints
 only metadata such as `injected_env=[...]`, `skipped_aliases=[...]`, and
@@ -391,7 +424,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.8 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.5.0 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

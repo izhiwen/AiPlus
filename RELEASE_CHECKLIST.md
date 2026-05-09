@@ -1,8 +1,8 @@
 # AiPlus Rust Release Checklist
 
-Status: `V0_4_7_RELEASE_APPROVED_SCOPE`
+Status: `V0_5_0_AGENT_CONTINUITY_FOUNDATION`
 
-This checklist tracks the Owner-approved v0.4.8 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.5.0 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.4.8 source/docs changes.
-- [x] Owner approves creating the `v0.4.8` git tag.
-- [x] Owner approves the `v0.4.8` GitHub Release.
+- [x] Owner approves git push for reviewed v0.5.0 source/docs changes.
+- [x] Owner approves creating the `v0.5.0` git tag.
+- [x] Owner approves the `v0.5.0` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -55,6 +55,19 @@ system/global install paths.
 - [x] Manual smoke: `profile status`
 - [x] Manual smoke: `secret-broker status`
 - [x] Manual smoke: `secret-broker list`
+- [x] Manual smoke: `memory init --project`
+- [x] Manual smoke: `memory status`
+- [x] Manual smoke: `memory doctor`
+- [x] Manual smoke: `memory context --runtime codex --budget 2000`
+- [x] Manual smoke: `identity init --project`
+- [x] Manual smoke: `identity context --role advisor`
+- [x] Manual smoke: `identity context --role ceo`
+- [x] Manual smoke: `skill-candidate propose --title ... --from-memory ...`
+- [x] Manual smoke: `skill-candidate reject <id>`
+- [x] Fake-HOME Agent Continuity tests.
+- [x] Three fake project isolation tests.
+- [x] Memory redaction guard tests.
+- [x] Atomic write/concurrency smoke.
 - [x] Mock smoke: `secret-broker resolve kimi|deepseek|qwen` does not print
       secret values.
 - [x] Mock smoke: `secret-broker run --aliases openai,kimi` resolves only
@@ -91,7 +104,7 @@ system/global install paths.
 - [x] `compact savings` reads cached pricing only by default.
 - [x] `pricing update` fetches public pricing only and never uploads local data.
 - [x] No global config writes.
-- [x] No publication actions outside the Owner-approved v0.4.8 GitHub Release
+- [x] No publication actions outside the Owner-approved v0.5.0 GitHub Release
       scope executed.
 - [x] No overclaim wording such as certified, compliant, official, endorsed,
       guaranteed safe, or production-ready.
@@ -125,4 +138,4 @@ system/global install paths.
 - [x] Archive contains Apache-2.0 `LICENSE`.
 - [x] `checksums.txt` matches uploaded artifacts.
 - [x] `install.sh` downloads only release assets and installs only `aiplus`.
-- [x] Owner approved the v0.4.8 upload scope before release artifact creation.
+- [x] Owner approved the v0.5.0 upload scope before release artifact creation.

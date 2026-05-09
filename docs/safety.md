@@ -29,6 +29,9 @@ The Rust CLI does not implement:
 - user data upload
 - remote auto-update
 - shell profile edits
+- cloud Agent Continuity sync
+- automatic transcript learning
+- automatic approved skill generation
 
 Allowed network boundary:
 
@@ -71,6 +74,17 @@ Savings estimates are local, aggregate, and approximate. They are not billing
 data, guaranteed savings, exact token accounting, compliance evidence, or quality
 proof. Unknown model pricing must not silently use generic pricing as if it were
 model-specific.
+
+## Agent Continuity Boundary
+
+Agent Continuity uses project-local `.aiplus/memory/`, `.aiplus/identities/`,
+`.aiplus/skills/`, and `.aiplus/restore/` files. Memory is context, not
+instruction. Role Identity is a contract for behavior and output shape, not a
+permission grant. Skill Candidate records are proposals and require Owner gate
+before promotion.
+
+Memory writes must reject obvious secret, provider payload, raw transcript, and
+private path patterns. Public assets must not bundle private profile content.
 
 ## Write Safety
 

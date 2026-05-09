@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Skill Candidate",
+  "type": "object",
+  "required": ["schemaVersion", "id", "title", "status", "sourceMemoryIds", "problemPattern", "proposedSkillName", "repeatabilityEvidence", "triggerDesign", "scope", "privacy", "qa", "ownerGate"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "id": { "type": "string", "pattern": "^skill-candidate/" },
+    "title": { "type": "string" },
+    "status": { "enum": ["candidate_proposed", "candidate_triaged", "draft_skill", "qa_pending", "approved", "active", "deprecated", "rejected", "archived"] },
+    "sourceMemoryIds": { "type": "array", "items": { "type": "string" } },
+    "problemPattern": { "type": "string" },
+    "proposedSkillName": { "type": "string" },
+    "repeatabilityEvidence": {
+      "type": "object",
+      "required": ["occurrenceCount", "syntheticReplayAvailable"],
+      "properties": {
+        "occurrenceCount": { "type": "integer", "minimum": 0 },
+        "syntheticReplayAvailable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "triggerDesign": {
+      "type": "object",
+      "required": ["positiveTriggers", "negativeTriggers"],
+      "properties": {
+        "positiveTriggers": { "type": "array", "items": { "type": "string" } },
+        "negativeTriggers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": ["allowedActions", "forbiddenActions"],
+      "properties": {
+        "allowedActions": { "type": "array", "items": { "type": "string" } },
+        "forbiddenActions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["containsSecrets", "containsPrivatePaths", "redactionRequired"],
+      "properties": {
+        "containsSecrets": { "type": "boolean" },
+        "containsPrivatePaths": { "type": "boolean" },
+        "redactionRequired": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "qa": {
+      "type": "object",
+      "required": ["requiredChecks", "status"],
+      "properties": {
+        "requiredChecks": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ownerGate": {
+      "type": "object",
+      "required": ["requiredForApproval", "approvedBy", "approvedAt"],
+      "properties": {
+        "requiredForApproval": { "type": "boolean" },
+        "approvedBy": { "type": ["string", "null"] },
+        "approvedAt": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -7,6 +7,7 @@ Sources:
 
 - `aiplus-auto-compact` from `../aiplus-auto-compact`
 - `aiplus-auto-team-consultant` from `../aiplus-auto-team-consultant`
+- `aiplus-agent-memory` from `../aiplus-agent-memory`
 
 Update process:
 

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "skill-candidate/template",
+  "title": "Template Skill Candidate",
+  "status": "candidate_proposed",
+  "sourceMemoryIds": [],
+  "problemPattern": "repeatable workflow pattern",
+  "proposedSkillName": "template-skill",
+  "repeatabilityEvidence": {
+    "occurrenceCount": 0,
+    "syntheticReplayAvailable": false
+  },
+  "triggerDesign": {
+    "positiveTriggers": [],
+    "negativeTriggers": []
+  },
+  "scope": {
+    "allowedActions": [],
+    "forbiddenActions": []
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsPrivatePaths": false,
+    "redactionRequired": false
+  },
+  "qa": {
+    "requiredChecks": [],
+    "status": "pending"
+  },
+  "ownerGate": {
+    "requiredForApproval": true,
+    "approvedBy": null,
+    "approvedAt": null
+  }
+}

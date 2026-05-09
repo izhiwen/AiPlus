@@ -24,6 +24,13 @@ The selected strategy is Option C: a Rust-side `assets/` directory derived from
 existing vendor snapshots. Runtime installation copies from this local snapshot.
 No network fetch is used at runtime, and the CLI does not depend on GitHub.
 
+Bundled modules:
+
+- `aiplus-auto-compact`: current-task checkpoint and resume.
+- `aiplus-auto-team-consultant`: Advisor, CEO, Reviewer, and Builder workflow.
+- `aiplus-agent-memory`: Agent Continuity foundation for Memory Context, Role
+  Identity, and Skill Candidate governance.
+
 ## License
 
 The Rust mainline/public-ready package is Apache-2.0. The workspace `LICENSE`

@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.8 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.5.0 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -96,6 +96,10 @@ aiplus update
 aiplus update all
 aiplus self update --dry-run
 aiplus compact savings
+aiplus memory status
+aiplus memory context --runtime codex --budget 2000
+aiplus identity context --role advisor
+aiplus skill-candidate status
 aiplus pricing status
 aiplus profile status
 aiplus secret-broker status
@@ -181,6 +185,35 @@ logs、docs、compact savings ledger 或 release artifacts。
 
 private profile 可以提供自然语言 mapping。secret status 请求应映射到 metadata-only
 checks，绝不暴露 secret value。
+
+## Agent Continuity
+
+AiPlus v0.5.0 新增 public `aiplus-agent-memory` foundation，用于临时 terminal
+agent 的本地连续性。它把 Memory Context、Role Identity 和 Skill Candidate 存在当前
+项目的 `.aiplus/` 下。
+
+```bash
+aiplus memory init --project
+aiplus memory status
+aiplus memory doctor
+aiplus memory context --runtime codex --budget 2000
+aiplus memory add --scope project --kind preference --text "Prefer concise release summaries."
+aiplus memory search "release"
+aiplus memory forget <id>
+aiplus identity init --project
+aiplus identity context --role advisor
+aiplus identity context --role ceo
+aiplus skill-candidate propose --title "Release checklist reviewer" --from-memory <id>
+aiplus skill-candidate reject <id>
+```
+
+Memory 是 context，不是 instruction。Identity 是 role contract，不是 permission。
+Skill Candidate 是 proposal，不是 approved skill。AiPlus 不做 cloud sync、vector
+database、自动 transcript learning、自动 approved skill、telemetry，也不修改全局
+Codex、Claude Code 或 OpenCode config。
+
+`aiplus-work-with-zhiwen` 这样的 private profile 可以使用这个 public engine，但 private
+profile content 不会进入 public release assets。
 
 ## 更新 AiPlus
 
@@ -361,7 +394,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.8 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.5.0 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

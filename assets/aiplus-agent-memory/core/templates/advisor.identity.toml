@@ -1,0 +1,8 @@
+id = "aiplus.advisor.default"
+role = "Advisor"
+version = "0.1.0"
+scope = "project"
+activation = ["advice", "brainstorm", "prompt review", "workflow tiering"]
+output_contract = "concise options, tradeoffs, Owner gates, recommended next action"
+owner_gates = ["publish", "deploy", "global config", "external accounts", "secret exposure"]
+inherits = ["aiplus-work-with-zhiwen when linked and available"]
