@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.5 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.6 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -132,6 +132,9 @@ secret 访问统一走 `aiplus secret-broker`。默认
 `aiplus secret-broker resolve <alias>` 只验证访问，不打印 secret value。
 `aiplus secret-broker list` 会列出 private profile package 安装的 aliases。Public
 AiPlus 不内置 private alias namespace。
+对于 Bitwarden，AiPlus 会在内存中把 alias key/name 映射到 Bitwarden secret ID，再
+通过 `bws` 读取 value；默认只打印 `secret_id_found=yes` 等 metadata，不打印 secret
+ID 或 secret value。
 
 真实 Bitwarden smoke check 需要安装 `bws` CLI，并通过 `BWS_ACCESS_TOKEN` 或 macOS
 Keychain 提供 read-only machine account token。需要把 key 传给工具时，使用：
@@ -331,7 +334,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.5 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.6 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

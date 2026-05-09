@@ -1,6 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -43,6 +44,36 @@ fn run_with_env(cwd: &Path, args: &[&str], expected: i32, envs: &[(&str, &str)])
         .env("HOME", cwd.join("fake-home"))
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
         .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"));
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("run aiplus");
+    assert_eq!(
+        output.status.code(),
+        Some(expected),
+        "{} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+fn run_with_env_and_path(
+    cwd: &Path,
+    args: &[&str],
+    expected: i32,
+    envs: &[(&str, &str)],
+    path_override: &Path,
+) -> Output {
+    let mut command = Command::new(bin());
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env("HOME", cwd.join("fake-home"))
+        .env("CODEX_HOME", cwd.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
+        .env("PATH", path_override);
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -140,7 +171,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status.contains("modules=[auto-compact@0.4.5, auto-team-consultant@0.4.5]"));
+    assert!(status.contains("modules=[auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("STATUS=PASS"));
 
@@ -1172,6 +1203,96 @@ fn canonical_profile_cleanup_and_migrate_legacy_registration() {
     assert!(!final_status.contains("legacy_profiles=[work-with-zhiwen]"));
 }
 
+#[test]
+fn bws_resolver_looks_up_secret_id_without_printing_value() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let profile_source = target.join("profile-source");
+    fs::create_dir(&profile_source).unwrap();
+    fs::write(
+        profile_source.join("profile.toml"),
+        "name = \"example-private-profile\"\n",
+    )
+    .unwrap();
+    fs::write(profile_source.join("AGENTS.profile.md"), "# example\n").unwrap();
+    fs::write(
+        profile_source.join("secret-aliases.tsv"),
+        "kimi\tprivate/kimi/api_key\tKIMI_API_KEY\nopenai\tprivate/openai/api_key\tOPENAI_API_KEY\n",
+    )
+    .unwrap();
+    run(
+        target,
+        &[
+            "profile",
+            "install",
+            "example-private-profile",
+            "--user",
+            "--source",
+            profile_source.to_str().unwrap(),
+            "--yes",
+        ],
+        0,
+    );
+    let fake_bin = target.join("fake-bin");
+    fs::create_dir(&fake_bin).unwrap();
+    write_fake_bws(&fake_bin.join("bws"), "ok");
+    let path_value = format!("{}:/usr/bin:/bin", fake_bin.display());
+    let resolve = stdout(&run_with_env_and_path(
+        target,
+        &["secret-broker", "resolve", "kimi"],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(resolve.contains("SECRET_RESOLVE_STATUS=PASS"));
+    assert!(resolve.contains("provider=bws"));
+    assert!(resolve.contains("token_source=env"));
+    assert!(resolve.contains("secret_key=private/kimi/api_key"));
+    assert!(resolve.contains("secret_id_found=yes"));
+    assert!(resolve.contains("secret_value_printed=no"));
+    assert!(!resolve.contains("fixture-secret-value"));
+    assert!(!resolve.contains("secret-kimi-id"));
+
+    write_fake_bws(&fake_bin.join("bws"), "missing");
+    let missing = run_with_env_and_path(
+        target,
+        &["secret-broker", "resolve", "kimi"],
+        1,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    );
+    assert!(stderr(&missing).contains("reason=secret_key_not_found"));
+
+    write_fake_bws(&fake_bin.join("bws"), "invalid");
+    let invalid = run_with_env_and_path(
+        target,
+        &["secret-broker", "resolve", "kimi"],
+        1,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    );
+    assert!(stderr(&invalid).contains("reason=invalid_json"));
+
+    let token_missing = run_with_env_and_path(
+        target,
+        &["secret-broker", "resolve", "kimi"],
+        1,
+        &[("AIPLUS_BWS_PROJECT_ID", "fixture-project")],
+        Path::new(&path_value),
+    );
+    assert!(stderr(&token_missing).contains("SECRET_BROKER_TOKEN_MISSING"));
+}
+
 fn expected_secret_aliases() -> Vec<(&'static str, &'static str, &'static str)> {
     vec![
         ("openai", "private/openai/api_key", "OPENAI_API_KEY"),
@@ -1280,6 +1401,52 @@ fn seed_installed_profile(target: &Path, profile: &str, marker: &str) {
         "openai\tprivate/openai/api_key\tOPENAI_API_KEY\n",
     )
     .unwrap();
+}
+
+fn write_fake_bws(path: &Path, mode: &str) {
+    let mut file = fs::File::create(path).unwrap();
+    writeln!(
+        file,
+        r#"#!/bin/sh
+set -eu
+mode="{mode}"
+if [ "$1" = "--version" ]; then
+  echo "bws fixture"
+  exit 0
+fi
+if [ "$1" != "secret" ]; then
+  exit 2
+fi
+if [ "$2" = "list" ]; then
+  if [ "$mode" = "invalid" ]; then
+    printf 'not-json'
+    exit 0
+  fi
+  if [ "$mode" = "missing" ]; then
+    printf '[{{"id":"other-id","key":"private/other/api_key","value":"fixture-secret-value"}}]'
+    exit 0
+  fi
+  printf '[{{"id":"secret-kimi-id","key":"private/kimi/api_key","value":"fixture-secret-value"}},{{"id":"secret-openai-id","key":"private/openai/api_key","value":"fixture-secret-value"}}]'
+  exit 0
+fi
+if [ "$2" = "get" ]; then
+  if [ "$3" = "secret-kimi-id" ]; then
+    printf '{{"id":"secret-kimi-id","key":"private/kimi/api_key","value":"fixture-secret-value"}}'
+    exit 0
+  fi
+  exit 1
+fi
+exit 2
+"#
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
 }
 
 fn seed_release_asset(target: &Path, bad_checksum: bool) -> PathBuf {

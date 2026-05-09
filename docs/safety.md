@@ -61,7 +61,7 @@ Owner approval remains required before:
 - modifying `$CODEX_HOME`, `~/.codex`, `~/.claude`, OpenCode global config,
   shell profiles, `~/.cargo/bin`, `/usr/local/bin`, or system paths
 
-Owner approved v0.4.5 GitHub Release creation, the verified macOS Apple Silicon
+Owner approved v0.4.6 GitHub Release creation, the verified macOS Apple Silicon
 binary upload, `checksums.txt`, `install.sh`, and user-level installation to
 `~/.local/bin/aiplus`.
 

@@ -54,6 +54,9 @@ approved values only into the child process environment. AiPlus may read
 `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain item created by
 `aiplus secret-broker token set`; it must not store that token in plaintext repo
 files, project install files, compact files, logs, docs, or release artifacts.
+For Bitwarden, AiPlus resolves an alias key/name to the Bitwarden secret ID in
+memory before fetching the value through `bws`. Default output may report
+`secret_id_found=yes`, but must not print the secret ID or secret value.
 The invoked child command is outside AiPlus' control and may print, log,
 transmit, or store environment variables. Use `run --` only with trusted commands
 for explicit action needs.

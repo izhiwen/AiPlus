@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.5";
-const RELEASE_TAG: &str = "v0.4.5";
+const VERSION: &str = "0.4.6";
+const RELEASE_TAG: &str = "v0.4.6";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -23,6 +23,7 @@ const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
+const DEFAULT_BWS_PROJECT_ID: &str = "ddd15408-b7bd-4230-8df3-b44401403ce3";
 
 #[derive(Parser)]
 #[command(
@@ -174,7 +175,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-compact",
         vendor_name: "aiplus-auto-compact",
-        version: "0.4.5",
+        version: "0.4.6",
         path: ".aiplus/modules/aiplus-auto-compact",
         required_files: &[
             "LICENSE",
@@ -185,7 +186,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "auto-team-consultant",
         vendor_name: "aiplus-auto-team-consultant",
-        version: "0.4.5",
+        version: "0.4.6",
         path: ".aiplus/modules/aiplus-auto-team-consultant",
         required_files: &[
             "LICENSE",
@@ -1679,8 +1680,15 @@ fn secret_broker_resolve(alias: Option<String>, print_secret: bool) -> Result<()
     let alias = resolve_alias(alias)?;
     let provider = load_secret_provider()?;
     let value = provider.resolve(&alias)?;
+    let secret_id_found = provider.secret_id_found(&alias)?;
     println!("SECRET_RESOLVE");
     println!("alias={}", alias.alias);
+    println!("provider={}", provider.provider_name());
+    println!("token_source={}", provider.token_source());
+    println!("secret_key={}", alias.bitwarden_name);
+    if let Some(found) = secret_id_found {
+        println!("secret_id_found={}", yes_no(found));
+    }
     println!("env_var={}", alias.env_var);
     println!("provider_status=PASS");
     println!("secret_value_printed={}", yes_no(print_secret));
@@ -1741,6 +1749,13 @@ impl SecretValue {
 
 trait SecretsProvider {
     fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue>;
+    fn provider_name(&self) -> &'static str;
+    fn token_source(&self) -> &'static str {
+        "not_applicable"
+    }
+    fn secret_id_found(&self, _alias: &SecretAlias) -> Result<Option<bool>> {
+        Ok(None)
+    }
 }
 
 struct MockProvider;
@@ -1751,6 +1766,14 @@ impl SecretsProvider for MockProvider {
             value: format!("AIPLUS_MOCK_{}", alias.alias.to_ascii_uppercase()),
         })
     }
+
+    fn provider_name(&self) -> &'static str {
+        "mock"
+    }
+
+    fn secret_id_found(&self, _alias: &SecretAlias) -> Result<Option<bool>> {
+        Ok(Some(true))
+    }
 }
 
 struct BwsProvider {
@@ -1759,9 +1782,10 @@ struct BwsProvider {
 
 impl SecretsProvider for BwsProvider {
     fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue> {
+        let secret_id = self.lookup_secret_id(alias)?;
         let output = Command::new("bws")
             .args(["secret", "get"])
-            .arg(&alias.bitwarden_name)
+            .arg(&secret_id)
             .args(["--output", "json"])
             .env("BWS_ACCESS_TOKEN", &self.token)
             .output()
@@ -1793,6 +1817,91 @@ impl SecretsProvider for BwsProvider {
             value: value.to_string(),
         })
     }
+
+    fn provider_name(&self) -> &'static str {
+        "bws"
+    }
+
+    fn token_source(&self) -> &'static str {
+        token_source()
+    }
+
+    fn secret_id_found(&self, alias: &SecretAlias) -> Result<Option<bool>> {
+        Ok(Some(!self.lookup_secret_id(alias)?.is_empty()))
+    }
+}
+
+impl BwsProvider {
+    fn lookup_secret_id(&self, alias: &SecretAlias) -> Result<String> {
+        let project_id = bitwarden_project_id();
+        let output = Command::new("bws")
+            .args(["secret", "list"])
+            .arg(&project_id)
+            .args(["--output", "json"])
+            .env("BWS_ACCESS_TOKEN", &self.token)
+            .output()
+            .context("run bws secret list")?;
+        if !output.status.success() {
+            return Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=project_unavailable_or_denied",
+                    alias.alias
+                ),
+            )
+            .into());
+        }
+        let json: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|_| {
+            CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=invalid_json",
+                    alias.alias
+                ),
+            )
+        })?;
+        let secrets = json.as_array().ok_or_else(|| {
+            CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=invalid_json",
+                    alias.alias
+                ),
+            )
+        })?;
+        for secret in secrets {
+            let key = secret_key_field(secret);
+            if key.as_deref() == Some(alias.bitwarden_name.as_str()) {
+                let id = secret.get("id").and_then(|value| value.as_str()).ok_or_else(|| {
+                    CliError::new(
+                        1,
+                        format!(
+                            "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=missing_secret_id",
+                            alias.alias
+                        ),
+                    )
+                })?;
+                return Ok(id.to_string());
+            }
+        }
+        Err(CliError::new(
+            1,
+            format!(
+                "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=secret_key_not_found",
+                alias.alias
+            ),
+        )
+        .into())
+    }
+}
+
+fn secret_key_field(secret: &serde_json::Value) -> Option<String> {
+    for field in ["key", "name"] {
+        if let Some(value) = secret.get(field).and_then(|value| value.as_str()) {
+            return Some(value.to_string());
+        }
+    }
+    None
 }
 
 fn secret_aliases() -> Result<Vec<SecretAlias>> {
@@ -1909,6 +2018,10 @@ fn token_source() -> &'static str {
     } else {
         "not_configured"
     }
+}
+
+fn bitwarden_project_id() -> String {
+    std::env::var("AIPLUS_BWS_PROJECT_ID").unwrap_or_else(|_| DEFAULT_BWS_PROJECT_ID.to_string())
 }
 
 fn get_bws_token() -> Result<String> {
@@ -4441,7 +4554,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     let version = actual.unwrap_or("").trim();
     if ![
         "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
-        "0.4.5",
+        "0.4.5", "0.4.6",
     ]
     .contains(&version)
     {
@@ -4470,6 +4583,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.3"
             | "0.4.4"
             | "0.4.5"
+            | "0.4.6"
     )
 }
 

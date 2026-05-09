@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.4.6
+
+- Fixed real Bitwarden `secret-broker resolve` by resolving an alias key/name to
+  a Bitwarden secret ID in memory before calling `bws secret get`.
+- Added safe resolver metadata output (`secret_key`, `secret_id_found`) without
+  printing secret IDs or secret values.
+- Kept secret values out of logs, docs, tests, and default command output while
+  preserving `secret-broker run -- <command...>` as the explicit env-injection
+  path.
+
 ## 0.4.5
 
 - Added `aiplus profile migrate` and `aiplus profile cleanup` so legacy
