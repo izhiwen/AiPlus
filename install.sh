@@ -2,7 +2,7 @@
 set -eu
 
 REPO="izhiwen/aiplus"
-VERSION="${AIPLUS_VERSION:-v0.5.0}"
+VERSION="${AIPLUS_VERSION:-v0.5.1}"
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
 
@@ -14,7 +14,7 @@ Usage:
   sh install.sh [--dry-run]
 
 Environment:
-  AIPLUS_VERSION      Release version to install, default v0.5.0
+  AIPLUS_VERSION      Release version to install, default v0.5.1
   AIPLUS_INSTALL_DIR  Install directory, default $HOME/.local/bin
 
 The installer downloads a GitHub Release asset, verifies checksums.txt, and
@@ -22,7 +22,7 @@ installs only the aiplus binary. It does not edit shell profiles, require sudo,
 install project modules, upload data, collect telemetry, or modify global
 Codex/Claude Code/OpenCode config.
 
-AiPlus v0.5.0 publishes a verified macOS Apple Silicon asset first. Other
+AiPlus v0.5.1 publishes a verified macOS Apple Silicon asset first. Other
 platforms should use the Developer Build instructions until their assets are
 published and verified.
 USAGE
@@ -61,7 +61,7 @@ detect_asset() {
       echo "aiplus-aarch64-apple-darwin.tar.gz"
       ;;
     *)
-      echo "ERROR no verified AiPlus v0.5.0 binary asset for: $os $arch" >&2
+      echo "ERROR no verified AiPlus v0.5.1 binary asset for: $os $arch" >&2
       echo "Use the Developer Build instructions until this platform is published." >&2
       exit 1
       ;;

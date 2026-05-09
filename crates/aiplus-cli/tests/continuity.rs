@@ -70,7 +70,7 @@ fn memory_init_status_doctor_context_and_project_isolation() {
         assert!(doctor.contains("MEMORY_DOCTOR_STATUS=PASS"));
     }
 
-    run(
+    let alpha_add = stdout(&run(
         &alpha,
         &env,
         &[
@@ -84,7 +84,12 @@ fn memory_init_status_doctor_context_and_project_isolation() {
             "Alpha release summaries should be concise.",
         ],
         0,
-    );
+    ));
+    let alpha_id = alpha_add
+        .lines()
+        .find_map(|line| line.strip_prefix("id="))
+        .unwrap()
+        .to_string();
     run(
         &beta,
         &env,
@@ -130,9 +135,43 @@ fn memory_init_status_doctor_context_and_project_isolation() {
         0,
     ));
     assert!(alpha_context.contains("MEMORY_CONTEXT_STATUS=PASS"));
+    assert!(alpha_context.contains("records_used=1"));
+    assert!(alpha_context.contains("records_ignored=0"));
+    assert!(alpha_context.contains("sources=[.aiplus/memory/project-memory.jsonl,.aiplus/memory/decisions.jsonl,.aiplus/memory/facts.jsonl]"));
+    assert!(alpha_context
+        .contains("owner_gates=[publish,deploy,global config,external accounts,secret exposure]"));
+    assert!(alpha_context.contains("secret_values=none"));
     assert!(alpha_context.contains("Alpha release summaries"));
     assert!(!alpha_context.contains("Beta reviews"));
     assert!(!alpha_context.contains("Gamma handoffs"));
+
+    let alpha_list = stdout(&run(&alpha, &env, &["memory", "list"], 0));
+    assert!(alpha_list.contains("MEMORY_LIST_STATUS=PASS"));
+    assert!(alpha_list.contains("records_total=1"));
+    assert!(alpha_list.contains(&alpha_id));
+    let alpha_recent = stdout(&run(&alpha, &env, &["memory", "recent"], 0));
+    assert!(alpha_recent.contains("MEMORY_RECENT_STATUS=PASS"));
+    assert!(alpha_recent.contains("limit=5"));
+    assert!(alpha_recent.contains(&alpha_id));
+    let forget = stdout(&run(&alpha, &env, &["memory", "forget", &alpha_id], 0));
+    assert!(forget.contains("MEMORY_FORGET_STATUS=PASS"));
+    assert!(forget.contains("forgotten=yes"));
+    let alpha_context_after_forget = stdout(&run(
+        &alpha,
+        &env,
+        &[
+            "memory",
+            "context",
+            "--runtime",
+            "codex",
+            "--budget",
+            "2000",
+        ],
+        0,
+    ));
+    assert!(alpha_context_after_forget.contains("records_used=0"));
+    assert!(alpha_context_after_forget.contains("records_ignored=1"));
+    assert!(!alpha_context_after_forget.contains("Alpha release summaries"));
 
     let beta_search = stdout(&run(&beta, &env, &["memory", "search", "reviews"], 0));
     assert!(beta_search.contains("matches=1"));
@@ -156,6 +195,10 @@ fn identity_init_status_and_context_roles() {
     let status = stdout(&run(&project, &env, &["identity", "status"], 0));
     assert!(status.contains("advisor=present"));
     assert!(status.contains("ceo=present"));
+    let list = stdout(&run(&project, &env, &["identity", "list"], 0));
+    assert!(list.contains("IDENTITY_LIST_STATUS=PASS"));
+    assert!(list.contains("advisor=present"));
+    assert!(list.contains("ceo=present"));
     let advisor = stdout(&run(
         &project,
         &env,
@@ -163,6 +206,10 @@ fn identity_init_status_and_context_roles() {
         0,
     ));
     assert!(advisor.contains("role=advisor"));
+    assert!(advisor.contains("activation="));
+    assert!(advisor.contains("output_contract="));
+    assert!(advisor.contains("owner_gates="));
+    assert!(advisor.contains("permissions=none"));
     assert!(advisor.contains("identity_grants_permission=no"));
     let ceo = stdout(&run(
         &project,
@@ -170,7 +217,9 @@ fn identity_init_status_and_context_roles() {
         &["identity", "context", "--role", "ceo"],
         0,
     ));
-    assert!(ceo.contains("role = \"CEO\""));
+    assert!(ceo.contains("role=ceo"));
+    assert!(ceo.contains("role_name=CEO"));
+    assert!(ceo.contains("identity_grants_permission=no"));
 }
 
 #[test]
@@ -193,6 +242,8 @@ fn skill_candidate_propose_reject_status() {
         0,
     ));
     assert!(proposed.contains("SKILL_CANDIDATE_PROPOSE_STATUS=PASS"));
+    assert!(proposed.contains("candidate_is_approved_skill=no"));
+    assert!(proposed.contains("approval_requires=qa_and_owner_gate"));
     let id = proposed
         .lines()
         .find_map(|line| line.strip_prefix("id="))
@@ -200,9 +251,13 @@ fn skill_candidate_propose_reject_status() {
         .to_string();
     let status = stdout(&run(&project, &env, &["skill-candidate", "status"], 0));
     assert!(status.contains("candidate_proposed=1"));
+    assert!(status.contains("candidate_is_approved_skill=no"));
+    assert!(status.contains("approval_requires=qa_and_owner_gate"));
+    assert!(status.contains("rejected_auto_load=no"));
     run(&project, &env, &["skill-candidate", "reject", &id], 0);
     let status = stdout(&run(&project, &env, &["skill-candidate", "status"], 0));
     assert!(status.contains("rejected=1"));
+    assert!(status.contains("rejected_auto_load=no"));
 }
 
 #[test]

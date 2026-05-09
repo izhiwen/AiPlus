@@ -188,14 +188,20 @@ checks，绝不暴露 secret value。
 
 ## Agent Continuity
 
-AiPlus v0.5.0 新增 public `aiplus-agent-memory` foundation，用于临时 terminal
-agent 的本地连续性。它把 Memory Context、Role Identity 和 Skill Candidate 存在当前
-项目的 `.aiplus/` 下。
+AiPlus v0.5.1 把 public `aiplus-agent-memory` 接入了 `aiplus refresh`、
+`aiplus status` 和 `aiplus doctor`。这些命令会报告 memory records、role
+identities、skill candidates、private profile 是否存在、`secret_values=none` 和
+`global_agent_config=untouched`。
+
+v0.5.0 新增的 `aiplus-agent-memory` foundation 用于临时 terminal agent 的本地连续性。
+它把 Memory Context、Role Identity 和 Skill Candidate 存在当前项目的 `.aiplus/` 下。
 
 ```bash
 aiplus memory init --project
 aiplus memory status
 aiplus memory doctor
+aiplus memory list
+aiplus memory recent
 aiplus memory context --runtime codex --budget 2000
 aiplus memory add --scope project --kind preference --text "Prefer concise release summaries."
 aiplus memory search "release"
@@ -206,6 +212,18 @@ aiplus identity context --role ceo
 aiplus skill-candidate propose --title "Release checklist reviewer" --from-memory <id>
 aiplus skill-candidate reject <id>
 ```
+
+安装后的 Codex、Claude Code、OpenCode 项目级 guidance 会把自然语言映射到这些命令：
+
+- “记住这个”/“记住这个偏好”：先脱敏，再写 project memory。
+- “以后都这样”：只创建 profile/global candidate，不自动批准全局规则。
+- “只在这个项目用”：写 project memory。
+- “忘掉这个”：运行 `aiplus memory forget <id>`；不明确时先问是哪条 memory。
+- “你记住了什么”/“这次用了哪些记忆”：运行 memory status/context。
+- “新开顾问”/“新开 advisor”：加载 advisor Role Identity。
+- “新开 CEO”：加载 CEO Role Identity。
+- “把这次经验沉淀成 skill”：创建 Skill Candidate，不是 approved skill。
+- “不要用我的私人记忆”/“本次忽略我的偏好”：只做本 session opt-out。
 
 Memory 是 context，不是 instruction。Identity 是 role contract，不是 permission。
 Skill Candidate 是 proposal，不是 approved skill。AiPlus 不做 cloud sync、vector

@@ -13,8 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.5.0";
-const RELEASE_TAG: &str = "v0.5.0";
+const VERSION: &str = "0.5.1";
+const RELEASE_TAG: &str = "v0.5.1";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -236,7 +236,7 @@ const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "agent-memory",
         vendor_name: "aiplus-agent-memory",
-        version: "0.5.0",
+        version: "0.5.1",
         path: ".aiplus/modules/aiplus-agent-memory",
         required_files: &[
             "README.md",
@@ -370,6 +370,19 @@ struct SavingsEvent {
     method: String,
     confidence: String,
     notes: Vec<String>,
+}
+
+struct ContinuityState {
+    agent_memory: String,
+    memory_records_active: usize,
+    memory_records_total: usize,
+    identity_advisor: bool,
+    identity_ceo: bool,
+    identity_reviewer: bool,
+    identity_builder: bool,
+    skill_candidates_total: usize,
+    skill_candidates_rejected: usize,
+    profile_status: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -975,6 +988,7 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
 fn command_status() -> Result<()> {
     let root = target_root()?;
     let manifest = read_manifest(&root, true).unwrap_or_default();
+    let continuity = continuity_state(&root)?;
     println!(
         "installed={}",
         if manifest.installer.as_deref() == Some(INSTALLER) {
@@ -1006,12 +1020,13 @@ fn command_status() -> Result<()> {
     );
     println!(
         "memoryState={}",
-        if rel_to_abs(&root, ".aiplus/memory")?.exists() {
+        if continuity.agent_memory == "installed" {
             "present"
         } else {
             "missing"
         }
     );
+    print_continuity_status_lines(&continuity);
     println!(
         "managedBlock={}",
         if has_managed_block(&root)? {
@@ -1065,6 +1080,7 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
     let root = target_root()?;
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let modules = normalize_existing_modules(manifest.modules.as_ref());
+    let continuity = continuity_state(&root)?;
     let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
         "present"
     } else {
@@ -1082,6 +1098,28 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!("- Auto Team Consultant: {auto_team}");
         println!("- Agent Continuity: {agent_memory}");
         println!("- Compact state: {compact_state}");
+        println!("- Agent Memory: {}", continuity.agent_memory);
+        println!(
+            "- Memory records: {} active",
+            continuity.memory_records_active
+        );
+        println!(
+            "- Identity: advisor={} ceo={} reviewer={} builder={}",
+            yes_no(continuity.identity_advisor),
+            yes_no(continuity.identity_ceo),
+            yes_no(continuity.identity_reviewer),
+            yes_no(continuity.identity_builder)
+        );
+        println!(
+            "- Skill candidates: {} total, {} rejected, approved_auto=none",
+            continuity.skill_candidates_total, continuity.skill_candidates_rejected
+        );
+        println!(
+            "- Profile: aiplus-work-with-zhiwen {}",
+            continuity.profile_status
+        );
+        println!("- Secret values: none");
+        println!("- Global agent config: untouched");
         println!();
         println!("我会这样使用：");
         println!("- 长任务或 compact 前准备 checkpoint");
@@ -1092,8 +1130,15 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
             "- 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。"
         );
         println!(
-            "- 如果你问“你记住了什么”或“新开 CEO”，我会运行 aiplus memory status/context 或 aiplus identity context。"
+            "- 如果你说“记住这个”“忘掉这个”“你记住了什么”或“这次用了哪些记忆”，我会使用 aiplus memory add/forget/status/context。"
         );
+        println!(
+            "- 如果你说“新开顾问”“新开 advisor”或“新开 CEO”，我会运行 aiplus identity context。"
+        );
+        println!(
+            "- 如果你说“把这次经验沉淀成 skill”，我只会创建 Skill Candidate，不会自动批准 skill。"
+        );
+        println!("- 如果你说“不要用我的私人记忆”或“本次忽略我的偏好”，我只做本 session opt-out。");
         println!("- compact 后如果我没自动继续，你发一句“继续”就行。我会从刚才的位置接着做。");
         println!("- CEO Prompt / review / brainstorm 时使用 Auto Team Consultant");
         println!();
@@ -1112,12 +1157,37 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!("- Auto Team Consultant: {auto_team}");
         println!("- Agent Continuity: {agent_memory}");
         println!("- Compact state: {compact_state}");
+        println!("- Agent Memory: {}", continuity.agent_memory);
+        println!(
+            "- Memory records: {} active",
+            continuity.memory_records_active
+        );
+        println!(
+            "- Identity: advisor={} ceo={} reviewer={} builder={}",
+            yes_no(continuity.identity_advisor),
+            yes_no(continuity.identity_ceo),
+            yes_no(continuity.identity_reviewer),
+            yes_no(continuity.identity_builder)
+        );
+        println!(
+            "- Skill candidates: {} total, {} rejected, approved_auto=none",
+            continuity.skill_candidates_total, continuity.skill_candidates_rejected
+        );
+        println!(
+            "- Profile: aiplus-work-with-zhiwen {}",
+            continuity.profile_status
+        );
+        println!("- Secret values: none");
+        println!("- Global agent config: untouched");
         println!();
         println!("How I will use it:");
         println!("- Prepare checkpoints before long tasks or compact-worthy moments.");
         println!("- If you say \"prepare compact\", \"save progress\", or \"checkpoint this\", I will run aiplus compact prepare.");
         println!("- If you ask \"show compact savings\" or \"how many tokens did compact save?\", I will run aiplus compact savings.");
-        println!("- If you ask \"what do you remember\" or \"new CEO\", I will run aiplus memory status/context or aiplus identity context.");
+        println!("- If you ask \"what do you remember\", \"what memory did you use\", \"remember this\", or \"forget this\", I will use aiplus memory add/forget/status/context.");
+        println!("- If you ask for a new advisor or new CEO, I will run aiplus identity context for that role.");
+        println!("- If you ask to turn this experience into a skill, I will create a Skill Candidate, not an approved skill.");
+        println!("- If you ask to ignore private memory for this session, I will treat it as session-local opt-out only.");
         println!("- After compact, if I do not reply, send: continue");
         println!("- Use Auto Team Consultant for CEO Prompt, review, and brainstorm work.");
         println!();
@@ -1284,6 +1354,7 @@ fn command_doctor() -> Result<()> {
             );
         }
     }
+    let continuity = continuity_state(&root)?;
     push_check(
         &mut checks,
         "no global configs were touched by installer".to_string(),
@@ -1315,6 +1386,7 @@ fn command_doctor() -> Result<()> {
         })
         .collect();
     println!("modules=[{}]", module_text.join(","));
+    print_continuity_status_lines(&continuity);
     println!("refreshPrompt={REFRESH_PROMPT}");
     println!("globalConfig=untouched");
     println!("target={}", root.display());
@@ -1824,11 +1896,13 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
         Some("init") => memory_init_command(args.project),
         Some("context") => memory_context(args.runtime, args.budget),
         Some("add") => memory_add(args.scope, args.kind, args.text),
+        Some("list") => memory_list(),
+        Some("recent") => memory_recent(),
         Some("search") => memory_search(args.arg),
         Some("forget") => memory_forget(args.arg),
         Some("conflicts") => memory_conflicts(),
         _ => {
-            println!("Usage: aiplus memory status|doctor|init --project|context --runtime codex --budget 2000|add --scope project --kind preference --text \"...\"|search <query>|forget <id>|conflicts");
+            println!("Usage: aiplus memory status|doctor|init --project|context --runtime codex --budget 2000|add --scope project --kind preference --text \"...\"|list|recent|search <query>|forget <id>|conflicts");
             process::exit(2);
         }
     }
@@ -1837,10 +1911,13 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
 fn command_identity(subcommand: Option<String>, project: bool, role: Option<String>) -> Result<()> {
     match subcommand.as_deref() {
         Some("status") => identity_status(),
+        Some("list") => identity_list(),
         Some("init") => identity_init_command(project),
         Some("context") => identity_context(role),
         _ => {
-            println!("Usage: aiplus identity status|init --project|context --role advisor|ceo");
+            println!(
+                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo"
+            );
             process::exit(2);
         }
     }
@@ -1969,9 +2046,18 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     let runtime = runtime.unwrap_or_else(|| "codex".to_string());
     let budget = budget.unwrap_or(2000);
     let records = read_memory_records(&root).unwrap_or_default();
+    let active_records: Vec<&MemoryRecord> = records
+        .iter()
+        .filter(|record| record.status == "active" || record.status == "tentative")
+        .collect();
+    let ignored = records.len().saturating_sub(active_records.len());
     println!("MEMORY_CONTEXT");
     println!("runtime={runtime}");
     println!("budget={budget}");
+    println!("records_used={}", active_records.len());
+    println!("records_ignored={ignored}");
+    println!("sources=[.aiplus/memory/project-memory.jsonl,.aiplus/memory/decisions.jsonl,.aiplus/memory/facts.jsonl]");
+    println!("owner_gates=[publish,deploy,global config,external accounts,secret exposure]");
     println!("scope=project-local");
     println!("secret_values=none");
     println!("global_agent_config_edits=none");
@@ -1991,10 +2077,7 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     println!();
     println!("## Records");
     let mut used = 0usize;
-    for record in records
-        .iter()
-        .filter(|record| record.status == "active" || record.status == "tentative")
-    {
+    for record in active_records {
         let line = format!(
             "- [{}] {} / {} / {}: {}",
             record.id, record.scope, record.kind, record.subject, record.content
@@ -2007,6 +2090,30 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
         println!("{line}");
     }
     println!("MEMORY_CONTEXT_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_list() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    println!("MEMORY_LIST");
+    println!("records_total={}", records.len());
+    let shown = print_memory_rows(records.iter(), None);
+    println!("records_shown={shown}");
+    println!("secret_values=none");
+    println!("MEMORY_LIST_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_recent() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    println!("MEMORY_RECENT");
+    println!("limit=5");
+    let shown = print_memory_rows(records.iter().rev(), Some(5));
+    println!("records_shown={shown}");
+    println!("secret_values=none");
+    println!("MEMORY_RECENT_STATUS=PASS");
     Ok(())
 }
 
@@ -2115,6 +2222,8 @@ fn memory_forget(id: Option<String>) -> Result<()> {
     append_audit(&root, "memory.forget", &id)?;
     println!("MEMORY_FORGET");
     println!("id={id}");
+    println!("status=rejected");
+    println!("forgotten=yes");
     println!("secret_values=none");
     println!("MEMORY_FORGET_STATUS=PASS");
     Ok(())
@@ -2152,6 +2261,21 @@ fn identity_status() -> Result<()> {
     Ok(())
 }
 
+fn identity_list() -> Result<()> {
+    let root = target_root()?;
+    let dir = identity_dir(&root)?;
+    println!("IDENTITY_LIST");
+    println!("scope=project");
+    for role in ["advisor", "ceo", "reviewer", "builder"] {
+        let present = dir.join(format!("{role}.identity.toml")).exists();
+        println!("{role}={}", if present { "present" } else { "missing" });
+    }
+    println!("identity_grants_permission=no");
+    println!("global_agent_config_edits=none");
+    println!("IDENTITY_LIST_STATUS=PASS");
+    Ok(())
+}
+
 fn identity_init_command(project: bool) -> Result<()> {
     if !project {
         return Err(CliError::new(1, "ERROR identity init requires --project").into());
@@ -2174,13 +2298,29 @@ fn identity_context(role: Option<String>) -> Result<()> {
     identity_init(&root)?;
     let file = identity_dir(&root)?.join(format!("{role}.identity.toml"));
     let text = fs::read_to_string(&file)?;
+    let role_name = toml_value_line(&text, "role").unwrap_or_else(|| role.clone());
+    let activation = toml_value_line(&text, "activation").unwrap_or_else(|| "[]".to_string());
+    let output_contract =
+        toml_value_line(&text, "output_contract").unwrap_or_else(|| "not_set".to_string());
+    let owner_gates = toml_value_line(&text, "owner_gates").unwrap_or_else(|| "[]".to_string());
+    let inherits = toml_value_line(&text, "inherits").unwrap_or_else(|| "[]".to_string());
+    let private_profile_linked =
+        inherits.contains("aiplus-work-with-zhiwen") && private_profile_installed()?;
     println!("IDENTITY_CONTEXT");
     println!("role={role}");
+    println!("role_name={role_name}");
+    println!("activation={activation}");
+    println!("output_contract={output_contract}");
+    println!("owner_gates={owner_gates}");
+    println!("permissions=none");
     println!("scope=project");
     println!("identity_grants_permission=no");
+    println!(
+        "inherited_private_profile={}",
+        yes_no(private_profile_linked)
+    );
+    println!("inherits={inherits}");
     println!("global_agent_config_edits=none");
-    println!();
-    println!("{text}");
     println!("IDENTITY_CONTEXT_STATUS=PASS");
     Ok(())
 }
@@ -2201,6 +2341,9 @@ fn skill_candidate_status() -> Result<()> {
     println!("candidates_total={}", candidates.len());
     println!("candidate_proposed={proposed}");
     println!("rejected={rejected}");
+    println!("candidate_is_approved_skill=no");
+    println!("approval_requires=qa_and_owner_gate");
+    println!("rejected_auto_load=no");
     println!("automatic_approved_skills=none");
     println!("owner_gate_required_for_approval=yes");
     println!("secret_values=none");
@@ -2249,6 +2392,8 @@ fn skill_candidate_propose(title: Option<String>, from_memory: Option<String>) -
     println!("SKILL_CANDIDATE_PROPOSE");
     println!("id={id}");
     println!("status=candidate_proposed");
+    println!("candidate_is_approved_skill=no");
+    println!("approval_requires=qa_and_owner_gate");
     println!("owner_gate_required_for_approval=yes");
     println!("secret_values=none");
     println!("SKILL_CANDIDATE_PROPOSE_STATUS=PASS");
@@ -2279,6 +2424,7 @@ fn skill_candidate_reject(id: Option<String>) -> Result<()> {
     println!("SKILL_CANDIDATE_REJECT");
     println!("id={id}");
     println!("status=rejected");
+    println!("rejected_auto_load=no");
     println!("secret_values=none");
     println!("SKILL_CANDIDATE_REJECT_STATUS=PASS");
     Ok(())
@@ -3269,6 +3415,68 @@ fn read_skill_candidates(root: &Path) -> Result<Vec<SkillCandidateRecord>> {
     Ok(candidates)
 }
 
+fn continuity_state(root: &Path) -> Result<ContinuityState> {
+    let memory = memory_dir(root)?;
+    let records = read_memory_records(root).unwrap_or_default();
+    let active = records
+        .iter()
+        .filter(|record| record.status == "active" || record.status == "tentative")
+        .count();
+    let identities = identity_dir(root)?;
+    let candidates = read_skill_candidates(root).unwrap_or_default();
+    let rejected = candidates
+        .iter()
+        .filter(|candidate| candidate.status == "rejected")
+        .count();
+    Ok(ContinuityState {
+        agent_memory: if memory.exists() {
+            "installed".to_string()
+        } else {
+            "not_initialized".to_string()
+        },
+        memory_records_active: active,
+        memory_records_total: records.len(),
+        identity_advisor: identities.join("advisor.identity.toml").exists(),
+        identity_ceo: identities.join("ceo.identity.toml").exists(),
+        identity_reviewer: identities.join("reviewer.identity.toml").exists(),
+        identity_builder: identities.join("builder.identity.toml").exists(),
+        skill_candidates_total: candidates.len(),
+        skill_candidates_rejected: rejected,
+        profile_status: if private_profile_installed()? {
+            "installed".to_string()
+        } else {
+            "missing".to_string()
+        },
+    })
+}
+
+fn private_profile_installed() -> Result<bool> {
+    let dir = profile_dir("aiplus-work-with-zhiwen")?;
+    Ok(dir.join("profile.toml").exists() && !dir.join("disabled").exists())
+}
+
+fn print_continuity_status_lines(state: &ContinuityState) {
+    println!("agentMemory={}", state.agent_memory);
+    println!("memoryRecordsActive={}", state.memory_records_active);
+    println!("memoryRecordsTotal={}", state.memory_records_total);
+    println!(
+        "identity=advisor={} ceo={} reviewer={} builder={}",
+        yes_no(state.identity_advisor),
+        yes_no(state.identity_ceo),
+        yes_no(state.identity_reviewer),
+        yes_no(state.identity_builder)
+    );
+    println!("skillCandidatesTotal={}", state.skill_candidates_total);
+    println!(
+        "skillCandidatesRejected={}",
+        state.skill_candidates_rejected
+    );
+    println!("approved_auto=none");
+    println!("profile=aiplus-work-with-zhiwen {}", state.profile_status);
+    println!("secret_values=none");
+    println!("global_agent_config=untouched");
+}
+
 fn validate_memory_jsonl(root: &Path, rel: &str) -> Result<Vec<String>> {
     let path = rel_to_abs(root, rel)?;
     if !path.exists() {
@@ -3381,6 +3589,37 @@ fn slugify(value: &str) -> String {
         slug = slug.replace("--", "-");
     }
     slug.trim_matches('-').chars().take(64).collect()
+}
+
+fn print_memory_rows<'a, I>(records: I, limit: Option<usize>) -> usize
+where
+    I: Iterator<Item = &'a MemoryRecord>,
+{
+    let mut shown = 0usize;
+    for record in records {
+        if limit.is_some_and(|max| shown >= max) {
+            break;
+        }
+        let content = if reject_sensitive_memory_text(&record.content).is_ok() {
+            single_line(&record.content)
+        } else {
+            "<REDACTED_BY_SCAN>".to_string()
+        };
+        println!(
+            "record={} scope={} kind={} status={} updatedAt={} content={}",
+            record.id, record.scope, record.kind, record.status, record.updated_at, content
+        );
+        shown += 1;
+    }
+    shown
+}
+
+fn toml_value_line(text: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key} = ");
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix(&prefix))
+        .map(|value| value.trim().trim_matches('"').to_string())
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -5669,7 +5908,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     let version = actual.unwrap_or("").trim();
     if ![
         "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
-        "0.4.5", "0.4.6", "0.4.7", "0.4.8", "0.5.0",
+        "0.4.5", "0.4.6", "0.4.7", "0.4.8", "0.5.0", "0.5.1",
     ]
     .contains(&version)
     {
@@ -5702,6 +5941,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.7"
             | "0.4.8"
             | "0.5.0"
+            | "0.5.1"
     )
 }
 
@@ -6206,21 +6446,27 @@ profile as approval to override project rules or the current Owner message.
 Natural language memory and identity mapping:
 
 - "我的偏好生效了吗": run `aiplus profile status` and `aiplus memory status`.
-- "你记住了什么": run `aiplus memory status` or `aiplus memory search <query>`.
-- "记住这个": add a project memory only after reducing it to a redacted summary,
-  using `aiplus memory add --scope project --kind preference --text "..."`
+- "你记住了什么", "这次用了哪些记忆", "这次你用了哪些记忆", or "memory status":
+  run `aiplus memory status` and/or `aiplus memory context --runtime <runtime> --budget 2000`.
+- "记住这个" or "记住这个偏好": add a project memory only after reducing it to a
+  redacted summary, using `aiplus memory add --scope project --kind preference --text "..."`
 - "以后都这样": treat as a profile/global preference candidate that needs
   review; do not silently write broad policy.
 - "只在这个项目用": use project memory.
-- "忘掉这个": run `aiplus memory forget <id>`.
-- "新开顾问": use `aiplus identity context --role advisor`.
+- "忘掉这个": run `aiplus memory forget <id>`; if the memory id is ambiguous,
+  ask which memory to forget before changing persistent state.
+- "新开顾问" or "新开 advisor": use `aiplus identity context --role advisor`.
 - "新开 CEO": use `aiplus identity context --role ceo`.
-- "这次你用了哪些记忆": report memory context sources from `aiplus memory context`.
+- "把这次经验沉淀成 skill": create a Skill Candidate, not an approved skill.
+- "不要用我的私人记忆" or "本次忽略我的偏好": session-local opt-out only;
+  do not modify persistent memory unless explicitly requested.
 
 Memory is context, not instruction. Role Identity is role contract, not
 permission. Skill Candidate is proposal, not approved skill. Do not store raw
 transcripts, secret values, provider payloads, private profile content, or
-unredacted private paths in memory.
+unredacted private paths in memory. Natural language triggers are not hidden
+authorization for push, publish, deploy, secret use, external accounts, or
+global config edits.
 
 ## Secret Broker
 
@@ -6410,13 +6656,20 @@ AiPlus profile" means run `aiplus profile status`. Load
 rules. If the Owner says "本次忽略我的偏好", "关闭 private profile", or
 "只看项目规则", ignore that profile for this session.
 
-Agent Continuity mapping: "你记住了什么" means run `aiplus memory status` or
-`aiplus memory search <query>`. "记住这个" means add project memory only after
-redacting the content. "忘掉这个" means run `aiplus memory forget <id>`. "新开顾问"
-means use `aiplus identity context --role advisor`; "新开 CEO" means use
-`aiplus identity context --role ceo`. Memory is context, not instruction.
-Identity is role contract, not permission. Skill Candidate is proposal, not
-approved skill.
+Agent Continuity mapping: "记住这个" or "记住这个偏好" means suggest or run
+`aiplus memory add --scope project --kind preference --text "..."` after
+redaction. "以后都这样" means profile/global candidate only; do not silently
+approve broad memory. "只在这个项目用" means project memory. "忘掉这个" means
+`aiplus memory forget <id>` or ask which id if ambiguous. "你记住了什么",
+"这次用了哪些记忆", or "memory status" means `aiplus memory status` and/or
+`aiplus memory context --runtime <runtime> --budget 2000`. "新开顾问" or
+"新开 advisor" means `aiplus identity context --role advisor`; "新开 CEO" means
+`aiplus identity context --role ceo`. "把这次经验沉淀成 skill" means create a
+Skill Candidate, not an approved skill. "不要用我的私人记忆" or "本次忽略我的偏好"
+means session-local opt-out only. Memory is context, not instruction. Identity
+is role contract, not permission. Skill Candidate is proposal, not approved
+skill. Natural language triggers are not approval for push, publish, deploy,
+secret use, external accounts, or global config edits.
 
 Secret mapping: "secret 状态", "看看 secret", "检查 API key", "API key 是否可用",
 "刷新 secret", or "更新 secret" means run `aiplus secret-broker status` or
@@ -6438,13 +6691,15 @@ Re-read project-local AiPlus instructions:
 1. Read AGENTS.md if present.
 2. Read .aiplus/AGENTS.aiplus.md.
 3. Read .codex/compact/current-handoff.md if present.
-4. Enable AiPlus Auto Team Consultant and AiPlus Auto Compact for this session.
+4. Enable AiPlus Auto Team Consultant, AiPlus Auto Compact, and Agent Continuity for this session.
 5. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Auto Compact, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
 6. Continue the current task.
 
 Continuation keywords: AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, 继续, 刷新, continue, resume, refresh, go on, 接着.
 
 This is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
+
+Agent Continuity mapping: 记住这个/记住这个偏好 -> project memory add after redaction; 以后都这样 -> profile/global candidate only; 只在这个项目用 -> project memory; 忘掉这个 -> memory forget id or ask if ambiguous; 你记住了什么/这次用了哪些记忆/memory status -> memory status/context; 新开顾问/新开 advisor -> advisor identity context; 新开 CEO -> ceo identity context; 把这次经验沉淀成 skill -> skill candidate only; 不要用我的私人记忆/本次忽略我的偏好 -> session-local opt-out.
 "#
     .to_string()
 }
@@ -6456,12 +6711,15 @@ Use project-local AiPlus modules from .aiplus/modules/ when relevant.
 
 - Auto Compact: .aiplus/modules/aiplus-auto-compact/
 - Auto Team Consultant: .aiplus/modules/aiplus-auto-team-consultant/
+- Agent Memory: .aiplus/modules/aiplus-agent-memory/
 
 For already-open agent sessions, explicit AiPlus refresh triggers are:
 AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus.
 
 Generic continuation also works when possible:
 继续, 刷新, continue, resume, refresh, go on, 接着.
+
+Agent Continuity: use `aiplus memory status/context/add/forget`, `aiplus identity context --role advisor|ceo`, and `aiplus skill-candidate propose/reject` for natural phrases such as 记住这个, 以后都这样, 只在这个项目用, 忘掉这个, 你记住了什么, 这次用了哪些记忆, 新开顾问, 新开 advisor, 新开 CEO, 把这次经验沉淀成 skill, 不要用我的私人记忆, and 本次忽略我的偏好. Memory is context, identity is not permission, and skill candidates are not approved skills.
 "#
     .to_string()
 }
@@ -6471,6 +6729,7 @@ fn opencode_config_content() -> String {
         "aiplus": {
             "localOnly": true,
             "refreshKeywords": ["AiPlus 刷新", "刷新 AiPlus", "aiplus refresh", "aiplus status", "AiPlus status", "继续 AiPlus", "resume AiPlus", "继续", "刷新", "continue", "resume", "refresh", "go on", "接着"],
+            "continuityKeywords": ["记住这个", "记住这个偏好", "以后都这样", "只在这个项目用", "忘掉这个", "你记住了什么", "这次用了哪些记忆", "新开顾问", "新开 advisor", "新开 CEO", "把这次经验沉淀成 skill", "不要用我的私人记忆", "本次忽略我的偏好"],
             "instructions": ".aiplus/AGENTS.aiplus.md"
         }
     })
@@ -6489,6 +6748,20 @@ resume AiPlus.
 
 Generic continuation keywords should try AiPlus first when possible: 继续, 刷新,
 continue, resume, refresh, go on, 接着.
+
+Agent Continuity natural-language mapping:
+- 记住这个 / 记住这个偏好: add project memory after redaction.
+- 以后都这样: create a profile/global candidate only; do not silently approve.
+- 只在这个项目用: project memory.
+- 忘掉这个: run memory forget with an id, or ask if ambiguous.
+- 你记住了什么 / 这次用了哪些记忆 / memory status: memory status/context.
+- 新开顾问 / 新开 advisor: advisor identity context.
+- 新开 CEO: ceo identity context.
+- 把这次经验沉淀成 skill: skill candidate only.
+- 不要用我的私人记忆 / 本次忽略我的偏好: session-local opt-out.
+
+Memory is context, identity is role contract not permission, and skill
+candidates are proposals rather than approved skills.
 "#
     .to_string()
 }

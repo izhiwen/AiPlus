@@ -172,8 +172,16 @@ fn install_status_doctor_update_add_uninstall_codex() {
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
     assert!(status
-        .contains("modules=[agent-memory@0.5.0, auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
+        .contains("modules=[agent-memory@0.5.1, auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
     assert!(status.contains("type \"AiPlus 刷新\""));
+    assert!(status.contains("agentMemory="));
+    assert!(status.contains("memoryRecordsActive="));
+    assert!(status.contains("identity=advisor="));
+    assert!(status.contains("skillCandidatesTotal="));
+    assert!(status.contains("approved_auto=none"));
+    assert!(status.contains("profile=aiplus-work-with-zhiwen"));
+    assert!(status.contains("secret_values=none"));
+    assert!(status.contains("global_agent_config=untouched"));
     assert!(status.contains("STATUS=PASS"));
 
     let refresh = stdout(&run(target, &["refresh"], 0));
@@ -181,6 +189,13 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(refresh.contains("- Auto Compact: installed"));
     assert!(refresh.contains("- Auto Team Consultant: installed"));
     assert!(refresh.contains("- Compact state: present"));
+    assert!(refresh.contains("- Agent Memory:"));
+    assert!(refresh.contains("- Memory records:"));
+    assert!(refresh.contains("- Identity: advisor="));
+    assert!(refresh.contains("- Skill candidates:"));
+    assert!(refresh.contains("- Profile: aiplus-work-with-zhiwen"));
+    assert!(refresh.contains("- Secret values: none"));
+    assert!(refresh.contains("- Global agent config: untouched"));
     assert!(refresh.contains("AIPLUS_REFRESH_STATUS=PASS"));
     assert!(!refresh.contains("已刷新 AiPlus。"));
 
@@ -188,6 +203,13 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(refresh_zh.contains("已刷新 AiPlus。"));
     assert!(refresh_zh.contains("- Auto Compact: 已安装"));
     assert!(refresh_zh.contains("- Auto Team Consultant: 已安装"));
+    assert!(refresh_zh.contains("- Agent Memory:"));
+    assert!(refresh_zh.contains("- Memory records:"));
+    assert!(refresh_zh.contains("- Identity: advisor="));
+    assert!(refresh_zh.contains("- Skill candidates:"));
+    assert!(refresh_zh.contains("- Profile: aiplus-work-with-zhiwen"));
+    assert!(refresh_zh.contains("- Secret values: none"));
+    assert!(refresh_zh.contains("- Global agent config: untouched"));
     assert!(refresh_zh.contains("AIPLUS_REFRESH_STATUS=PASS"));
 
     let installed_agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
@@ -207,6 +229,20 @@ fn install_status_doctor_update_add_uninstall_codex() {
         "save progress",
         "aiplus compact prepare",
         "aiplus compact resume",
+        "记住这个偏好",
+        "以后都这样",
+        "只在这个项目用",
+        "忘掉这个",
+        "你记住了什么",
+        "这次用了哪些记忆",
+        "新开顾问",
+        "新开 advisor",
+        "新开 CEO",
+        "把这次经验沉淀成 skill",
+        "不要用我的私人记忆",
+        "本次忽略我的偏好",
+        "Skill Candidate is proposal",
+        "Natural language triggers are not hidden",
     ] {
         assert!(installed_agents.contains(phrase), "missing {phrase}");
     }
@@ -221,6 +257,11 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(doctor.contains("runtimeAdapters=[codex]"));
     assert!(doctor.contains("DOCTOR_STATUS=PASS"));
     assert!(doctor.contains("globalConfig=untouched"));
+    assert!(doctor.contains("agentMemory="));
+    assert!(doctor.contains("memoryRecordsActive="));
+    assert!(doctor.contains("identity=advisor="));
+    assert!(doctor.contains("skillCandidatesTotal="));
+    assert!(doctor.contains("secret_values=none"));
     assert!(!doctor.contains("compactctl.mjs"));
 
     let update = stdout(&run(target, &["update"], 0));
@@ -388,6 +429,24 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
         assert!(out.contains("INSTALL_STATUS=PASS"));
         let doctor = stdout(&run(target, &["doctor"], 0));
         assert!(doctor.contains("DOCTOR_STATUS=PASS"), "{runtime}: {doctor}");
+        if runtime == "claude-code" || runtime == "all" {
+            let refresh =
+                fs::read_to_string(target.join(".claude/commands/aiplus-refresh.md")).unwrap();
+            let advisor =
+                fs::read_to_string(target.join(".claude/agents/aiplus-advisor.md")).unwrap();
+            assert!(refresh.contains("记住这个"));
+            assert!(refresh.contains("这次用了哪些记忆"));
+            assert!(advisor.contains("Agent Memory"));
+            assert!(advisor.contains("把这次经验沉淀成 skill"));
+        }
+        if runtime == "opencode" || runtime == "all" {
+            let prompt = fs::read_to_string(target.join(".opencode/prompts/aiplus.md")).unwrap();
+            let config = fs::read_to_string(target.join(".opencode/opencode.json")).unwrap();
+            assert!(prompt.contains("新开 advisor"));
+            assert!(prompt.contains("本次忽略我的偏好"));
+            assert!(config.contains("continuityKeywords"));
+            assert!(config.contains("把这次经验沉淀成 skill"));
+        }
     }
 
     let temp = tempfile::tempdir().unwrap();

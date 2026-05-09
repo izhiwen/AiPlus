@@ -1,8 +1,8 @@
 # AiPlus Rust Release Checklist
 
-Status: `V0_5_0_AGENT_CONTINUITY_FOUNDATION`
+Status: `V0_5_1_AGENT_CONTINUITY_UX`
 
-This checklist tracks the Owner-approved v0.5.0 GitHub Release scope. It does
+This checklist tracks the Owner-approved v0.5.1 GitHub Release scope. It does
 not approve package registries, Homebrew, marketplace publication, telemetry, or
 system/global install paths.
 
@@ -13,9 +13,9 @@ system/global install paths.
 - [ ] Owner approves any future license change away from Apache-2.0 or public
       legal wording change.
 - [x] Owner approves creating or using `github.com/izhiwen/aiplus`.
-- [x] Owner approves git push for reviewed v0.5.0 source/docs changes.
-- [x] Owner approves creating the `v0.5.0` git tag.
-- [x] Owner approves the `v0.5.0` GitHub Release.
+- [x] Owner approves git push for reviewed v0.5.1 source/docs changes.
+- [x] Owner approves creating the `v0.5.1` git tag.
+- [x] Owner approves the `v0.5.1` GitHub Release.
 - [x] Owner approves uploading the verified macOS Apple Silicon binary and
       `checksums.txt`.
 - [ ] Owner approves any package registry publication.
@@ -58,8 +58,15 @@ system/global install paths.
 - [x] Manual smoke: `memory init --project`
 - [x] Manual smoke: `memory status`
 - [x] Manual smoke: `memory doctor`
+- [x] Manual smoke: `memory list`
+- [x] Manual smoke: `memory recent`
 - [x] Manual smoke: `memory context --runtime codex --budget 2000`
+- [x] Manual smoke: `memory forget <id>`
+- [x] Manual smoke: `refresh` reports Agent Continuity state.
+- [x] Manual smoke: `status` reports Agent Continuity state.
+- [x] Manual smoke: `doctor` reports Agent Continuity state.
 - [x] Manual smoke: `identity init --project`
+- [x] Manual smoke: `identity list`
 - [x] Manual smoke: `identity context --role advisor`
 - [x] Manual smoke: `identity context --role ceo`
 - [x] Manual smoke: `skill-candidate propose --title ... --from-memory ...`
@@ -68,6 +75,7 @@ system/global install paths.
 - [x] Three fake project isolation tests.
 - [x] Memory redaction guard tests.
 - [x] Atomic write/concurrency smoke.
+- [x] Natural-language guidance scan for Codex, Claude Code, and OpenCode.
 - [x] Mock smoke: `secret-broker resolve kimi|deepseek|qwen` does not print
       secret values.
 - [x] Mock smoke: `secret-broker run --aliases openai,kimi` resolves only

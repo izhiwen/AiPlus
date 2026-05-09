@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.5.1
+
+- Wired Agent Continuity into `aiplus refresh`, `aiplus status`, and
+  `aiplus doctor` so memory, identity, Skill Candidate, profile, secret safety,
+  and global config state are visible from the normal refresh path.
+- Added `aiplus memory list`, `aiplus memory recent`, safer forget output, and a
+  more compact `aiplus memory context` packet for runtime agents.
+- Improved identity and Skill Candidate UX with `identity list`, summarized
+  advisor/CEO context, explicit permission-free identity output, and guidance
+  that candidates are not approved skills.
+- Updated Codex, Claude Code, and OpenCode project-local guidance for natural
+  phrases such as `记住这个`, `忘掉这个`, `新开顾问`, `新开 CEO`, and
+  `把这次经验沉淀成 skill`.
+
 ## 0.5.0
 
 - Added the public `aiplus-agent-memory` Agent Continuity foundation for local
