@@ -49,8 +49,10 @@ Bitwarden secrets or secret values.
 packages may install a local alias table under AiPlus user config. Public AiPlus
 does not bundle private Bitwarden namespaces or account identifiers.
 
-By default, `resolve` does not print secret values. `run -- <command...>` injects
-approved values only into the child process environment. AiPlus may read
+By default, `resolve` does not print secret values.
+`run --aliases a,b -- <command...>` injects only requested approved aliases into
+the child process environment. `run -- <command...>` remains a compatibility mode that injects
+aliases that resolve and skips unavailable optional aliases. AiPlus may read
 `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain item created by
 `aiplus secret-broker token set`; it must not store that token in plaintext repo
 files, project install files, compact files, logs, docs, or release artifacts.
@@ -60,6 +62,11 @@ memory before fetching the value through `bws`. Default output may report
 The invoked child command is outside AiPlus' control and may print, log,
 transmit, or store environment variables. Use `run --` only with trusted commands
 for explicit action needs.
+
+Kimi Code membership keys and Kimi Open Platform / Moonshot keys are different.
+AiPlus treats the `kimi` alias as Kimi Code metadata by default:
+`https://api.kimi.com/coding/v1` with model `kimi-for-coding`. Moonshot platform
+keys should use a separate alias such as `kimi_platform` or `moonshot`.
 
 Real Bitwarden smoke checks require the Bitwarden Secrets Manager `bws` CLI plus
 a read-only machine account token configured by the private profile owner. If

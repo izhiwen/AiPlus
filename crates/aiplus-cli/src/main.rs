@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
 
-const VERSION: &str = "0.4.6";
-const RELEASE_TAG: &str = "v0.4.6";
+const VERSION: &str = "0.4.7";
+const RELEASE_TAG: &str = "v0.4.7";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -118,6 +118,10 @@ enum Commands {
         arg: Option<String>,
         #[arg(long, action = ArgAction::SetTrue)]
         print: bool,
+        #[arg(long = "alias")]
+        alias: Vec<String>,
+        #[arg(long = "aliases")]
+        aliases: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
     },
@@ -516,8 +520,10 @@ fn run(command: Commands) -> Result<()> {
             subcommand,
             arg,
             print,
+            alias,
+            aliases,
             command,
-        } => command_secret_broker(subcommand, arg, print, command),
+        } => command_secret_broker(subcommand, arg, print, alias, aliases, command),
         Commands::SelfCommand {
             subcommand,
             dry_run,
@@ -528,7 +534,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor\n  secret-broker status|doctor|list|resolve|run|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1609,6 +1615,8 @@ fn command_secret_broker(
     subcommand: Option<String>,
     arg: Option<String>,
     print_secret: bool,
+    alias_flags: Vec<String>,
+    aliases_csv: Option<String>,
     command: Vec<String>,
 ) -> Result<()> {
     match subcommand.as_deref() {
@@ -1616,10 +1624,10 @@ fn command_secret_broker(
         Some("doctor") => secret_broker_doctor(),
         Some("list") => secret_broker_list(),
         Some("resolve") => secret_broker_resolve(arg, print_secret),
-        Some("run") => secret_broker_run(command),
+        Some("run") => secret_broker_run(alias_flags, aliases_csv, command),
         Some("token") => secret_broker_token(arg),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run -- <command...>|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|token set|delete");
             process::exit(2);
         }
     }
@@ -1690,6 +1698,13 @@ fn secret_broker_resolve(alias: Option<String>, print_secret: bool) -> Result<()
         println!("secret_id_found={}", yes_no(found));
     }
     println!("env_var={}", alias.env_var);
+    if let Some(metadata) = provider_metadata(&alias.alias) {
+        println!("provider_family={}", metadata.provider_family);
+        println!("platform={}", metadata.platform);
+        println!("base_url={}", metadata.base_url);
+        println!("model={}", metadata.model);
+        println!("smoke_endpoint={}", metadata.smoke_endpoint);
+    }
     println!("provider_status=PASS");
     println!("secret_value_printed={}", yes_no(print_secret));
     if print_secret {
@@ -1699,23 +1714,55 @@ fn secret_broker_resolve(alias: Option<String>, print_secret: bool) -> Result<()
     Ok(())
 }
 
-fn secret_broker_run(command: Vec<String>) -> Result<()> {
+fn secret_broker_run(
+    alias_flags: Vec<String>,
+    aliases_csv: Option<String>,
+    command: Vec<String>,
+) -> Result<()> {
     if command.is_empty() {
         return Err(CliError::new(2, "ERROR secret-broker run requires a command after --").into());
     }
+    let requested_aliases = parse_requested_aliases(alias_flags, aliases_csv)?;
+    let aliases = select_secret_aliases(&requested_aliases)?;
     let provider = load_secret_provider()?;
     let mut child = Command::new(&command[0]);
     if command.len() > 1 {
         child.args(&command[1..]);
     }
-    for alias in secret_aliases()? {
-        let value = provider.resolve(&alias)?;
-        child.env(alias.env_var, value.value);
+    let requested_mode = !requested_aliases.is_empty();
+    let mut injected_env = Vec::new();
+    let mut skipped_aliases = Vec::new();
+    for alias in aliases {
+        match provider.resolve(&alias) {
+            Ok(value) => {
+                child.env(&alias.env_var, value.value);
+                injected_env.push(alias.env_var);
+            }
+            Err(_) if requested_mode => {
+                return Err(CliError::new(
+                    1,
+                    format!(
+                        "SECRET_BROKER_RUN_STATUS=FAIL alias={} reason=resolve_failed",
+                        alias.alias
+                    ),
+                )
+                .into());
+            }
+            Err(_) => {
+                skipped_aliases.push(alias.alias);
+            }
+        }
     }
+    println!("SECRET_BROKER_RUN");
+    println!("requested_aliases=[{}]", requested_aliases.join(","));
+    println!("injected_env=[{}]", injected_env.join(","));
+    println!("skipped_aliases=[{}]", skipped_aliases.join(","));
+    println!("secret_values_printed=no");
     let status = child.status().context("run child command")?;
     if !status.success() {
         return Err(CliError::new(status.code().unwrap_or(1), "ERROR child command failed").into());
     }
+    println!("SECRET_BROKER_RUN_STATUS=PASS");
     Ok(())
 }
 
@@ -1735,6 +1782,14 @@ struct SecretAlias {
     alias: String,
     bitwarden_name: String,
     env_var: String,
+}
+
+struct ProviderMetadata {
+    provider_family: &'static str,
+    platform: &'static str,
+    base_url: &'static str,
+    model: &'static str,
+    smoke_endpoint: &'static str,
 }
 
 struct SecretValue {
@@ -1996,6 +2051,78 @@ fn resolve_alias(alias: Option<String>) -> Result<SecretAlias> {
         .into_iter()
         .find(|item| item.alias == alias)
         .ok_or_else(|| CliError::new(1, format!("SECRET_ALIAS_NOT_ALLOWED {alias}")).into())
+}
+
+fn parse_requested_aliases(
+    alias_flags: Vec<String>,
+    aliases_csv: Option<String>,
+) -> Result<Vec<String>> {
+    let mut aliases = Vec::new();
+    for alias in alias_flags {
+        push_requested_alias(&mut aliases, &alias)?;
+    }
+    if let Some(csv) = aliases_csv {
+        for alias in csv.split(',') {
+            push_requested_alias(&mut aliases, alias)?;
+        }
+    }
+    Ok(aliases)
+}
+
+fn push_requested_alias(aliases: &mut Vec<String>, alias: &str) -> Result<()> {
+    let alias = alias.trim();
+    if alias.is_empty() {
+        return Err(CliError::new(2, "ERROR empty secret alias in --aliases").into());
+    }
+    if !aliases.iter().any(|item| item == alias) {
+        aliases.push(alias.to_string());
+    }
+    Ok(())
+}
+
+fn select_secret_aliases(requested_aliases: &[String]) -> Result<Vec<SecretAlias>> {
+    let available = secret_aliases()?;
+    if requested_aliases.is_empty() {
+        return Ok(available);
+    }
+    let mut selected = Vec::new();
+    for requested in requested_aliases {
+        let alias = available
+            .iter()
+            .find(|item| item.alias == *requested)
+            .cloned()
+            .ok_or_else(|| {
+                CliError::new(
+                    1,
+                    format!(
+                        "SECRET_BROKER_RUN_STATUS=FAIL alias={} reason=unknown_alias",
+                        requested
+                    ),
+                )
+            })?;
+        selected.push(alias);
+    }
+    Ok(selected)
+}
+
+fn provider_metadata(alias: &str) -> Option<ProviderMetadata> {
+    match alias {
+        "kimi" | "kimi_code" => Some(ProviderMetadata {
+            provider_family: "kimi_code",
+            platform: "kimi_code_membership",
+            base_url: "https://api.kimi.com/coding/v1",
+            model: "kimi-for-coding",
+            smoke_endpoint: "https://api.kimi.com/coding/v1/models",
+        }),
+        "kimi_platform" | "moonshot" => Some(ProviderMetadata {
+            provider_family: "kimi_platform",
+            platform: "kimi_open_platform",
+            base_url: "https://api.moonshot.ai/v1",
+            model: "moonshot-v1-8k",
+            smoke_endpoint: "https://api.moonshot.ai/v1/models",
+        }),
+        _ => None,
+    }
 }
 
 fn load_secret_provider() -> Result<Box<dyn SecretsProvider>> {
@@ -4554,7 +4681,7 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     let version = actual.unwrap_or("").trim();
     if ![
         "0.1.0", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
-        "0.4.5", "0.4.6",
+        "0.4.5", "0.4.6", "0.4.7",
     ]
     .contains(&version)
     {
@@ -4584,6 +4711,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.4"
             | "0.4.5"
             | "0.4.6"
+            | "0.4.7"
     )
 }
 
@@ -5080,8 +5208,9 @@ Natural language secret mapping:
 - "secret 状态", "看看 secret", "检查 API key", "API key 是否可用",
   "刷新 secret", or "更新 secret": run `aiplus secret-broker status` or
   `aiplus secret-broker doctor`.
-- When an explicit action needs a key, prefer `aiplus secret-broker run --
-  <command...>` so the value enters only the child process environment.
+- When an explicit action needs a key, prefer `aiplus secret-broker run
+  --aliases openai,kimi -- <command...>` so only requested values enter the
+  child process environment.
 - For approved provider inventory, run `aiplus secret-broker list`. Real
   Bitwarden checks require the `bws` CLI and a read-only machine account token.
   If `bws` is unavailable, report real Bitwarden verification as unverified.
@@ -5263,9 +5392,9 @@ rules. If the Owner says "本次忽略我的偏好", "关闭 private profile", o
 Secret mapping: "secret 状态", "看看 secret", "检查 API key", "API key 是否可用",
 "刷新 secret", or "更新 secret" means run `aiplus secret-broker status` or
 `aiplus secret-broker doctor`. Never print, paste, log, compact, or persist
-secret values. Use `aiplus secret-broker run -- <command...>` only for explicit
-runtime secret needs. The child command can still print, log, transmit, or store
-its environment; use it only with trusted commands. Run `aiplus secret-broker
+secret values. Use `aiplus secret-broker run --aliases openai,kimi -- <command...>`
+only for explicit runtime secret needs. The child command can still print, log,
+transmit, or store its environment; use it only with trusted commands. Run `aiplus secret-broker
 list` for approved aliases. Real Bitwarden checks require `bws`; if unavailable,
 report real Bitwarden verification as unverified.
 "#

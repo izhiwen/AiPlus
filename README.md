@@ -77,7 +77,7 @@ For OpenCode:
 aiplus install opencode
 ```
 
-The v0.4.6 one-command installer is verified for macOS Apple Silicon first. Other
+The v0.4.7 one-command installer is verified for macOS Apple Silicon first. Other
 platforms should use [Developer Build](#developer-build) until their release
 assets are published and verified.
 
@@ -149,16 +149,43 @@ memory, then fetches the value through `bws`; it prints only metadata such as
 
 Real Bitwarden smoke checks require the `bws` CLI and a read-only machine
 account token available through `BWS_ACCESS_TOKEN` or the macOS Keychain. For
-tools that need a key, use:
+tools that need keys, request only the aliases needed by that command:
 
 ```bash
-aiplus secret-broker run -- <command...>
+aiplus secret-broker run --aliases openai,kimi,deepseek -- <command...>
 ```
 
-The child command receives approved secrets in its environment. AiPlus will not
-print or persist those values, but the child command itself could still print,
-log, transmit, or store them. Use `run --` only with commands you trust for the
-specific action.
+`--alias openai --alias kimi` is also supported. If you omit `--aliases`, AiPlus
+uses a best-effort compatibility mode: it injects aliases that resolve and skips
+unavailable optional aliases so placeholder providers do not block unrelated
+commands. For sensitive or provider-specific work, prefer explicit `--aliases`.
+
+The child command receives approved secrets in its environment. AiPlus prints
+only metadata such as `injected_env=[...]`, `skipped_aliases=[...]`, and
+`secret_values_printed=no`; it will not print or persist secret values. The child
+command itself could still print, log, transmit, or store them. Use `run --`
+only with commands you trust for the specific action.
+
+Kimi has two different API systems. A key from Kimi Code Console or Kimi
+membership uses:
+
+```text
+base_url=https://api.kimi.com/coding/v1
+model=kimi-for-coding
+```
+
+A Kimi Open Platform / Moonshot key uses `https://api.moonshot.ai/v1` or the
+region-specific `https://api.moonshot.cn/v1`. Do not interchange these keys.
+
+A safe provider smoke can suppress response bodies and print only status:
+
+```bash
+aiplus secret-broker run --aliases openai,kimi,deepseek -- sh -c 'curl -sS -o /dev/null -w "openai=%{http_code}\n" -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models'
+```
+
+Use the same pattern for Kimi Code
+`https://api.kimi.com/coding/v1/models` and DeepSeek
+`https://api.deepseek.com/v1/models`. Do not print response bodies or keys.
 
 AiPlus may read `BWS_ACCESS_TOKEN` for the current process or a macOS Keychain
 entry created by `aiplus secret-broker token set`. It does not store Bitwarden
@@ -362,7 +389,7 @@ cache TTL is 7 days.
 installs only the `aiplus` command to `~/.local/bin/aiplus` by default. It does
 not use `sudo`, silently edit shell profiles, install project modules, upload
 data, add telemetry, or change global Codex, Claude Code, or OpenCode
-configuration. AiPlus v0.4.6 publishes the verified macOS Apple Silicon asset
+configuration. AiPlus v0.4.7 publishes the verified macOS Apple Silicon asset
 first; additional platform assets remain planned.
 
 See [Distribution plan](docs/distribution-plan.md) and

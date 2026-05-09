@@ -68,7 +68,7 @@ OpenCode：
 aiplus install opencode
 ```
 
-v0.4.6 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
+v0.4.7 的 one-command installer 先验证 macOS Apple Silicon。其它平台在 release
 asset 发布并验证前，请使用 [Developer Build](#developer-build)。
 
 ## Runtime Choices
@@ -137,15 +137,41 @@ AiPlus 不内置 private alias namespace。
 ID 或 secret value。
 
 真实 Bitwarden smoke check 需要安装 `bws` CLI，并通过 `BWS_ACCESS_TOKEN` 或 macOS
-Keychain 提供 read-only machine account token。需要把 key 传给工具时，使用：
+Keychain 提供 read-only machine account token。需要把 key 传给工具时，只请求当前命令
+真正需要的 aliases：
 
 ```bash
-aiplus secret-broker run -- <command...>
+aiplus secret-broker run --aliases openai,kimi,deepseek -- <command...>
 ```
 
-child command 会在环境变量里收到 approved secrets。AiPlus 不会打印或持久化这些值，
-但 child command 自己仍可能 print、log、transmit 或 store 它们。只对你信任且符合当
-前 action need 的命令使用 `run --`。
+也可以使用 `--alias openai --alias kimi`。如果省略 `--aliases`，AiPlus 会使用
+best-effort compatibility mode：注入能解析的 aliases，跳过不可用的 optional aliases，
+这样没填的 placeholder provider 不会阻塞无关命令。provider-specific 或敏感操作建议显
+式使用 `--aliases`。
+
+child command 会在环境变量里收到 approved secrets。AiPlus 只打印
+`injected_env=[...]`、`skipped_aliases=[...]`、`secret_values_printed=no` 等
+metadata，不会打印或持久化 secret value。但 child command 自己仍可能 print、log、
+transmit 或 store 它们。只对你信任且符合当前 action need 的命令使用 `run --`。
+
+Kimi 有两套不同 API 系统。来自 Kimi Code Console 或 Kimi 会员的 key 使用：
+
+```text
+base_url=https://api.kimi.com/coding/v1
+model=kimi-for-coding
+```
+
+Kimi Open Platform / Moonshot key 使用 `https://api.moonshot.ai/v1`，或区域性的
+`https://api.moonshot.cn/v1`。不要混用这两类 key。
+
+安全 provider smoke 可以 suppress response body，只打印状态：
+
+```bash
+aiplus secret-broker run --aliases openai,kimi,deepseek -- sh -c 'curl -sS -o /dev/null -w "openai=%{http_code}\n" -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models'
+```
+
+Kimi Code 使用同样模式测 `https://api.kimi.com/coding/v1/models`，DeepSeek 使用
+`https://api.deepseek.com/v1/models`。不要打印 response body 或 key。
 
 AiPlus 可以读取当前进程里的 `BWS_ACCESS_TOKEN`，也可以读取由
 `aiplus secret-broker token set` 创建的 macOS Keychain entry。它不会把 Bitwarden
@@ -334,7 +360,7 @@ cache TTL 是 7 天。
 `install.sh` 会下载 GitHub Release asset，校验 `checksums.txt`，默认只把
 `aiplus` command 安装到 `~/.local/bin/aiplus`。它不使用 `sudo`，不静默修改 shell
 profiles，不自动安装 project modules，不上传数据，不添加 telemetry，也不修改 global
-Codex、Claude Code 或 OpenCode config。AiPlus v0.4.6 先发布已验证的 macOS Apple
+Codex、Claude Code 或 OpenCode config。AiPlus v0.4.7 先发布已验证的 macOS Apple
 Silicon asset；其它平台 asset 仍是 planned。
 
 见 [distribution-plan.md](docs/distribution-plan.md) 和

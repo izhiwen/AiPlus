@@ -1253,6 +1253,11 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
     assert!(resolve.contains("token_source=env"));
     assert!(resolve.contains("secret_key=private/kimi/api_key"));
     assert!(resolve.contains("secret_id_found=yes"));
+    assert!(resolve.contains("provider_family=kimi_code"));
+    assert!(resolve.contains("platform=kimi_code_membership"));
+    assert!(resolve.contains("base_url=https://api.kimi.com/coding/v1"));
+    assert!(resolve.contains("model=kimi-for-coding"));
+    assert!(resolve.contains("smoke_endpoint=https://api.kimi.com/coding/v1/models"));
     assert!(resolve.contains("secret_value_printed=no"));
     assert!(!resolve.contains("fixture-secret-value"));
     assert!(!resolve.contains("secret-kimi-id"));
@@ -1291,6 +1296,164 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
         Path::new(&path_value),
     );
     assert!(stderr(&token_missing).contains("SECRET_BROKER_TOKEN_MISSING"));
+}
+
+#[test]
+fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let profile_source = target.join("profile-source");
+    fs::create_dir(&profile_source).unwrap();
+    fs::write(
+        profile_source.join("profile.toml"),
+        "name = \"example-private-profile\"\n",
+    )
+    .unwrap();
+    fs::write(profile_source.join("AGENTS.profile.md"), "# example\n").unwrap();
+    fs::write(
+        profile_source.join("secret-aliases.tsv"),
+        "kimi\tprivate/kimi/api_key\tKIMI_API_KEY\nopenai\tprivate/openai/api_key\tOPENAI_API_KEY\nvoyage\tprivate/voyage/api_key\tVOYAGE_API_KEY\nkimi_platform\tprivate/kimi_platform/api_key\tKIMI_PLATFORM_API_KEY\n",
+    )
+    .unwrap();
+    run(
+        target,
+        &[
+            "profile",
+            "install",
+            "example-private-profile",
+            "--user",
+            "--source",
+            profile_source.to_str().unwrap(),
+            "--yes",
+        ],
+        0,
+    );
+    let fake_bin = target.join("fake-bin");
+    fs::create_dir(&fake_bin).unwrap();
+    write_fake_bws(&fake_bin.join("bws"), "ok");
+    let path_value = format!("{}:/usr/bin:/bin", fake_bin.display());
+
+    let selective = stdout(&run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--aliases",
+            "openai,kimi",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && test -n \"$KIMI_API_KEY\" && test -z \"${VOYAGE_API_KEY+x}\" && echo selective-env-ok",
+        ],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(selective.contains("SECRET_BROKER_RUN"));
+    assert!(selective.contains("requested_aliases=[openai,kimi]"));
+    assert!(selective.contains("injected_env=[OPENAI_API_KEY,KIMI_API_KEY]"));
+    assert!(selective.contains("skipped_aliases=[]"));
+    assert!(selective.contains("selective-env-ok"));
+    assert!(selective.contains("SECRET_BROKER_RUN_STATUS=PASS"));
+    assert!(!selective.contains("fixture-secret-value"));
+    assert!(!selective.contains("secret-openai-id"));
+    assert!(!selective.contains("secret-kimi-id"));
+
+    let repeated_flags = stdout(&run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--alias",
+            "openai",
+            "--alias",
+            "kimi",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && test -n \"$KIMI_API_KEY\" && echo repeated-alias-ok",
+        ],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(repeated_flags.contains("requested_aliases=[openai,kimi]"));
+    assert!(repeated_flags.contains("repeated-alias-ok"));
+    assert!(!repeated_flags.contains("fixture-secret-value"));
+
+    let best_effort = stdout(&run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "test -n \"$OPENAI_API_KEY\" && test -n \"$KIMI_API_KEY\" && echo best-effort-ok",
+        ],
+        0,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    ));
+    assert!(best_effort.contains("requested_aliases=[]"));
+    assert!(best_effort.contains("skipped_aliases=[kimi_platform,voyage]"));
+    assert!(best_effort.contains("best-effort-ok"));
+    assert!(best_effort.contains("SECRET_BROKER_RUN_STATUS=PASS"));
+    assert!(!best_effort.contains("fixture-secret-value"));
+
+    let requested_missing = run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--aliases",
+            "voyage",
+            "--",
+            "sh",
+            "-c",
+            "echo should-not-run",
+        ],
+        1,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    );
+    assert!(stderr(&requested_missing)
+        .contains("SECRET_BROKER_RUN_STATUS=FAIL alias=voyage reason=resolve_failed"));
+
+    let unknown_alias = run_with_env_and_path(
+        target,
+        &[
+            "secret-broker",
+            "run",
+            "--aliases",
+            "unknown-provider",
+            "--",
+            "sh",
+            "-c",
+            "echo should-not-run",
+        ],
+        1,
+        &[
+            ("BWS_ACCESS_TOKEN", "fixture-token"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
+        Path::new(&path_value),
+    );
+    assert!(stderr(&unknown_alias)
+        .contains("SECRET_BROKER_RUN_STATUS=FAIL alias=unknown-provider reason=unknown_alias"));
 }
 
 fn expected_secret_aliases() -> Vec<(&'static str, &'static str, &'static str)> {
@@ -1432,6 +1595,10 @@ fi
 if [ "$2" = "get" ]; then
   if [ "$3" = "secret-kimi-id" ]; then
     printf '{{"id":"secret-kimi-id","key":"private/kimi/api_key","value":"fixture-secret-value"}}'
+    exit 0
+  fi
+  if [ "$3" = "secret-openai-id" ]; then
+    printf '{{"id":"secret-openai-id","key":"private/openai/api_key","value":"fixture-secret-value"}}'
     exit 0
   fi
   exit 1

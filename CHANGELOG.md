@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.4.7
+
+- Added selective `secret-broker run` injection with `--aliases a,b` and
+  repeated `--alias a`, so requested provider keys can be injected without
+  unrelated placeholder providers blocking the command.
+- Changed bare `secret-broker run -- <command...>` to best-effort compatibility
+  behavior: inject aliases that resolve, report skipped aliases as metadata, and
+  avoid printing secret values.
+- Added first-class Kimi metadata that treats `kimi` as Kimi Code membership
+  (`https://api.kimi.com/coding/v1`, model `kimi-for-coding`) while documenting
+  Kimi Open Platform / Moonshot as a separate key system.
+
 ## 0.4.6
 
 - Fixed real Bitwarden `secret-broker resolve` by resolving an alias key/name to
