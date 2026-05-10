@@ -31,7 +31,8 @@ pub fn sensitive_findings(text: &str) -> Vec<(&'static str, bool)> {
             lower.contains("begin transcript")
                 || lower.contains("webvtt")
                 || lower.contains("provider request body")
-                || lower.contains("provider response body"),
+                || lower.contains("provider response body")
+                || lower.contains("raw transcript"),
         ),
         (
             "har/webrtc dump",
@@ -313,5 +314,12 @@ mod tests {
         assert!(
             reject_sensitive_memory_text("Q: What is the password?\nA: SuperSecret123").is_err()
         );
+    }
+
+    #[test]
+    fn reject_sensitive_blocks_raw_transcript() {
+        assert!(reject_sensitive_memory_text("raw transcript of conversation").is_err());
+        assert!(reject_sensitive_memory_text("begin transcript").is_err());
+        assert!(reject_sensitive_memory_text("provider response body").is_err());
     }
 }

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Memory Review Workflow",
+  "description": "Schema for review workflow tracking memory lifecycle transitions. Each review record captures a decision gate on a memory entry.",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "memoryId",
+    "status",
+    "proposedAt",
+    "updatedAt",
+    "reviewerContext"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^review_[A-Za-z0-9_-]+$",
+      "description": "Unique review record identifier"
+    },
+    "schemaVersion": {
+      "const": "0.2.0"
+    },
+    "memoryId": {
+      "type": "string",
+      "pattern": "^mem_[A-Za-z0-9_-]+$",
+      "description": "Reference to the memory under review"
+    },
+    "status": {
+      "enum": ["proposed", "accepted", "rejected", "stale", "superseded", "forgotten"],
+      "description": "Lifecycle state after this review"
+    },
+    "proposedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the memory was first proposed for review"
+    },
+    "reviewedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the review decision was made. Null until decided."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update to this review record"
+    },
+    "reviewerContext": {
+      "type": "object",
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "enum": ["owner", "agent", "advisor", "ceo", "system"],
+          "description": "Role performing the review decision"
+        },
+        "agentId": { "type": ["string", "null"] },
+        "ownerConfirmed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "decisionRationale": {
+      "type": "string",
+      "description": "Human-readable explanation for the review decision"
+    },
+    "requiredEvidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Evidence still required before acceptance"
+    },
+    "ownerGate": {
+      "type": "object",
+      "required": ["required", "status"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": {
+          "enum": ["pending", "approved", "rejected", "waived"]
+        },
+        "approvedBy": { "type": ["string", "null"] },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" },
+        "rationale": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

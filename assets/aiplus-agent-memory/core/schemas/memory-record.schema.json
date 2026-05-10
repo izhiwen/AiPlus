@@ -1,25 +1,172 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AiPlus Memory Record",
+  "title": "AiPlus Memory Record v2",
+  "description": "Core memory taxonomy for the AiPlus Agent-Memory system. Every memory is typed, scoped, auditable, and lifecycle-managed.",
   "type": "object",
-  "required": ["schemaVersion", "id", "scope", "kind", "subject", "content", "source", "confidence", "visibility", "status", "createdAt", "updatedAt", "redaction", "hash"],
+  "required": [
+    "id",
+    "schemaVersion",
+    "type",
+    "scope",
+    "source",
+    "createdAt",
+    "updatedAt",
+    "confidence",
+    "status",
+    "summary",
+    "evidence",
+    "tags",
+    "redaction"
+  ],
   "properties": {
-    "schemaVersion": { "const": "0.1.0" },
-    "id": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]+" },
-    "scope": { "enum": ["session", "project", "profile", "global"] },
-    "kind": { "enum": ["preference", "project_fact", "decision_summary", "constraint", "handoff_note", "evidence_pointer"] },
-    "subject": { "enum": ["communication", "workflow", "tools", "review", "privacy", "project_map", "release", "security"] },
-    "content": { "type": "string", "minLength": 1 },
-    "source": { "enum": ["owner", "agent", "profile", "compact", "manual"] },
-    "confidence": { "enum": ["owner_asserted", "verified", "inferred", "stale"] },
-    "visibility": { "enum": ["private", "project-local", "public-safe"] },
-    "status": { "enum": ["active", "tentative", "superseded", "rejected", "expired"] },
-    "createdAt": { "type": "string" },
-    "updatedAt": { "type": "string" },
-    "expiresAt": { "type": ["string", "null"] },
-    "reviewAfter": { "type": ["string", "null"] },
-    "redaction": { "enum": ["none", "required", "done", "blocked"] },
-    "hash": { "type": "string" }
+    "id": {
+      "type": "string",
+      "pattern": "^mem_[A-Za-z0-9_-]+$",
+      "description": "Unique memory identifier"
+    },
+    "schemaVersion": {
+      "const": "0.2.0",
+      "description": "Schema version for migration compatibility"
+    },
+    "type": {
+      "enum": [
+        "owner_preference",
+        "project_fact",
+        "project_decision",
+        "workflow_rule",
+        "owner_gate",
+        "risk",
+        "verification_evidence",
+        "handoff_note",
+        "role_identity",
+        "skill_candidate",
+        "deprecated_memory"
+      ],
+      "description": "Taxonomy type defining memory semantics and retrieval policy"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "project",
+        "profile",
+        "global_user",
+        "role:advisor",
+        "role:ceo"
+      ],
+      "description": "Visibility and activation scope. global_user is explicit-only."
+    },
+    "source": {
+      "enum": [
+        "owner",
+        "agent",
+        "profile",
+        "compact",
+        "manual"
+      ],
+      "description": "Origin of the memory entry"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when memory was first recorded"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last meaningful mutation"
+    },
+    "confidence": {
+      "enum": [
+        "owner_asserted",
+        "verified",
+        "inferred",
+        "stale"
+      ],
+      "description": "Trust level of the memory content"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "accepted",
+        "rejected",
+        "stale",
+        "superseded",
+        "forgotten"
+      ],
+      "description": "Lifecycle state of the memory"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable summary of the memory"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "reference"],
+        "properties": {
+          "type": {
+            "enum": ["audit_event", "memory_ref", "external_url", "conversation", "file_hash", "manual_attestation"]
+          },
+          "reference": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "description": "Pointers to supporting evidence for this memory"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+      "description": "Normalized tags for filtering and retrieval"
+    },
+    "expiresAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Absolute expiration timestamp. Null if not time-bounded."
+    },
+    "staleAfter": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Timestamp after which confidence should be reviewed. Null if no stale policy."
+    },
+    "supersedes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]+$" },
+      "description": "IDs of memories this entry explicitly replaces"
+    },
+    "supersededBy": {
+      "type": ["string", "null"],
+      "pattern": "^mem_[A-Za-z0-9_-]+$",
+      "description": "ID of the memory that has replaced this entry"
+    },
+    "conflictGroup": {
+      "type": ["string", "null"],
+      "description": "Arbitrary group key for conflicting/competing memories under review"
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["none", "required", "done", "blocked"]
+        },
+        "reason": { "type": "string" },
+        "redactedAt": { "type": "string", "format": "date-time" },
+        "redactedBy": { "type": "string" },
+        "originalHash": { "type": "string" }
+      },
+      "additionalProperties": false,
+      "description": "Redaction metadata for privacy and compliance"
+    }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "if": {
+    "properties": { "status": { "const": "superseded" } },
+    "required": ["status"]
+  },
+  "then": {
+    "required": ["supersededBy"]
+  }
 }

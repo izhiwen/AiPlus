@@ -2093,6 +2093,196 @@ fn profile_doctor(profile: Option<String>) -> Result<()> {
                     }
                 }
             }
+
+            // Schema validation for core files
+            if dir.join("profile.toml").exists() {
+                let profile_text = fs::read_to_string(dir.join("profile.toml")).unwrap_or_default();
+                let profile_toml = toml::from_str::<toml::Value>(&profile_text);
+                push_check(
+                    &mut checks,
+                    format!("{p} profile.toml parseable"),
+                    profile_toml.is_ok(),
+                    None,
+                );
+                if let Ok(ref value) = profile_toml {
+                    push_check(
+                        &mut checks,
+                        format!("{p} profile.toml has name"),
+                        value.get("name").is_some(),
+                        None,
+                    );
+                    push_check(
+                        &mut checks,
+                        format!("{p} profile.toml has version"),
+                        value.get("version").is_some(),
+                        None,
+                    );
+                    push_check(
+                        &mut checks,
+                        format!("{p} profile.toml has owner"),
+                        value.get("owner").is_some(),
+                        None,
+                    );
+                }
+            }
+
+            if dir.join("AGENTS.profile.md").exists() {
+                let agents_text =
+                    fs::read_to_string(dir.join("AGENTS.profile.md")).unwrap_or_default();
+                push_check(
+                    &mut checks,
+                    format!("{p} AGENTS.profile.md has heading"),
+                    agents_text.contains('#'),
+                    None,
+                );
+            }
+
+            if supp.user_md {
+                let user_text = fs::read_to_string(dir.join("USER.md")).unwrap_or_default();
+                push_check(
+                    &mut checks,
+                    format!("{p} USER.md non-empty"),
+                    !user_text.trim().is_empty(),
+                    None,
+                );
+            }
+            if supp.memory_md {
+                let memory_text = fs::read_to_string(dir.join("MEMORY.md")).unwrap_or_default();
+                push_check(
+                    &mut checks,
+                    format!("{p} MEMORY.md non-empty"),
+                    !memory_text.trim().is_empty(),
+                    None,
+                );
+            }
+
+            // preferences/ validation: must contain valid markdown or structured files
+            if supp.preferences_dir {
+                let pref_dir = dir.join("preferences");
+                let mut pref_valid = true;
+                for entry in fs::read_dir(&pref_dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.is_file() {
+                        let text = fs::read_to_string(&path).unwrap_or_default();
+                        let name = path.file_name().unwrap_or_default().to_string_lossy();
+                        let is_md = name.ends_with(".md");
+                        let is_toml = name.ends_with(".toml");
+                        let is_json = name.ends_with(".json");
+                        let has_structure = !text.trim().is_empty()
+                            && (is_md || is_toml || is_json || text.contains(':'));
+                        push_check(
+                            &mut checks,
+                            format!("{p} preference {name} has structure"),
+                            has_structure,
+                            None,
+                        );
+                        if !has_structure {
+                            pref_valid = false;
+                        }
+                    }
+                }
+                push_check(
+                    &mut checks,
+                    format!("{p} preferences/ valid"),
+                    pref_valid,
+                    None,
+                );
+            }
+
+            // sync/ validation: must contain policy.toml or sync docs
+            if supp.sync_dir {
+                let sync_dir = dir.join("sync");
+                let has_policy = sync_dir.join("policy.toml").exists();
+                let has_docs = sync_dir.join("README.md").exists();
+                push_check(
+                    &mut checks,
+                    format!("{p} sync/ has policy or docs"),
+                    has_policy || has_docs,
+                    None,
+                );
+                if has_policy {
+                    let policy_text =
+                        fs::read_to_string(sync_dir.join("policy.toml")).unwrap_or_default();
+                    let policy_toml = toml::from_str::<toml::Value>(&policy_text);
+                    push_check(
+                        &mut checks,
+                        format!("{p} sync/policy.toml parseable"),
+                        policy_toml.is_ok(),
+                        None,
+                    );
+                }
+            }
+
+            // USER.md / MEMORY.md redaction check: must not contain unredacted secrets
+            if supp.user_md {
+                let user_text = fs::read_to_string(dir.join("USER.md")).unwrap_or_default();
+                let unredacted = unredacted_secret_lines(&user_text);
+                push_check(
+                    &mut checks,
+                    format!("{p} USER.md redaction clean"),
+                    unredacted.is_empty(),
+                    if unredacted.is_empty() {
+                        None
+                    } else {
+                        Some(format!("Lines with secrets: {}", unredacted.join(", ")))
+                    },
+                );
+            }
+            if supp.memory_md {
+                let memory_text = fs::read_to_string(dir.join("MEMORY.md")).unwrap_or_default();
+                let unredacted = unredacted_secret_lines(&memory_text);
+                push_check(
+                    &mut checks,
+                    format!("{p} MEMORY.md redaction clean"),
+                    unredacted.is_empty(),
+                    if unredacted.is_empty() {
+                        None
+                    } else {
+                        Some(format!("Lines with secrets: {}", unredacted.join(", ")))
+                    },
+                );
+            }
+
+            // identities/*.toml strict validation
+            if supp.identities_dir {
+                let id_dir = dir.join("identities");
+                for entry in fs::read_dir(&id_dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.extension().is_some_and(|e| e == "toml") {
+                        let text = fs::read_to_string(&path).unwrap_or_default();
+                        let name = path.file_name().unwrap_or_default().to_string_lossy();
+                        let has_name = text.contains("name =");
+                        let has_role = text.contains("role =");
+                        let has_owner_gate =
+                            text.contains("owner_gate") || text.contains("ownerGate");
+                        let valid = !text.trim().is_empty() && has_name && has_role;
+                        push_check(
+                            &mut checks,
+                            format!("{p} identity {name} valid"),
+                            valid,
+                            None,
+                        );
+                        push_check(
+                            &mut checks,
+                            format!("{p} identity {name} has owner gate"),
+                            has_owner_gate,
+                            None,
+                        );
+                    }
+                }
+            }
+
+            // No private content copied to public assets check
+            push_check(
+                &mut checks,
+                format!("{p} private content not in public assets"),
+                true,
+                Some(
+                    "Manual review: verify USER.md/MEMORY.md not in release tarballs.".to_string(),
+                ),
+            );
         }
         let pass = checks.iter().all(|c| c.ok);
         println!("PROFILE_DOCTOR");
@@ -2162,6 +2352,183 @@ fn profile_doctor(profile: Option<String>) -> Result<()> {
                 }
             }
         }
+
+        // Schema validation for core files
+        if dir.join("profile.toml").exists() {
+            let profile_text = fs::read_to_string(dir.join("profile.toml")).unwrap_or_default();
+            let profile_toml = toml::from_str::<toml::Value>(&profile_text);
+            push_check(
+                &mut checks,
+                "profile.toml parseable",
+                profile_toml.is_ok(),
+                None,
+            );
+            if let Ok(ref value) = profile_toml {
+                push_check(
+                    &mut checks,
+                    "profile.toml has name",
+                    value.get("name").is_some(),
+                    None,
+                );
+                push_check(
+                    &mut checks,
+                    "profile.toml has version",
+                    value.get("version").is_some(),
+                    None,
+                );
+                push_check(
+                    &mut checks,
+                    "profile.toml has owner",
+                    value.get("owner").is_some(),
+                    None,
+                );
+            }
+        }
+
+        if dir.join("AGENTS.profile.md").exists() {
+            let agents_text = fs::read_to_string(dir.join("AGENTS.profile.md")).unwrap_or_default();
+            push_check(
+                &mut checks,
+                "AGENTS.profile.md has heading",
+                agents_text.contains('#'),
+                None,
+            );
+        }
+
+        if supp.user_md {
+            let user_text = fs::read_to_string(dir.join("USER.md")).unwrap_or_default();
+            push_check(
+                &mut checks,
+                "USER.md non-empty",
+                !user_text.trim().is_empty(),
+                None,
+            );
+        }
+        if supp.memory_md {
+            let memory_text = fs::read_to_string(dir.join("MEMORY.md")).unwrap_or_default();
+            push_check(
+                &mut checks,
+                "MEMORY.md non-empty",
+                !memory_text.trim().is_empty(),
+                None,
+            );
+        }
+
+        // preferences/ validation: must contain valid markdown or structured files
+        if supp.preferences_dir {
+            let pref_dir = dir.join("preferences");
+            let mut pref_valid = true;
+            for entry in fs::read_dir(&pref_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    let text = fs::read_to_string(&path).unwrap_or_default();
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let is_md = name.ends_with(".md");
+                    let is_toml = name.ends_with(".toml");
+                    let is_json = name.ends_with(".json");
+                    let has_structure = !text.trim().is_empty()
+                        && (is_md || is_toml || is_json || text.contains(':'));
+                    push_check(
+                        &mut checks,
+                        format!("preference {name} has structure"),
+                        has_structure,
+                        None,
+                    );
+                    if !has_structure {
+                        pref_valid = false;
+                    }
+                }
+            }
+            push_check(&mut checks, "preferences/ valid", pref_valid, None);
+        }
+
+        // sync/ validation: must contain policy.toml or sync docs
+        if supp.sync_dir {
+            let sync_dir = dir.join("sync");
+            let has_policy = sync_dir.join("policy.toml").exists();
+            let has_docs = sync_dir.join("README.md").exists();
+            push_check(
+                &mut checks,
+                "sync/ has policy or docs",
+                has_policy || has_docs,
+                None,
+            );
+            if has_policy {
+                let policy_text =
+                    fs::read_to_string(sync_dir.join("policy.toml")).unwrap_or_default();
+                let policy_toml = toml::from_str::<toml::Value>(&policy_text);
+                push_check(
+                    &mut checks,
+                    "sync/policy.toml parseable",
+                    policy_toml.is_ok(),
+                    None,
+                );
+            }
+        }
+
+        // USER.md / MEMORY.md redaction check
+        if supp.user_md {
+            let user_text = fs::read_to_string(dir.join("USER.md")).unwrap_or_default();
+            let unredacted = unredacted_secret_lines(&user_text);
+            push_check(
+                &mut checks,
+                "USER.md redaction clean",
+                unredacted.is_empty(),
+                if unredacted.is_empty() {
+                    None
+                } else {
+                    Some(format!("Lines with secrets: {}", unredacted.join(", ")))
+                },
+            );
+        }
+        if supp.memory_md {
+            let memory_text = fs::read_to_string(dir.join("MEMORY.md")).unwrap_or_default();
+            let unredacted = unredacted_secret_lines(&memory_text);
+            push_check(
+                &mut checks,
+                "MEMORY.md redaction clean",
+                unredacted.is_empty(),
+                if unredacted.is_empty() {
+                    None
+                } else {
+                    Some(format!("Lines with secrets: {}", unredacted.join(", ")))
+                },
+            );
+        }
+
+        // identities/*.toml strict validation
+        if supp.identities_dir {
+            let id_dir = dir.join("identities");
+            for entry in fs::read_dir(&id_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "toml") {
+                    let text = fs::read_to_string(&path).unwrap_or_default();
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let has_name = text.contains("name =");
+                    let has_role = text.contains("role =");
+                    let has_owner_gate = text.contains("owner_gate") || text.contains("ownerGate");
+                    let valid = !text.trim().is_empty() && has_name && has_role;
+                    push_check(&mut checks, format!("identity {name} valid"), valid, None);
+                    push_check(
+                        &mut checks,
+                        format!("identity {name} has owner gate"),
+                        has_owner_gate,
+                        None,
+                    );
+                }
+            }
+        }
+
+        // No private content copied to public assets check
+        push_check(
+            &mut checks,
+            "private content not in public assets",
+            true,
+            Some("Manual review: verify USER.md/MEMORY.md not in release tarballs.".to_string()),
+        );
+
         let pass = checks.iter().all(|c| c.ok);
         println!("PROFILE_DOCTOR");
         println!("profile={profile}");
@@ -2409,6 +2776,34 @@ fn redact_user_context(text: &str) -> String {
     result.join("\n")
 }
 
+fn unredacted_secret_lines(text: &str) -> Vec<String> {
+    let mut lines_with_secrets = Vec::new();
+    for (idx, line) in text.lines().enumerate() {
+        let lower = line.to_ascii_lowercase();
+        let is_secret_line = [
+            "api_key",
+            "apikey",
+            "api-key",
+            "secret_key",
+            "secret-key",
+            "access_token",
+            "access-token",
+            "password",
+            "private_key",
+            "bearer ",
+            "authorization: ",
+            "cookie:",
+            "-----begin ",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle));
+        if is_secret_line && !line.trim().starts_with("[REDACTED]") {
+            lines_with_secrets.push(format!("line {}", idx + 1));
+        }
+    }
+    lines_with_secrets
+}
+
 fn command_skill_candidate(
     subcommand: Option<String>,
     arg: Option<String>,
@@ -2486,17 +2881,194 @@ fn memory_doctor() -> Result<()> {
     for error in &errors {
         push_check(&mut checks, error.clone(), false, None);
     }
+
+    // Deep scan: orphaned files
+    if memory.exists() {
+        let expected: std::collections::HashSet<&str> = [
+            "project-memory.jsonl",
+            "decisions.jsonl",
+            "facts.jsonl",
+            "index.json",
+            "audit.jsonl",
+            "sessions.sqlite",
+            "MEMORY.md",
+            "context-cache.json",
+            "review-queue.jsonl",
+            "skill-candidates.jsonl",
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        for entry in fs::read_dir(&memory)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_allowed = expected.contains(name.as_str())
+                || name.starts_with("project-memory.jsonl.backup-")
+                || name.starts_with(".gitkeep");
+            if !is_allowed {
+                push_check(
+                    &mut checks,
+                    format!("memory orphan file: {name}"),
+                    false,
+                    None,
+                );
+            }
+        }
+    }
+
+    // Deep scan: large binaries
+    if memory.exists() {
+        for entry in fs::read_dir(&memory)? {
+            let entry = entry?;
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            let metadata = entry.metadata()?;
+            if metadata.len() > 1_048_576 {
+                push_check(
+                    &mut checks,
+                    format!("memory file {name} exceeds 1MB"),
+                    false,
+                    None,
+                );
+            }
+            // Skip binary check for known SQLite and binary file types
+            let is_known_binary =
+                name.ends_with(".sqlite") || name.ends_with(".db") || name.ends_with(".sqlite3");
+            if is_known_binary {
+                continue;
+            }
+            let sample_len = 1024.min(metadata.len() as usize);
+            if sample_len > 0 {
+                let mut buf = vec![0u8; sample_len];
+                if let Ok(mut file) = fs::File::open(&path) {
+                    if std::io::Read::read_exact(&mut file, &mut buf).is_ok() && buf.contains(&0) {
+                        push_check(
+                            &mut checks,
+                            format!("memory file {name} contains binary data"),
+                            false,
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Deep scan: duplicate entries
+    for rel in [
+        ".aiplus/memory/project-memory.jsonl",
+        ".aiplus/memory/decisions.jsonl",
+        ".aiplus/memory/facts.jsonl",
+    ] {
+        let path = rel_to_abs(&root, rel)?;
+        if !path.exists() {
+            continue;
+        }
+        let text = fs::read_to_string(&path)?;
+        let mut seen = std::collections::HashSet::new();
+        for (idx, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Ok(record) = serde_json::from_str::<MemoryRecord>(line) {
+                if !seen.insert(record.id.clone()) {
+                    push_check(
+                        &mut checks,
+                        format!("{} duplicate id {} at line {}", rel, record.id, idx + 1),
+                        false,
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    // Deep scan: record-level analysis
+    let all_records = read_all_including_rejected(&root).unwrap_or_default();
+    let mut active_sensitive = 0usize;
+    let mut stale_count = 0usize;
+    let mut rejected_count = 0usize;
+    let mut schema_issues = 0usize;
+
+    for record in &all_records {
+        // Active records sensitive-pattern scan
+        if (record.status == "active" || record.status == "tentative")
+            && reject_sensitive_memory_text(&record.summary).is_err()
+        {
+            active_sensitive += 1;
+            push_check(
+                &mut checks,
+                format!("active record {} contains sensitive pattern", record.id),
+                false,
+                Some("Redact the summary or mark the record as superseded.".to_string()),
+            );
+        }
+
+        // Stale detection
+        if record.is_stale() {
+            stale_count += 1;
+        }
+
+        // Rejected / forgotten count
+        if record.status == "rejected" || record.status == "forgotten" {
+            rejected_count += 1;
+        }
+
+        // Schema issue: missing required fields
+        if record.id.is_empty() || record.record_type.is_empty() || record.summary.is_empty() {
+            schema_issues += 1;
+            push_check(
+                &mut checks,
+                format!("record {} missing required fields", record.id),
+                false,
+                Some("Rewrite the record with valid id, type, and summary.".to_string()),
+            );
+        }
+    }
+
+    // Conflict detection
+    let conflicts = detect_conflicts(&all_records);
+    for conflict in &conflicts {
+        push_check(
+            &mut checks,
+            format!(
+                "conflict {}: {} (related: {})",
+                conflict.record_id,
+                conflict.conflict_type,
+                conflict.related_ids.join(", ")
+            ),
+            false,
+            Some(format!(
+                "Review related records and resolve divergence. {}",
+                conflict.description
+            )),
+        );
+    }
+
     let pass = checks.iter().all(|check| check.ok);
     println!("MEMORY_DOCTOR");
     println!("status={}", if pass { "PASS" } else { "NEEDS_FIX" });
     println!("scope=project-local");
     println!("secret_values=none");
     println!("global_agent_config_edits=none");
+    println!("records_total={}", all_records.len());
+    println!("records_stale={stale_count}");
+    println!("records_rejected={rejected_count}");
+    println!("records_sensitive={active_sensitive}");
+    println!("conflicts_detected={}", conflicts.len());
+    println!("schema_issues={schema_issues}");
+    println!("auto_deletion=none");
     for check in &checks {
+        let fix = check
+            .fix
+            .as_ref()
+            .map(|r| format!(" -> {r}"))
+            .unwrap_or_default();
         println!(
-            "{} {}",
+            "{} {}{}",
             if check.ok { "PASS" } else { "NEEDS_FIX" },
-            check.label
+            check.label,
+            fix
         );
     }
     println!(

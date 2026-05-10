@@ -1,22 +1,71 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AiPlus Skill Candidate",
+  "title": "AiPlus Skill Candidate v2",
+  "description": "Schema for proposed skills. No auto-approval. Requires review, evidence linking, and explicit owner gate.",
   "type": "object",
-  "required": ["schemaVersion", "id", "title", "status", "sourceMemoryIds", "problemPattern", "proposedSkillName", "repeatabilityEvidence", "triggerDesign", "scope", "privacy", "qa", "ownerGate"],
+  "required": [
+    "id",
+    "schemaVersion",
+    "title",
+    "status",
+    "sourceMemoryIds",
+    "problemPattern",
+    "proposedSkillName",
+    "repeatabilityEvidence",
+    "triggerDesign",
+    "scope",
+    "privacy",
+    "qa",
+    "ownerGate",
+    "reviewWorkflow"
+  ],
   "properties": {
-    "schemaVersion": { "const": "0.1.0" },
-    "id": { "type": "string", "pattern": "^skill-candidate/" },
-    "title": { "type": "string" },
-    "status": { "enum": ["candidate_proposed", "candidate_triaged", "draft_skill", "qa_pending", "approved", "active", "deprecated", "rejected", "archived"] },
-    "sourceMemoryIds": { "type": "array", "items": { "type": "string" } },
-    "problemPattern": { "type": "string" },
-    "proposedSkillName": { "type": "string" },
+    "id": {
+      "type": "string",
+      "pattern": "^skill-candidate/[A-Za-z0-9_-]+$"
+    },
+    "schemaVersion": {
+      "const": "0.2.0"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title of the proposed skill"
+    },
+    "status": {
+      "enum": ["proposed", "review", "needs_evidence", "rejected", "approved_for_qa", "qa_pending", "active", "deprecated"],
+      "description": "Skill candidate lifecycle. No auto-approval to active."
+    },
+    "sourceMemoryIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]+$" },
+      "description": "Memory IDs that motivated this skill proposal"
+    },
+    "problemPattern": {
+      "type": "string",
+      "description": "Description of the recurring problem this skill addresses"
+    },
+    "proposedSkillName": {
+      "type": "string",
+      "description": "Suggested canonical name for the skill"
+    },
     "repeatabilityEvidence": {
       "type": "object",
-      "required": ["occurrenceCount", "syntheticReplayAvailable"],
+      "required": ["occurrenceCount", "syntheticReplayAvailable", "projectEvidenceLinks"],
       "properties": {
-        "occurrenceCount": { "type": "integer", "minimum": 0 },
-        "syntheticReplayAvailable": { "type": "boolean" }
+        "occurrenceCount": { "type": "integer", "minimum": 1 },
+        "syntheticReplayAvailable": { "type": "boolean" },
+        "projectEvidenceLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["memoryId", "description"],
+            "properties": {
+              "memoryId": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]+$" },
+              "description": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -24,8 +73,16 @@
       "type": "object",
       "required": ["positiveTriggers", "negativeTriggers"],
       "properties": {
-        "positiveTriggers": { "type": "array", "items": { "type": "string" } },
-        "negativeTriggers": { "type": "array", "items": { "type": "string" } }
+        "positiveTriggers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Patterns that should activate this skill"
+        },
+        "negativeTriggers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Patterns that should suppress this skill"
+        }
       },
       "additionalProperties": false
     },
@@ -33,8 +90,14 @@
       "type": "object",
       "required": ["allowedActions", "forbiddenActions"],
       "properties": {
-        "allowedActions": { "type": "array", "items": { "type": "string" } },
-        "forbiddenActions": { "type": "array", "items": { "type": "string" } }
+        "allowedActions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "forbiddenActions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "additionalProperties": false
     },
@@ -52,18 +115,58 @@
       "type": "object",
       "required": ["requiredChecks", "status"],
       "properties": {
-        "requiredChecks": { "type": "array", "items": { "type": "string" } },
-        "status": { "type": "string" }
+        "requiredChecks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": {
+          "enum": ["pending", "in_progress", "passed", "failed", "blocked"]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "additionalProperties": false
     },
     "ownerGate": {
       "type": "object",
-      "required": ["requiredForApproval", "approvedBy", "approvedAt"],
+      "required": ["requiredForApproval", "status"],
       "properties": {
-        "requiredForApproval": { "type": "boolean" },
+        "requiredForApproval": {
+          "type": "boolean",
+          "description": "Whether owner approval is mandatory"
+        },
+        "status": {
+          "enum": ["pending", "approved", "rejected", "waived"]
+        },
         "approvedBy": { "type": ["string", "null"] },
-        "approvedAt": { "type": ["string", "null"] }
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" },
+        "rationale": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reviewWorkflow": {
+      "type": "object",
+      "required": ["currentStage"],
+      "properties": {
+        "currentStage": {
+          "enum": ["proposed", "triage", "evidence_review", "owner_gate", "qa", "final_decision"]
+        },
+        "reviewHistory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["stage", "timestamp", "actor"],
+            "properties": {
+              "stage": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "actor": { "type": "string" },
+              "notes": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     }

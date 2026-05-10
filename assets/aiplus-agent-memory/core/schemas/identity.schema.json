@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiPlus Identity Schema v2",
+  "description": "Role identity definition with contract, scope boundaries, allowed/forbidden actions, memory policy, and owner gate expectations.",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "role",
+    "roleContract",
+    "scopeBoundaries",
+    "currentResponsibilities",
+    "allowedActions",
+    "forbiddenActions",
+    "memoryRetrievalPolicy",
+    "ownerGatePolicy",
+    "resultPacketExpectations"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^identity_[A-Za-z0-9_-]+$",
+      "description": "Unique identity record identifier"
+    },
+    "schemaVersion": {
+      "const": "0.2.0"
+    },
+    "role": {
+      "enum": ["Advisor", "CEO", "Reviewer", "Builder", "SchemaAgent"],
+      "description": "Named role in the AiPlus orchestrator"
+    },
+    "inherits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Parent identity IDs this role inherits from"
+    },
+    "roleContract": {
+      "type": "object",
+      "required": ["purpose", "activationTriggers"],
+      "properties": {
+        "purpose": { "type": "string", "minLength": 1 },
+        "activationTriggers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Conditions that activate this identity"
+        },
+        "outputSchema": {
+          "type": "string",
+          "description": "Expected schema or contract for deliverables"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scopeBoundaries": {
+      "type": "object",
+      "required": ["scopes", "defaultScope"],
+      "properties": {
+        "scopes": {
+          "type": "array",
+          "items": {
+            "enum": ["project", "profile", "global_user", "role:advisor", "role:ceo"]
+          }
+        },
+        "defaultScope": {
+          "enum": ["project", "profile", "global_user", "role:advisor", "role:ceo"]
+        },
+        "scopeOverrideAllowed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "currentResponsibilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Active responsibilities for this identity"
+    },
+    "allowedActions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Actions this identity is permitted to perform"
+    },
+    "forbiddenActions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Actions explicitly prohibited for this identity"
+    },
+    "memoryRetrievalPolicy": {
+      "type": "object",
+      "required": ["queryDepth", "allowedTypes", "redactionRespected"],
+      "properties": {
+        "queryDepth": {
+          "enum": ["shallow", "deep", "full"],
+          "description": "How deeply to traverse memory graph"
+        },
+        "allowedTypes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "owner_preference",
+              "project_fact",
+              "project_decision",
+              "workflow_rule",
+              "owner_gate",
+              "risk",
+              "verification_evidence",
+              "handoff_note",
+              "role_identity",
+              "skill_candidate",
+              "deprecated_memory"
+            ]
+          }
+        },
+        "redactionRespected": { "type": "boolean" },
+        "maxAgeDays": { "type": ["integer", "null"] },
+        "minConfidence": {
+          "enum": ["owner_asserted", "verified", "inferred", "stale", null]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ownerGatePolicy": {
+      "type": "object",
+      "required": ["requiredFor", "autoApproveCategories"],
+      "properties": {
+        "requiredFor": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Action categories requiring owner approval"
+        },
+        "autoApproveCategories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Categories exempt from owner gate"
+        },
+        "escalationPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "resultPacketExpectations": {
+      "type": "object",
+      "required": ["requiredFields", "format"],
+      "properties": {
+        "requiredFields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "format": {
+          "enum": ["json", "markdown", "structured_text"]
+        },
+        "verificationRequired": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

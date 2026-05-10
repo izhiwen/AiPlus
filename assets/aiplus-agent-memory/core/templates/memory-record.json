@@ -1,18 +1,32 @@
 {
-  "schemaVersion": "0.1.0",
-  "id": "mem_template",
+  "id": "mem_template_v2",
+  "schemaVersion": "0.2.0",
+  "type": "owner_preference",
   "scope": "project",
-  "kind": "preference",
-  "subject": "workflow",
-  "content": "redacted structured summary only",
   "source": "manual",
+  "createdAt": "2026-05-09T00:00:00Z",
+  "updatedAt": "2026-05-09T00:00:00Z",
   "confidence": "owner_asserted",
-  "visibility": "project-local",
-  "status": "tentative",
-  "createdAt": "1970-01-01T00:00:00Z",
-  "updatedAt": "1970-01-01T00:00:00Z",
+  "status": "proposed",
+  "summary": "Short human-readable summary of the memory.",
+  "evidence": [
+    {
+      "type": "manual_attestation",
+      "reference": "owner_direct_input",
+      "description": "Owner explicitly stated this preference."
+    }
+  ],
+  "tags": ["template", "example"],
   "expiresAt": null,
-  "reviewAfter": null,
-  "redaction": "none",
-  "hash": "sha256:template"
+  "staleAfter": null,
+  "supersedes": [],
+  "supersededBy": null,
+  "conflictGroup": null,
+  "redaction": {
+    "status": "none",
+    "reason": null,
+    "redactedAt": null,
+    "redactedBy": null,
+    "originalHash": null
+  }
 }

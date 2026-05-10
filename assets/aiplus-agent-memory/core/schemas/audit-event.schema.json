@@ -1,14 +1,93 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AiPlus Agent Memory Audit Event",
+  "title": "AiPlus Agent Memory Audit Event v2",
+  "description": "Immutable audit trail for all memory system mutations, reviews, and access events.",
   "type": "object",
-  "required": ["schemaVersion", "event", "target", "timestamp", "secretValues"],
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "actor",
+    "target",
+    "targetType",
+    "timestamp",
+    "action",
+    "secretValues"
+  ],
   "properties": {
-    "schemaVersion": { "const": "0.1.0" },
-    "event": { "type": "string" },
-    "target": { "type": "string" },
-    "timestamp": { "type": "string" },
-    "secretValues": { "const": "none" }
+    "schemaVersion": {
+      "const": "0.2.0"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^audit_[A-Za-z0-9_-]+$",
+      "description": "Unique audit event identifier"
+    },
+    "eventType": {
+      "enum": [
+        "memory_created",
+        "memory_updated",
+        "memory_reviewed",
+        "memory_deleted",
+        "memory_accessed",
+        "skill_proposed",
+        "skill_reviewed",
+        "skill_activated",
+        "identity_loaded",
+        "owner_gate_triggered",
+        "redaction_applied",
+        "conflict_detected",
+        "compact_executed",
+        "schema_migrated"
+      ],
+      "description": "Categorized event type"
+    },
+    "actor": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["owner", "agent", "system", "external"]
+        },
+        "id": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "string",
+      "description": "ID of the affected entity (memory, skill, identity, etc.)"
+    },
+    "targetType": {
+      "enum": ["memory", "skill", "identity", "review", "system"],
+      "description": "Type of entity being acted upon"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the event"
+    },
+    "action": {
+      "type": "string",
+      "description": "Human-readable description of the action taken"
+    },
+    "previousState": {
+      "type": ["object", "null"],
+      "description": "Snapshot of relevant fields before the change"
+    },
+    "newState": {
+      "type": ["object", "null"],
+      "description": "Snapshot of relevant fields after the change"
+    },
+    "secretValues": {
+      "const": "none",
+      "description": "Audit logs must never contain secrets"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Event-specific metadata",
+      "additionalProperties": true
+    }
   },
   "additionalProperties": false
 }
