@@ -60,6 +60,7 @@ use aiplus_core::{
     SkillCandidate,
     SkillRegistry,
     SnapshotBuilder,
+    MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS,
     VELOCITY_SCHEMA_VERSION,
 };
 use anyhow::{anyhow, Context, Result};
@@ -983,7 +984,7 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
     if !installed.contains_key(requested) {
         let spec = module_spec(requested).unwrap();
         copy_embedded_module(&root, spec, &mut plan, &Options::default())?;
-        if requested == "auto-compact" {
+        if requested == MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS {
             compact_init(&root, &mut plan, false)?;
         }
         if requested == "agent-memory" && !dry_run {
@@ -1136,7 +1137,8 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
     };
 
     if prefers_chinese_refresh(&trigger) {
-        let auto_compact = module_refresh_status_zh(&modules, "auto-compact");
+        let auto_compact =
+            module_refresh_status_zh(&modules, MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS);
         let auto_team = module_refresh_status_zh(&modules, "auto-team-consultant");
         let agent_memory = module_refresh_status_zh(&modules, "agent-memory");
         println!("已刷新 AiPlus。");
@@ -1195,7 +1197,8 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!("- 不上传数据");
         println!("- 不改全局 agent config");
     } else {
-        let auto_compact = module_refresh_status_en(&modules, "auto-compact");
+        let auto_compact =
+            module_refresh_status_en(&modules, MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS);
         let auto_team = module_refresh_status_en(&modules, "auto-team-consultant");
         let agent_memory = module_refresh_status_en(&modules, "agent-memory");
         println!("AiPlus refreshed.");
@@ -1405,7 +1408,7 @@ fn command_doctor() -> Result<()> {
             );
         }
     }
-    if modules.contains_key("auto-compact") {
+    if modules.contains_key(MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS) {
         push_check(
             &mut checks,
             ".codex/compact/ exists".to_string(),
@@ -5283,7 +5286,10 @@ fn install_base(
         plan,
         options,
     )?;
-    if module_names.iter().any(|name| name == "auto-compact") {
+    if module_names
+        .iter()
+        .any(|name| name == MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS)
+    {
         compact_init(root, plan, false)?;
     }
     if module_names.iter().any(|name| name == "agent-memory") && !plan.dry_run {
@@ -5431,7 +5437,8 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
         "evidence-ledger.md",
         "compact-policy.json",
     ] {
-        let asset_path = format!("aiplus-auto-compact/core/templates/{file}");
+        let asset_path =
+            format!("aiplus-{MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS}/core/templates/{file}");
         let content =
             embedded_asset_text(&asset_path)?.replace("<ISO8601_TIMESTAMP>", &timestamp());
         write_compact_template(
@@ -5717,10 +5724,12 @@ fn detects_existing_aiplus_install(root: &Path) -> bool {
     {
         return true;
     }
+    let compact_path =
+        format!(".aiplus/modules/aiplus-{MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS}");
     [
         ".aiplus/AGENTS.aiplus.md",
         REFRESH_PROMPT_REL,
-        ".aiplus/modules/aiplus-auto-compact",
+        compact_path.as_str(),
         ".aiplus/modules/aiplus-auto-team-consultant",
     ]
     .iter()

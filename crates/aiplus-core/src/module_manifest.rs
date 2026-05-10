@@ -51,6 +51,9 @@ pub const MODULES: &[ModuleSpec] = &[
     },
 ];
 
+pub const MODULE_SLUG_COMPACT_REMINDER: &str = "compact-reminder";
+pub const MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS: &str = "auto-compact";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
