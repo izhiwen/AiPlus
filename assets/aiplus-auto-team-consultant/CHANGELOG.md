@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Archived the legacy root-level `auto-team-consultant/` source package under
+  `docs/legacy-auto-team-consultant/source/` so the AiPlus workspace root can
+  remove the duplicate directory without losing pre-rename reference material.
 - Added `aiplus-module.json` for AiPlus Rust module-system manifest validation.
 - Synced AiPlus v0.4.3 secret-broker guidance with the expanded alias inventory
   for common AI, search, image, and developer providers.
@@ -13,6 +16,9 @@
 - Clarified that task cards, result packets, review findings, pressure-tests,
   and final answers must never print, paste, log, summarize, compact, or persist
   secret values.
+- Synced v2.1 workflow mentions: `aiplus compact remind`, `aiplus compact checkpoint`,
+  context capsule, `aiplus memory doctor`, `aiplus profile doctor`, `aiplus profile context`,
+  and `aiplus user context`.
 
 ## v0.3.1 trust and update alignment
 

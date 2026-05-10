@@ -10,13 +10,21 @@ It is not a separate running app, does not upload your data, does not change glo
 
 Use this when you want your current AI agent session to make better routing decisions:
 
+- What consultant team fits this project?
 - Should this be `LIGHT`, `MEDIUM`, or `HEAVY`?
+- Should this stay direct, use one specialist lens, or escalate to a council?
 - Is direct advice enough, or should one specialist lens review it?
 - Does a CEO prompt need review before execution?
 - Is there an Owner gate or safety boundary?
 - Would simulated pressure-test input help?
 
 After refresh, the agent should behave differently by using these local instructions to choose the smallest useful review depth, explain skipped lenses, label simulated pressure-tests, and stop before Owner-gated actions.
+
+For the full v2.1 design, start with
+[`core/docs/consultant-team-decision-system.md`](core/docs/consultant-team-decision-system.md).
+That document defines the project-specific Consultant Team Decision System:
+1 Core Product Council, 5 specialist expert teams including AI Integration /
+LLM Experience, and a Project-Specific User Evidence Layer.
 
 ## Path A: Recommended AiPlus Ecosystem Path
 
@@ -154,6 +162,13 @@ commands. AiPlus Auto Team Consultant should preserve role context in compact
 handoffs: Advisor recommendations, CEO task cards, Reviewer findings, Builder
 changed files, Owner gates, and the next safe action.
 
+For proactive compact management, agents can use `aiplus compact remind` at safe,
+high-value moments (HEAVY work every 30 minutes or at phase boundaries, MEDIUM
+work at phase boundaries or before review/QA). `aiplus compact checkpoint` can
+validate readiness before creating a checkpoint. In v2.1, `aiplus compact prepare`
+also builds a context capsule (`.codex/compact/context-capsule.json`) that
+`aiplus compact resume` reads for richer session restoration.
+
 For older projects, AiPlus upgrades legacy compact handoffs conservatively during
 `aiplus install ...` and `aiplus update`: it backs up the old handoff, preserves
 user content, and adds missing role-aware fields. If compact readiness is blocked
@@ -196,11 +211,13 @@ check API keys
 ```
 
 The agent should map those to metadata-only checks such as
-`aiplus profile status`, `aiplus secret-broker status`, or
-`aiplus secret-broker doctor`. Auto Team Consultant may use a user-level profile
-as lower priority than the current Owner message and project rules, but it must
-not copy private profile material into public docs, task packets, compact files,
-or result packets.
+`aiplus profile status`, `aiplus profile context`, `aiplus secret-broker status`,
+or `aiplus secret-broker doctor`. For deeper diagnostics, `aiplus profile doctor`
+validates profile bundle integrity and identity files; `aiplus memory doctor`
+scans for stale or conflicting memory records. Auto Team Consultant may use a
+user-level profile as lower priority than the current Owner message and project
+rules, but it must not copy private profile material into public docs, task
+packets, compact files, or result packets.
 
 If `aiplus profile status` reports `legacy_profiles=[...]`, run
 `aiplus profile cleanup --user --yes` after the canonical private profile is
@@ -278,7 +295,10 @@ This repo also keeps the reusable source files:
 - `adapters/opencode/`: OpenCode project-local config, command, agent, and prompt source
 - `examples/`: synthetic examples only
 
-If you are unsure which packet to use, see [core/templates/TEMPLATE_INDEX.md](core/templates/TEMPLATE_INDEX.md).
+If you are unsure how the whole consultant system should work, start with
+[`core/docs/consultant-team-decision-system.md`](core/docs/consultant-team-decision-system.md).
+If you only need to pick a packet or template, see
+[`core/templates/TEMPLATE_INDEX.md`](core/templates/TEMPLATE_INDEX.md).
 
 ## Validate This Repo Locally
 

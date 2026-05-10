@@ -1,0 +1,220 @@
+# Default local routing policy for AiPlus Auto Team Consultant.
+#
+# This file is a template for a future project-local:
+#
+#   .aiplus/consultant-team.toml
+#
+# It is a routing policy, not a permission file. It never grants approval for
+# Owner-gated actions such as push, tag, release, publish, deploy, external
+# account mutation, global config edits, secret exposure, or private data upload.
+
+schema_version = "0.1"
+default_tier = "LIGHT"
+max_total_rounds = 5
+default_owner_language = "zh-CN"
+
+[project]
+name = "Example Project"
+product_type = "AI-native product"
+primary_goal = "use AI to improve speed, quality, and user control"
+ai_depth = "core_product"
+risk_profile = "high_efficiency_with_guardrails"
+
+[priorities]
+efficiency = "primary"
+ai_leverage = "primary"
+user_control = "high"
+reliability = "high"
+privacy = "guardrail"
+security = "guardrail"
+accessibility = "required"
+
+[budgets]
+light_max_rounds = 1
+medium_max_rounds = 3
+heavy_max_rounds = 5
+hard_stop_on_budget_exceeded = true
+
+[router]
+l0_max_total = 2
+l1_max_total = 4
+l2_max_total = 7
+l3_max_total = 10
+l4_max_total = 13
+l5_min_total = 14
+
+[[members]]
+id = "product_market"
+name = "Product / Market / Wedge"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+responsibilities = [
+  "check target user and daily value",
+  "check wedge strength",
+  "define non-goals"
+]
+can_edit_files = false
+can_trigger_owner_gate = false
+
+[[members]]
+id = "ai_integration"
+name = "AI Integration / LLM Experience"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+responsibilities = [
+  "check AI leverage and efficiency",
+  "check context, memory, prompt, tool-use, and model routing",
+  "check hallucination, stale memory, and user-control risks"
+]
+can_edit_files = false
+can_trigger_owner_gate = true
+
+[[members]]
+id = "ux_plain_english"
+name = "UX / Design / Plain-English"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+responsibilities = [
+  "check first-screen comprehension",
+  "check next action clarity",
+  "check onboarding and error states"
+]
+can_edit_files = false
+can_trigger_owner_gate = false
+
+[[members]]
+id = "trust_safety"
+name = "Trust / Privacy / Safety"
+default_tiers = ["MEDIUM", "HEAVY"]
+responsibilities = [
+  "check private/public boundary",
+  "check secrets and external account risks",
+  "check autonomy and Owner gates"
+]
+can_edit_files = false
+can_trigger_owner_gate = true
+
+[[members]]
+id = "implementation_qa"
+name = "Implementation / QA / Release"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+responsibilities = [
+  "check verification evidence",
+  "check changed files and tests",
+  "separate claim from proof"
+]
+can_edit_files = false
+can_trigger_owner_gate = true
+
+[[members]]
+id = "release_automation"
+name = "Release / Automation"
+default_tiers = ["HEAVY"]
+responsibilities = [
+  "check release checklist",
+  "check artifact and checksum evidence",
+  "check package registry and upload gates"
+]
+can_edit_files = false
+can_trigger_owner_gate = true
+
+[[members]]
+id = "runtime_qa"
+name = "Runtime QA"
+default_tiers = ["MEDIUM", "HEAVY"]
+responsibilities = [
+  "check source-vs-installed binary evidence",
+  "check runtime command behavior",
+  "check temp-project dogfood"
+]
+can_edit_files = false
+can_trigger_owner_gate = false
+
+[[members]]
+id = "strategic_critic"
+name = "Strategic Critic"
+default_tiers = ["MEDIUM", "HEAVY"]
+responsibilities = [
+  "challenge unclear assumptions",
+  "surface scope conflict",
+  "propose smaller or higher-leverage path"
+]
+can_edit_files = false
+can_trigger_owner_gate = false
+
+[[triggers]]
+id = "ai_feature"
+patterns = ["AI integration", "LLM", "tool use", "memory", "agent autonomy"]
+tier = "MEDIUM"
+members = ["ai_integration", "trust_safety"]
+
+[[triggers]]
+id = "user_facing_flow"
+patterns = ["onboarding", "first screen", "pricing", "permission", "trust copy"]
+tier = "MEDIUM"
+members = ["ux_plain_english", "product_market", "trust_safety"]
+
+[[triggers]]
+id = "memory_compact_profile"
+patterns = ["memory", "compact", "profile", "identity", "secret broker"]
+tier = "MEDIUM"
+members = ["ai_integration", "implementation_qa", "trust_safety"]
+
+[[triggers]]
+id = "release"
+patterns = ["release", "tag", "publish", "artifact", "upload"]
+tier = "HEAVY"
+members = ["release_automation", "trust_safety", "runtime_qa"]
+stop_gate = true
+
+[[triggers]]
+id = "simple_advice"
+patterns = ["explain", "what is", "small typo", "one command"]
+tier = "LIGHT"
+members = []
+
+[user_evidence]
+enabled = true
+default_panel_size = 6
+granularity = "single_persona_or_small_panel_first"
+
+[[user_evidence.personas]]
+id = "target_user"
+name = "Target User"
+focus = "does the product solve my daily problem faster with AI"
+
+[[user_evidence.personas]]
+id = "ai_power_user"
+name = "AI-Power Early Adopter"
+focus = "does the AI capability feel strong and worth authorizing"
+
+[[user_evidence.personas]]
+id = "low_tech_user"
+name = "Grandma / Low-Tech User"
+focus = "can I understand the next action and avoid mistakes"
+
+[[user_evidence.personas]]
+id = "trust_skeptic"
+name = "Privacy-Conscious Skeptic"
+focus = "do I believe the data and autonomy boundaries"
+
+[[user_evidence.personas]]
+id = "accessibility_user"
+name = "Accessibility / Assistive-Tech User"
+focus = "can I complete the core path with assistive needs"
+
+[[user_evidence.personas]]
+id = "maintainer"
+name = "Maintainer / Future Operator"
+focus = "can I operate and recover this workflow over time"
+
+[owner_gates]
+push = true
+tag = true
+release = true
+artifact_upload = true
+package_publish = true
+deploy = true
+global_config_edit = true
+external_account_mutation = true
+secret_exposure = true
+private_data_upload = true
+destructive_memory_migration = true
+send_delete_publish_or_mutate_external_content = true

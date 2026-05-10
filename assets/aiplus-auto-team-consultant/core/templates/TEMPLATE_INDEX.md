@@ -2,8 +2,16 @@
 
 Use this chooser when a session asks "which template should I use?" Pick the smallest artifact that matches the role, workflow tier, and expected output.
 
+Start with
+[`../docs/consultant-team-decision-system.md`](../docs/consultant-team-decision-system.md)
+when the session needs the full project-specific consultant architecture,
+Router scoring, AI Integration lens, User Evidence Layer, or trigger
+accountability.
+
 | Template | Use When | Session Role | Workflow Tier | Output |
 | --- | --- | --- | --- | --- |
+| `../docs/consultant-team-decision-system.md` | full consultant architecture and routing policy | any | any | system design |
+| `consultant-team.default.toml` | local project routing policy seed | any | any | config template |
 | `consultant-packet.md` | advice/routing decision | Advisor/Reviewer | LIGHT/MEDIUM | Consultant Packet |
 | `ceo-handoff.md` | hand off execution to CEO | Advisor/Reviewer | MEDIUM/HEAVY | CEO-ready handoff |
 | `ceo-routing.md` | CEO decomposes work | CEO | MEDIUM/HEAVY | routing plan |
@@ -17,7 +25,10 @@ Use this chooser when a session asks "which template should I use?" Pick the sma
 
 ## Selection Rules
 
-- Start with `workflow-tiers.md` when the depth is unclear.
+- Start with `../docs/consultant-team-decision-system.md` when the task is
+  product/AI/trust/release oriented or when the project needs a custom
+  consultant team.
+- Start with `workflow-tiers.md` when only the depth is unclear.
 - Use `consultant-packet.md` for advice, prompt critique, routing judgment, and lightweight review.
 - Use `ceo-handoff.md` only when the current session should transfer execution coordination to CEO mode.
 - Use `ceo-routing.md` and `task-card.md` together when CEO mode decomposes work for multiple agents or file scopes.

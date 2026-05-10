@@ -1363,6 +1363,68 @@ fn command_doctor() -> Result<()> {
             );
         }
     }
+    if modules.contains_key("auto-team-consultant") {
+        let consultant_config = rel_to_abs(&root, ".aiplus/consultant-team.toml")?;
+        push_check(
+            &mut checks,
+            ".aiplus/consultant-team.toml exists",
+            consultant_config.exists(),
+            Some("run install to create default consultant-team config".to_string()),
+        );
+        if consultant_config.exists() {
+            let config_text = fs::read_to_string(&consultant_config).unwrap_or_default();
+            push_check(
+                &mut checks,
+                "consultant-team.toml parses as TOML",
+                config_text.parse::<toml::Value>().is_ok(),
+                Some("fix or delete .aiplus/consultant-team.toml and rerun install".to_string()),
+            );
+            if let Ok(value) = config_text.parse::<toml::Value>() {
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml has schema_version",
+                    value.get("schema_version").is_some(),
+                    Some("add schema_version field".to_string()),
+                );
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml has members",
+                    value.get("members").is_some(),
+                    Some("add members array with at least ai_integration".to_string()),
+                );
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml has owner_gates",
+                    value.get("owner_gates").is_some(),
+                    Some("add owner_gates section".to_string()),
+                );
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml has user_evidence",
+                    value.get("user_evidence").is_some(),
+                    Some("add user_evidence section".to_string()),
+                );
+                let has_ai_integration = value
+                    .get("members")
+                    .and_then(|m| m.as_array())
+                    .map(|arr| {
+                        arr.iter().any(|item| {
+                            item.get("id")
+                                .and_then(|id| id.as_str())
+                                .map(|s| s == "ai_integration")
+                                .unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml includes ai_integration member",
+                    has_ai_integration,
+                    Some("add ai_integration member for AI-native products".to_string()),
+                );
+            }
+        }
+    }
     let continuity = continuity_state(&root)?;
     push_check(
         &mut checks,
@@ -5161,7 +5223,29 @@ fn install_base(
     if module_names.iter().any(|name| name == "agent-memory") && !plan.dry_run {
         memory_init(root)?;
     }
+    if module_names
+        .iter()
+        .any(|name| name == "auto-team-consultant")
+    {
+        install_consultant_team_config(root, plan, options)?;
+    }
     Ok(())
+}
+
+fn install_consultant_team_config(root: &Path, plan: &mut Plan, options: &Options) -> Result<()> {
+    let rel = ".aiplus/consultant-team.toml";
+    let target = rel_to_abs(root, rel)?;
+    if target.exists() {
+        plan.items.push(PlanItem {
+            action: "skip-user-config".to_string(),
+            path: rel.to_string(),
+        });
+        return Ok(());
+    }
+    let content = embedded_asset_text(
+        "aiplus-auto-team-consultant/core/templates/consultant-team.default.toml",
+    )?;
+    write_file_safe(root, rel, content.as_bytes(), plan, options)
 }
 
 fn install_runtime_adapter(

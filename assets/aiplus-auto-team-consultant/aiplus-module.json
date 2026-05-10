@@ -8,7 +8,8 @@
   "requiredFiles": [
     "LICENSE",
     "adapters/codex/skills/auto-team-consultant/SKILL.md",
-    "core/templates/TEMPLATE_INDEX.md"
+    "core/templates/TEMPLATE_INDEX.md",
+    "core/templates/consultant-team.default.toml"
   ],
   "managedFiles": [
     ".aiplus/modules/aiplus-auto-team-consultant"

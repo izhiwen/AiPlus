@@ -25,6 +25,28 @@ If this Skill is installed without those files, follow the inline structures in 
 
 Repo-template files are for project installation only. Do not treat them as active instructions unless they have been copied into the target repo or explicitly referenced by the user.
 
+## Consultant Team Decision System
+
+Before CEO/review/QA/product/design/release/AI-integration work:
+
+1. Read `.aiplus/consultant-team.toml` if it exists.
+2. Use the configured Consultant Team with L0-L5 Router + Specialist Lenses.
+3. If config is missing or malformed, use the safe AI-native default and report NEEDS_FIX.
+
+The Consultant Team Decision System = 1 Core Product Council + 5 Specialist Expert Teams + Project-Specific User Evidence Layer.
+
+Five Specialist Expert Teams:
+- Product / Market / Wedge
+- AI Integration / LLM Experience (enabled by default for AI-native products)
+- UX / Design / Plain-English
+- Trust / Safety / Privacy
+- Implementation / QA / Release
+
+AI Integration / LLM Experience is a default core lens for AI-native products.
+Trust / Safety / Privacy is a guardrail, not a default veto team.
+
+Use the smallest useful set of lenses. Do not trigger Full Council for small tasks.
+
 ## Verdict Vocabulary
 
 Consultant/advice verdicts use `ACCEPT | REVISE | BLOCKED`.
@@ -54,6 +76,37 @@ Choose `LIGHT` for ordinary advice, narrow prompt critique, small docs questions
 Choose `MEDIUM` for formal CEO prompts, product direction review, implementation planning, review/fix cycles, non-trivial architecture choices, or multi-file documentation packages. Use up to three rounds, core judgment plus one or two specialist lenses, and return a Consultant Packet or Result Packet.
 
 Choose `HEAVY` only for major product direction, safety boundaries, external accounts, deployment, public release, high-risk autonomy, unresolved conflict, or explicit Owner request for team discussion. Use up to five rounds, selected multi-team council or Full Council, explicit Owner gates, and pressure-test for user-facing perception.
+
+## L0-L5 Router
+
+For non-trivial tasks, score each dimension from 0 to 3:
+
+```text
+complexity_score=0-3
+risk_score=0-3
+ai_integration_score=0-3
+user_impact_score=0-3
+uncertainty_score=0-3
+```
+
+Levels:
+
+- `L0 Direct`: total <= 2 and no single score >= 2
+- `L1 Self-Check`: total 3-4
+- `L2 Single Specialist`: total 5-7 or any single score = 2
+- `L3 Pair Review`: total 8-10 or two scores = 2
+- `L4 Mini Council`: total 11-13 or any single score = 3
+- `L5 Full Council / Owner Gate`: total >= 14, or publish/release/secret/global config/external account risk
+
+Lens limits:
+
+- L2: at most 1 specialist
+- L3: at most 2 specialists
+- L4: at most 4 specialists
+- L5: Full Council allowed, Owner gates explicit
+
+Every escalation must state `why_this_level=...` and `why_not_lighter=...`.
+Every skipped lens must have a reason: `skipped_lenses_with_reason=[...]`.
 
 ## Select Lenses
 
@@ -98,6 +151,15 @@ result as an estimate and operating signal only. It is not billing data,
 guaranteed savings, precise cost measurement, or proof that a review, CEO plan,
 or release gate is correct.
 
+Proactive compact requests such as "remind me to compact", "should I compact now?",
+or "compact reminder" should map to `aiplus compact remind`. Event-specific
+requests such as "long session check" or "phase end compact check" should map to
+`aiplus compact remind --event long-session` or `aiplus compact remind --event phase-end`.
+Checkpoint requests such as "validate compact readiness" or "create a checkpoint"
+should map to `aiplus compact checkpoint`. In v2.1, `aiplus compact prepare` also
+builds a context capsule (`.codex/compact/context-capsule.json`) that
+`aiplus compact resume` reads for richer session restoration.
+
 AiPlus update requests such as "update AiPlus", "update everything", "升级
 AiPlus", or "把 AiPlus 全部更新到最新版" should map to `aiplus update all`.
 Project-only requests map to `aiplus update`; command/global CLI requests map to
@@ -106,9 +168,12 @@ plus `aiplus status`. Before updating, state the scope and confirm no global
 agent config edits or project data upload.
 
 Profile requests such as "private profile status", "我的偏好生效了吗", or
-"检查我的 AiPlus profile" should map to `aiplus profile status`. Secret status
-requests such as "secret 状态", "看看 secret", "检查 API key", or "API key 是否可用"
-should map to `aiplus secret-broker status` or `aiplus secret-broker doctor`.
+"检查我的 AiPlus profile" should map to `aiplus profile status` or
+`aiplus profile context`. Secret status requests such as "secret 状态", "看看 secret",
+"检查 API key", or "API key 是否可用" should map to `aiplus secret-broker status`
+or `aiplus secret-broker doctor`. For deeper diagnostics, `aiplus profile doctor`
+validates profile bundle integrity and identity files; `aiplus memory doctor`
+scans for stale or conflicting memory records.
 If profile status shows `legacy_profiles=[...]`, tell the user that
 `aiplus profile cleanup --user --yes` backs up and removes legacy active profile
 registrations after the canonical profile is installed.
