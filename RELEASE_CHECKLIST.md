@@ -147,3 +147,30 @@ system/global install paths.
 - [x] `checksums.txt` matches uploaded artifacts.
 - [x] `install.sh` downloads only release assets and installs only `aiplus`.
 - [x] Owner approved the v0.5.0 upload scope before release artifact creation.
+
+## Release Automation (v0.5.x+)
+
+### Automated Checks
+
+Run these scripts before any release consideration:
+
+```bash
+./scripts/release-doctor.sh        # Full QA + version + smoke checks
+./scripts/secret-boundary-scan.sh  # Secret + privacy + telemetry scan
+./scripts/subproduct-drift.sh      # Asset vs source comparison
+./scripts/artifact-check.sh        # Binary build + archive dry-run
+```
+
+### Checklist
+
+- [ ] `release-doctor.sh` PASS
+- [ ] `secret-boundary-scan.sh` PASS
+- [ ] `subproduct-drift.sh` PASS (or WARN with documented expected differences)
+- [ ] `artifact-check.sh` PASS (or WARN with justification)
+- [ ] Report saved to `docs/stabilization/release-doctor-report.md`
+- [ ] Release packet generated from `docs/release-packet-template.md`
+- [ ] No push/tag/release/upload in automation scripts
+- [ ] No secret values printed
+- [ ] No global config modification
+- [ ] No telemetry detected
+- [ ] No private profile content in public assets

@@ -506,7 +506,21 @@ From a target project:
 The old docs used `<AIPLUS_SOURCE>` to mean "the folder where you cloned the
 AiPlus repo." Do not type angle-bracket placeholders literally.
 
-## Public-Ready Docs
+## User Guides
+
+- [Getting Started](docs/getting-started.md) — 3-minute setup
+- [Daily Workflows](docs/daily-workflows.md) — natural-language command map
+- [Memory Guide](docs/memory-guide.md) — project memory, search, forget, redaction
+- [Compact Guide](docs/compact-guide.md) — remind, prepare, checkpoint, resume
+- [Profile Bundle Guide](docs/profile-bundle-guide.md) — USER.md, preferences, identities
+- [Identity Guide](docs/identity-guide.md) — role contracts and context
+- [Troubleshooting](docs/troubleshooting.md) — doctor, common fixes
+- [FAQ](docs/faq.md)
+- [Glossary](docs/glossary.md)
+- [Agent Operator Manual](docs/agent-operator-manual.md)
+- [快速开始](docs/zh/getting-started.md) | [日常操作](docs/zh/daily-workflows.md) | [故障排除](docs/zh/troubleshooting.md)
+
+## Technical Docs
 
 - [Module index](MODULES.md)
 - [Architecture](docs/architecture.md)
