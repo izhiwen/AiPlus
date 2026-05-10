@@ -4476,10 +4476,25 @@ fn command_self_update(dry_run: bool, yes: bool) -> Result<()> {
     let temp = std::env::temp_dir().join(format!("aiplus-self-update-{}", epoch_millis()));
     fs::create_dir_all(&temp)?;
     let checksums = temp.join("checksums.txt");
+    let sha256 = temp.join(format!("{asset}.sha256"));
     let archive = temp.join(&asset);
-    fetch_to(&format!("{base_url}/checksums.txt"), &checksums)?;
+
+    // Download archive first
     fetch_to(&format!("{base_url}/{asset}"), &archive)?;
-    verify_checksum_file(&checksums, &archive)?;
+
+    // Try checksums.txt first, fall back to per-artifact .sha256
+    if fetch_to(&format!("{base_url}/checksums.txt"), &checksums).is_ok() {
+        println!("checksum_source=checksums.txt");
+        verify_checksum_file(&checksums, &archive)?;
+    } else if fetch_to(&format!("{base_url}/{asset}.sha256"), &sha256).is_ok() {
+        println!("checksum_source={asset}.sha256");
+        verify_sha256_file(&sha256, &archive)?;
+    } else {
+        return Err(anyhow!(
+            "checksums.txt and {asset}.sha256 both not found at {base_url}"
+        ));
+    }
+
     println!("checksum_status=PASS");
     println!("CHECKSUM_STATUS=PASS");
     let extract_dir = temp.join("extract");
@@ -6133,40 +6148,119 @@ fn compact_resume(root: &Path) -> Result<i32> {
             },
         );
     }
-    let handoff = read_compact_text(root, "current-handoff.md")?;
     let latest = latest_checkpoint(root)?;
-    println!("RESUME_READY");
-    println!(
-        "latest_checkpoint={}",
-        latest.as_deref().unwrap_or("missing")
-    );
-    println!(
-        "session_role={}",
-        single_line(&section_body(&handoff, "Session Role"))
-    );
-    println!(
-        "workflow_level={}",
-        single_line(&section_body(&handoff, "Workflow Level"))
-    );
-    println!(
-        "current_goal={}",
-        single_line(&section_body(&handoff, "Current Goal"))
-    );
-    println!(
-        "current_phase={}",
-        single_line(&section_body(&handoff, "Current Phase"))
-    );
-    println!(
-        "open_blockers={}",
-        single_line(&section_body(&handoff, "Open Blockers"))
-    );
-    println!(
-        "owner_gates={}",
-        single_line(&section_body(&handoff, "Owner Gates"))
-    );
-    println!("next_safe_action={}", single_line(&result.next_safe_action));
-    println!("read_only_recovery_guidance=yes");
-    println!("high_risk_actions=manual_owner_approval_required");
+
+    // Try to load context capsule first (v2.1)
+    let capsule_loaded = match load_context_capsule(root) {
+        Ok(capsule) => {
+            let checksum_valid = verify_capsule_checksum(root, &capsule);
+            if checksum_valid {
+                println!("RESUME_READY");
+                println!("CAPSULE_LOADED=yes");
+                println!("CAPSULE_STATUS=current");
+                println!(
+                    "latest_checkpoint={}",
+                    latest.as_deref().unwrap_or("missing")
+                );
+                println!("session_role={}", capsule.session_role);
+                println!("workflow_level={}", capsule.workflow_level);
+                println!("current_goal={}", capsule.objective);
+                println!("current_phase={}", capsule.current_state);
+                println!(
+                    "open_blockers={}",
+                    capsule
+                        .owner_gates
+                        .iter()
+                        .filter(|g| g.status == "UNKNOWN_PENDING")
+                        .map(|g| g.label.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                println!(
+                    "owner_gates={}",
+                    capsule
+                        .owner_gates
+                        .iter()
+                        .map(|g| format!("{}:{}", g.label, g.status))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                println!(
+                    "next_safe_action={}",
+                    single_line(&capsule.next_safe_action)
+                );
+                println!("decisions_loaded={}", capsule.decisions.len());
+                println!("read_only_recovery_guidance=yes");
+                println!("high_risk_actions=manual_owner_approval_required");
+                true
+            } else {
+                println!("CONTEXT_CAPSULE_STALE");
+                println!("CAPSULE_LOADED=no");
+                println!("CAPSULE_STATUS=checksum_mismatch");
+                println!("reason=checksum_mismatch");
+                false
+            }
+        }
+        Err(e) => {
+            let reason = if e.to_string().contains("not found") {
+                "missing"
+            } else if e.downcast_ref::<serde_json::Error>().is_some()
+                || e.to_string().contains("parse")
+                || e.to_string().contains("json")
+                || e.to_string().contains("key must be a string")
+                || e.to_string().contains("expected")
+            {
+                "malformed"
+            } else {
+                "error"
+            };
+            println!("CONTEXT_CAPSULE_NOT_LOADED");
+            println!("CAPSULE_LOADED=no");
+            println!("CAPSULE_STATUS={}", reason);
+            println!("reason={}", reason);
+            false
+        }
+    };
+
+    // Fallback to handoff if capsule not loaded
+    if !capsule_loaded {
+        let handoff = read_compact_text(root, "current-handoff.md")?;
+        println!("RESUME_READY");
+        println!("CAPSULE_LOADED=no");
+        println!("CAPSULE_STATUS=handoff_fallback");
+        println!(
+            "latest_checkpoint={}",
+            latest.as_deref().unwrap_or("missing")
+        );
+        println!(
+            "session_role={}",
+            single_line(&section_body(&handoff, "Session Role"))
+        );
+        println!(
+            "workflow_level={}",
+            single_line(&section_body(&handoff, "Workflow Level"))
+        );
+        println!(
+            "current_goal={}",
+            single_line(&section_body(&handoff, "Current Goal"))
+        );
+        println!(
+            "current_phase={}",
+            single_line(&section_body(&handoff, "Current Phase"))
+        );
+        println!(
+            "open_blockers={}",
+            single_line(&section_body(&handoff, "Open Blockers"))
+        );
+        println!(
+            "owner_gates={}",
+            single_line(&section_body(&handoff, "Owner Gates"))
+        );
+        println!("next_safe_action={}", single_line(&result.next_safe_action));
+        println!("read_only_recovery_guidance=yes");
+        println!("high_risk_actions=manual_owner_approval_required");
+    }
+
     let readiness = compact_readiness(&result, root);
     append_savings_event(
         root,
@@ -6459,6 +6553,19 @@ fn load_context_capsule(root: &Path) -> Result<aiplus_core::ContextCapsule> {
     Ok(serde_json::from_str(&text)?)
 }
 
+fn verify_capsule_checksum(_root: &Path, capsule: &aiplus_core::ContextCapsule) -> bool {
+    use aiplus_core::compute_capsule_checksum;
+    let expected = compute_capsule_checksum(&format!(
+        "{}{}{}",
+        capsule.project_id, capsule.objective, capsule.current_state
+    ));
+    capsule
+        .checksums
+        .get("capsule_v1")
+        .map(|stored| stored == &expected)
+        .unwrap_or(false)
+}
+
 fn save_context_capsule(root: &Path, capsule: &aiplus_core::ContextCapsule) -> Result<()> {
     let path = compact_file(root, "context-capsule.json")?;
     fs::write(path, serde_json::to_string_pretty(capsule)?)?;
@@ -6492,8 +6599,68 @@ fn build_context_capsule_from_handoff(root: &Path) -> Result<aiplus_core::Contex
     Ok(capsule)
 }
 
-fn extract_decisions_from_ledger(_root: &Path) -> Result<Vec<aiplus_core::CapsuleDecision>> {
-    Ok(Vec::new())
+fn extract_decisions_from_ledger(root: &Path) -> Result<Vec<aiplus_core::CapsuleDecision>> {
+    let path = compact_file(root, "decision-log.md")?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(path)?;
+    let mut decisions = Vec::new();
+    let mut in_decisions = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed == "## Decisions" {
+            in_decisions = true;
+            continue;
+        }
+        if in_decisions && trimmed.starts_with("## ") {
+            break;
+        }
+        if !in_decisions || !trimmed.starts_with('|') {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split('|').map(|s| s.trim()).collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let id = parts[1];
+        let status = parts[2];
+        let description = parts.get(3).unwrap_or(&"");
+        if id.is_empty() || id == "ID" || id.starts_with('<') || id.contains("---") {
+            continue;
+        }
+        // Skip decisions that contain sensitive patterns
+        let desc_lower = description.to_ascii_lowercase();
+        let is_sensitive = [
+            "api_key",
+            "apikey",
+            "secret_key",
+            "password",
+            "private_key",
+            "bearer ",
+            "authorization:",
+            "cookie:",
+            "-----begin ",
+            "raw transcript",
+            "provider payload",
+            "sensitive",
+            "private",
+        ]
+        .iter()
+        .any(|needle| desc_lower.contains(needle));
+        if is_sensitive {
+            continue;
+        }
+        let verified = status.eq_ignore_ascii_case("DECIDED");
+        decisions.push(aiplus_core::CapsuleDecision {
+            id: id.to_string(),
+            description: description.to_string(),
+            status: status.to_string(),
+            decided_at: String::new(),
+            verified,
+        });
+    }
+    Ok(decisions)
 }
 
 fn extract_owner_gates_from_handoff(handoff: &str) -> Result<Vec<aiplus_core::CapsuleOwnerGate>> {
@@ -7191,6 +7358,40 @@ fn verify_checksum_file(checksums: &Path, asset: &Path) -> Result<()> {
     Ok(())
 }
 
+fn verify_sha256_file(sha256_file: &Path, asset: &Path) -> Result<()> {
+    let text = fs::read_to_string(sha256_file)?;
+    // .sha256 files may contain just the checksum, or "CHECKSUM  FILENAME" format
+    let expected = text
+        .lines()
+        .next()
+        .ok_or_else(|| anyhow!(".sha256 file is empty"))?
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| anyhow!(".sha256 file is malformed"))?;
+    let output = if command_exists("shasum") {
+        Command::new("shasum")
+            .args(["-a", "256"])
+            .arg(asset)
+            .output()?
+    } else if command_exists("sha256sum") {
+        Command::new("sha256sum").arg(asset).output()?
+    } else {
+        return Err(anyhow!("shasum or sha256sum is required"));
+    };
+    if !output.status.success() {
+        return Err(anyhow!("checksum command failed"));
+    }
+    let actual = String::from_utf8(output.stdout)?
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if actual != expected {
+        return Err(CliError::new(1, "ERROR checksum mismatch").into());
+    }
+    Ok(())
+}
+
 fn extract_release_archive(archive: &Path, dest: &Path) -> Result<()> {
     let name = archive
         .file_name()
@@ -7864,6 +8065,7 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/identities".to_string(),
         ".aiplus/skills".to_string(),
         ".aiplus/restore".to_string(),
+        ".aiplus/consultant-team.toml".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());

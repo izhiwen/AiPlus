@@ -1355,6 +1355,273 @@ fn compact_prepare_creates_context_capsule() {
 }
 
 #[test]
+fn compact_resume_reads_valid_capsule() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Run prepare to create capsule
+    let prepare = stdout(&run(target, &["compact", "prepare"], 0));
+    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json"));
+
+    // Now resume should read the capsule
+    let resume = stdout(&run(target, &["compact", "resume"], 0));
+    assert!(
+        resume.contains("CAPSULE_LOADED=yes"),
+        "resume should report CAPSULE_LOADED=yes\n{resume}"
+    );
+    assert!(
+        resume.contains("CAPSULE_STATUS=current"),
+        "resume should report CAPSULE_STATUS=current\n{resume}"
+    );
+    assert!(
+        resume.contains("RESUME_READY"),
+        "resume should report RESUME_READY\n{resume}"
+    );
+    assert!(
+        resume.contains("read_only_recovery_guidance=yes"),
+        "resume should report read_only_recovery_guidance\n{resume}"
+    );
+}
+
+#[test]
+fn compact_resume_falls_back_to_handoff_when_capsule_missing() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Ensure capsule does not exist
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    if capsule_path.exists() {
+        fs::remove_file(&capsule_path).unwrap();
+    }
+
+    let resume = stdout(&run(target, &["compact", "resume"], 0));
+    assert!(
+        resume.contains("CAPSULE_LOADED=no"),
+        "resume should report CAPSULE_LOADED=no\n{resume}"
+    );
+    assert!(
+        resume.contains("CAPSULE_STATUS=missing"),
+        "resume should report CAPSULE_STATUS=missing\n{resume}"
+    );
+    assert!(
+        resume.contains("RESUME_READY"),
+        "resume should still report RESUME_READY via handoff fallback\n{resume}"
+    );
+}
+
+#[test]
+fn compact_resume_rejects_malformed_capsule() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Write malformed capsule
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    fs::write(&capsule_path, "{ not valid json").unwrap();
+
+    let resume = stdout(&run(target, &["compact", "resume"], 0));
+    assert!(
+        resume.contains("CAPSULE_LOADED=no"),
+        "resume should report CAPSULE_LOADED=no\n{resume}"
+    );
+    assert!(
+        resume.contains("CAPSULE_STATUS=malformed"),
+        "resume should report CAPSULE_STATUS=malformed\n{resume}"
+    );
+    assert!(
+        resume.contains("RESUME_READY"),
+        "resume should still fall back to handoff\n{resume}"
+    );
+}
+
+#[test]
+fn compact_resume_rejects_checksum_mismatch() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Run prepare to create a valid capsule
+    run(target, &["compact", "prepare"], 0);
+
+    // Corrupt the capsule objective so checksum no longer matches
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let mut capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    if let Some(obj) = capsule.get_mut("objective") {
+        *obj = serde_json::json!("tampered objective");
+    }
+    fs::write(
+        &capsule_path,
+        serde_json::to_string_pretty(&capsule).unwrap(),
+    )
+    .unwrap();
+
+    let resume = stdout(&run(target, &["compact", "resume"], 0));
+    assert!(
+        resume.contains("CAPSULE_LOADED=no"),
+        "resume should report CAPSULE_LOADED=no after checksum mismatch\n{resume}"
+    );
+    assert!(
+        resume.contains("CAPSULE_STATUS=checksum_mismatch"),
+        "resume should report CAPSULE_STATUS=checksum_mismatch\n{resume}"
+    );
+    assert!(
+        resume.contains("RESUME_READY"),
+        "resume should still fall back to handoff\n{resume}"
+    );
+}
+
+#[test]
+fn decision_ledger_extraction_normal_table() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Replace decisions section in existing decision log
+    let decision_log = target.join(".codex/compact/decision-log.md");
+    let log_text = fs::read_to_string(&decision_log).unwrap();
+    let new_decisions = "| ID | Status | Decision | Rationale | Evidence |\n| --- | --- | --- | --- | --- |\n| DEC-001 | DECIDED | Use Rust for CLI. | Performance and safety. | EVD-001 |\n| DEC-002 | PROVISIONAL | Evaluate Go for future tools. | Team familiarity. | EVD-002 |\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
+    let updated = replace_section_body(&log_text, "Decisions", new_decisions);
+    fs::write(&decision_log, updated).unwrap();
+
+    run(target, &["compact", "prepare"], 0);
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    assert!(capsule_path.exists());
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    let decisions = capsule
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .expect("decisions array should exist");
+    assert!(
+        decisions.len() >= 2,
+        "expected at least 2 decisions, got {}\n{capsule_text}",
+        decisions.len()
+    );
+    let ids: Vec<String> = decisions
+        .iter()
+        .filter_map(|d| d.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    assert!(ids.contains(&"DEC-001".to_string()));
+    assert!(ids.contains(&"DEC-002".to_string()));
+}
+
+#[test]
+fn decision_ledger_extraction_malformed_log() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Malformed table: rows that don't start with '|' should be skipped
+    let decision_log = target.join(".codex/compact/decision-log.md");
+    let log_text = fs::read_to_string(&decision_log).unwrap();
+    let new_decisions = "DEC-001 DECIDED Use Rust for CLI. Performance. EVD-001\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
+    let updated = replace_section_body(&log_text, "Decisions", new_decisions);
+    fs::write(&decision_log, updated).unwrap();
+
+    run(target, &["compact", "prepare"], 0);
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    let decisions = capsule
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .expect("decisions array should exist");
+    assert_eq!(decisions.len(), 0, "non-table rows should be skipped");
+}
+
+#[test]
+fn decision_ledger_extraction_skips_sensitive_entries() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Replace decisions section with sensitive entries
+    let decision_log = target.join(".codex/compact/decision-log.md");
+    let log_text = fs::read_to_string(&decision_log).unwrap();
+    let new_decisions = "| ID | Status | Decision | Rationale | Evidence |\n| --- | --- | --- | --- | --- |\n| DEC-001 | DECIDED | Use Rust for CLI. | Performance. | EVD-001 |\n| DEC-002 | DECIDED | api_key is secret123. | Security. | EVD-002 |\n| DEC-003 | DECIDED | Store raw transcript. | Logging. | EVD-003 |\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
+    let updated = replace_section_body(&log_text, "Decisions", new_decisions);
+    fs::write(&decision_log, updated).unwrap();
+
+    // Sensitive patterns block prepare (exit code 1), but capsule is still created
+    let prepare = stdout(&run(target, &["compact", "prepare"], 1));
+    assert!(prepare.contains("BLOCKED_BY_OWNER_GATE"));
+    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED"));
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    let decisions = capsule
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .expect("decisions array should exist");
+    let ids: Vec<String> = decisions
+        .iter()
+        .filter_map(|d| d.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    assert!(
+        ids.contains(&"DEC-001".to_string()),
+        "DEC-001 should be present"
+    );
+    assert!(
+        !ids.contains(&"DEC-002".to_string()),
+        "DEC-002 with api_key should be skipped"
+    );
+    assert!(
+        !ids.contains(&"DEC-003".to_string()),
+        "DEC-003 with raw transcript should be skipped"
+    );
+}
+
+#[test]
+fn decision_ledger_extraction_empty_log() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    // Empty decisions section
+    let decision_log = target.join(".codex/compact/decision-log.md");
+    let log_text = fs::read_to_string(&decision_log).unwrap();
+    let updated = replace_section_body(&log_text, "Decisions", "No decisions yet.\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.");
+    fs::write(&decision_log, updated).unwrap();
+
+    run(target, &["compact", "prepare"], 0);
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    let decisions = capsule
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .expect("decisions array should exist");
+    assert_eq!(decisions.len(), 0, "empty log should yield 0 decisions");
+}
+
+#[test]
 fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path();
@@ -1643,6 +1910,37 @@ fn self_update_and_update_all_are_safe_in_fake_home() {
     assert!(no_project_out.contains("SELF_UPDATE_STATUS=PASS"));
     assert!(no_project_out.contains("PROJECT_UPDATE_STATUS=NO_PROJECT"));
     assert!(no_project_out.contains("UPDATE_ALL_STATUS=PASS"));
+}
+
+#[test]
+fn self_update_falls_back_to_sha256_when_checksums_txt_missing() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let install_dir = target.join("fake-bin");
+    fs::create_dir(&install_dir).unwrap();
+    let installed = install_dir.join("aiplus");
+    fs::copy(bin(), &installed).unwrap();
+    let release_dir = seed_release_asset_sha256_only(target);
+
+    let updated = stdout(&run_with_env(
+        target,
+        &["self", "update", "--yes"],
+        0,
+        &[
+            ("AIPLUS_SELF_UPDATE_TARGET", installed.to_str().unwrap()),
+            (
+                "AIPLUS_RELEASE_BASE_URL",
+                &format!("file://{}", release_dir.display()),
+            ),
+        ],
+    ));
+    assert!(
+        updated.contains("checksum_source=aiplus-aarch64-apple-darwin.tar.gz.sha256"),
+        "should fall back to .sha256 file\n{updated}"
+    );
+    assert!(updated.contains("checksum_status=PASS"));
+    assert!(updated.contains("SELF_UPDATE_STATUS=PASS"));
 }
 
 #[test]
@@ -2474,6 +2772,41 @@ fn seed_release_asset(target: &Path, bad_checksum: bool) -> PathBuf {
         );
     }
     fs::write(release.join("checksums.txt"), line).unwrap();
+    release
+}
+
+fn seed_release_asset_sha256_only(target: &Path) -> PathBuf {
+    let release = target.join("release-sha256-only");
+    let root = release.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::copy(bin(), root.join("aiplus")).unwrap();
+    let archive = release.join("aiplus-aarch64-apple-darwin.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&root)
+        .arg("aiplus")
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let output = Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(&archive)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let line = String::from_utf8(output.stdout).unwrap();
+    // Write just the checksum (first word) to .sha256 file
+    let checksum = line.split_whitespace().next().unwrap();
+    fs::write(
+        release.join(format!(
+            "{}.sha256",
+            archive.file_name().unwrap().to_string_lossy()
+        )),
+        checksum,
+    )
+    .unwrap();
     release
 }
 
