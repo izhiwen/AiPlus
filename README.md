@@ -2,15 +2,25 @@
 
 [中文 README](README.zh-CN.md)
 
-## The Pain
+## Why This Exists
 
-You open a new agent session and start explaining the same project conventions for the third time this week. Halfway through a long Codex task, the context fills up and the agent loses half the thread. After compact, it comes back amnesiac, asking questions you already answered. When you ask three different agents to collaborate, they step on each other because no one agreed on who is CEO, who is reviewer, and who is builder. And when the agent says "this will take 5 hours," you know from experience it usually finishes in twenty minutes, but no one writes that down.
+You have been here before. Monday morning, you open a new agent session and start explaining project conventions for the third time. By Wednesday, the agent has forgotten the naming rules. Halfway through a long Codex task, the context window fills up and the agent loses half the thread. After compact, it comes back asking questions you already answered. When multiple agents collaborate, they step on each other because nobody defined who leads, who reviews, and who builds. And when the agent estimates five hours for a task that typically takes twenty minutes, nobody writes that down, so the next estimate is equally wrong.
 
-## The Solution
+AiPlus fixes these problems with four integrated modules that run entirely on your machine.
 
-AiPlus turns agent workflows into trustworthy engineering practices. It keeps project-local memory under `.aiplus/` so the agent remembers conventions across sessions. Auto Compact prepares structured handoffs before context runs out, then resumes from a checksum-verified capsule after. Auto Team Consultant installs a decision system that routes tasks through the right role at the right depth. Agent Velocity quietly records estimates against actuals, detects human-time bias, and adjusts the next guess. Everything stays local. Nothing uploads. Nothing phones home.
+## What It Does
 
-## Quick Start
+**Agent Memory** stores project conventions as JSONL under `.aiplus/memory/`. Before any record is written, twelve redaction patterns strip sensitive strings like passwords, JWTs, and raw transcripts. The agent remembers your naming rules, coding standards, and architectural decisions across sessions. Rejected or forgotten records stay in the store but remain hidden from context.
+
+**Auto Compact** prepares structured handoffs before the context window fills up. It captures the decision log, agent state, and evidence into a checksum-verified capsule. After compact, `aiplus compact resume` reads the capsule and restores context automatically. The agent continues from where it left off, not from zero.
+
+**Auto Team Consultant** installs a routing system into your project. It defines clear roles: Advisor for direct advice, CEO for task breakdown, Reviewer for findings, and Builder for implementation. Tasks route through L0 direct advice up to L5 full governance. AI Integration is a default specialist team member, not an afterthought.
+
+**Agent Velocity** records every estimate and actual completion time as local JSONL under `.aiplus/velocity/`. It detects human-time bias when estimates anchor on engineer hours instead of agent minutes. After a few records, it produces p50 and p90 AI-native estimates and adjusts the next guess.
+
+Everything stays in `.aiplus/` inside your project. Nothing uploads. Nothing leaves your machine.
+
+## Installation
 
 Install the `aiplus` command:
 
@@ -22,71 +32,94 @@ Install AiPlus into your project:
 
 ```bash
 cd MyProject
-aiplus install codex
+aiplus install codex        # or: claude-code, opencode, all
 ```
 
-Verify everything is healthy:
+Verify the installation:
 
 ```bash
 aiplus status
 aiplus doctor
 ```
 
-## Runtime Choices
+## Runtime Support
 
-AiPlus supports three AI coding agents. Install for one or all:
+AiPlus supports three AI coding agents with project-local adapter files:
+
+| Runtime | Install Command | Adapter Files |
+|---------|----------------|---------------|
+| Codex | `aiplus install codex` | Managed block in `AGENTS.md` |
+| Claude Code | `aiplus install claude-code` | Commands under `.claude/` |
+| OpenCode | `aiplus install opencode` | Prompts under `.opencode/` |
+| All three | `aiplus install all` | All adapters |
+
+Install for one runtime or all. Each adapter is project-local and does not touch global configuration.
+
+## Daily Commands
 
 ```bash
-aiplus install codex        # Codex CLI
-aiplus install claude-code  # Claude Code
-aiplus install opencode     # OpenCode
-aiplus install all          # All three
+# Status and health
+aiplus status                      # Show all module status
+aiplus doctor                      # Run health checks across modules
+
+# Memory
+aiplus memory status              # Show memory records and identities
+aiplus memory context --runtime codex --budget 2000
+
+# Compact
+aiplus compact prepare            # Build handoff and context capsule
+aiplus compact resume             # Resume after compact
+aiplus compact savings            # Show token and cost savings
+
+# Velocity
+aiplus velocity estimate --task-type feature --human-estimate 5h
+aiplus velocity report            # Show bias and adjustment report
+
+# Team
+aiplus skill-candidate status     # Show proposed skills
+
+# Updates
+aiplus update all                 # Update CLI and all project modules
 ```
 
-Each runtime gets project-local adapter files:
-- **Codex** — managed block in `AGENTS.md`
-- **Claude Code** — files under `.claude/`
-- **OpenCode** — files under `.opencode/`
+## Architecture
 
-## What's Inside
-
-- **Agent Memory** (`agent-memory`) — project-local JSONL memory, role identity, and skill candidate governance. Twelve redaction patterns strip sensitive strings before writing.
-- **Auto Compact** (`auto-compact`) — proactive compact reminder, checkpoint, handoff, and resume workflow. Creates checksum-verified context capsules.
-- **Auto Team Consultant** (`auto-team-consultant`) — L0-L5 routing with Advisor, CEO, Reviewer, and Builder lenses. Installs `.aiplus/consultant-team.toml` with sensible defaults.
-- **Agent Velocity** (`agent-velocity`) — AI-native time calibration with bias detection and retention. Stores estimates and actuals as local JSONL.
-
-## Common Commands
-
-```bash
-aiplus status                    # Show all module status
-aiplus doctor                    # Run health checks
-aiplus update all               # Update CLI and project modules
-aiplus memory status            # Show memory records and identities
-aiplus compact savings          # Show compact savings estimate
-aiplus velocity report          # Show velocity bias report
-aiplus skill-candidate status   # Show proposed skills
-aiplus profile status           # Show private profile (if installed)
+```
+MyProject/
+├── .aiplus/
+│   ├── memory/              # JSONL memory records
+│   ├── identities/          # Role identity definitions
+│   ├── skills/              # Skill candidates
+│   ├── consultant-team.toml # Team routing config
+│   └── velocity/            # Estimate and run records
+├── .codex/compact/          # Compact handoffs and capsules
+├── .claude/                 # Claude Code adapters (if installed)
+├── .opencode/               # OpenCode adapters (if installed)
+└── AGENTS.md                # Codex managed block (if installed)
 ```
 
 ## Safety Boundaries
 
-AiPlus does not:
-- Upload project data, prompts, or transcripts
-- Implement telemetry or cloud sync
-- Edit global Codex, Claude Code, or OpenCode configuration
-- Store secrets in compact files, memory, or ledgers
-- Automatically approve Owner-gated actions
-- Publish packages, create tags, or make releases
+AiPlus operates entirely within your project directory:
+
+- No uploads of project data, prompts, or transcripts
+- No telemetry, cloud sync, or external services
+- No edits to global Codex, Claude Code, or OpenCode configuration
+- No storage of secrets in compact files, memory, or ledgers
+- No automatic approval of Owner-gated actions
+- No package publishing, tag creation, or releases
 
 Validation is structural and heuristic, not a safety or compliance certification.
 
 ## Private Profiles
 
-AiPlus supports optional user-level private profiles for personal preferences and secret aliases. See the full docs for `aiplus profile install` and `aiplus secret-broker` usage.
+AiPlus supports optional user-level private profiles for personal preferences and secret aliases. These live under `~/.config/aiplus/profiles/` and are never bundled into public repositories. See the full documentation for `aiplus profile install` and `aiplus secret-broker` usage.
 
-## Roadmap
+## Project Status
 
-See [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md) for current technical debt and deferred work.
+Current version: v0.5.1 with v2.1 hardening for all modules.
+
+See [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md) for technical debt and planned work.
 
 ## License
 
