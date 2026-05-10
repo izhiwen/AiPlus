@@ -32,13 +32,62 @@ aiplus status
 aiplus doctor
 ```
 
+## Runtime Choices
+
+AiPlus supports three AI coding agents. Install for one or all:
+
+```bash
+aiplus install codex        # Codex CLI
+aiplus install claude-code  # Claude Code
+aiplus install opencode     # OpenCode
+aiplus install all          # All three
+```
+
+Each runtime gets project-local adapter files:
+- **Codex** — managed block in `AGENTS.md`
+- **Claude Code** — files under `.claude/`
+- **OpenCode** — files under `.opencode/`
+
 ## What's Inside
 
-- **Agent Memory** (`agent-memory`) — project-local JSONL memory, role identity, and skill candidate governance
-- **Auto Compact** (`auto-compact`) — proactive compact reminder, checkpoint, handoff, and resume workflow
-- **Auto Team Consultant** (`auto-team-consultant`) — L0-L5 routing with Advisor, CEO, Reviewer, and Builder lenses
-- **Agent Velocity** (`agent-velocity`) — AI-native time calibration with bias detection and retention
+- **Agent Memory** (`agent-memory`) — project-local JSONL memory, role identity, and skill candidate governance. Twelve redaction patterns strip sensitive strings before writing.
+- **Auto Compact** (`auto-compact`) — proactive compact reminder, checkpoint, handoff, and resume workflow. Creates checksum-verified context capsules.
+- **Auto Team Consultant** (`auto-team-consultant`) — L0-L5 routing with Advisor, CEO, Reviewer, and Builder lenses. Installs `.aiplus/consultant-team.toml` with sensible defaults.
+- **Agent Velocity** (`agent-velocity`) — AI-native time calibration with bias detection and retention. Stores estimates and actuals as local JSONL.
+
+## Common Commands
+
+```bash
+aiplus status                    # Show all module status
+aiplus doctor                    # Run health checks
+aiplus update all               # Update CLI and project modules
+aiplus memory status            # Show memory records and identities
+aiplus compact savings          # Show compact savings estimate
+aiplus velocity report          # Show velocity bias report
+aiplus skill-candidate status   # Show proposed skills
+aiplus profile status           # Show private profile (if installed)
+```
+
+## Safety Boundaries
+
+AiPlus does not:
+- Upload project data, prompts, or transcripts
+- Implement telemetry or cloud sync
+- Edit global Codex, Claude Code, or OpenCode configuration
+- Store secrets in compact files, memory, or ledgers
+- Automatically approve Owner-gated actions
+- Publish packages, create tags, or make releases
+
+Validation is structural and heuristic, not a safety or compliance certification.
+
+## Private Profiles
+
+AiPlus supports optional user-level private profiles for personal preferences and secret aliases. See the full docs for `aiplus profile install` and `aiplus secret-broker` usage.
 
 ## Roadmap
 
 See [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md) for current technical debt and deferred work.
+
+## License
+
+[Apache-2.0](LICENSE)
