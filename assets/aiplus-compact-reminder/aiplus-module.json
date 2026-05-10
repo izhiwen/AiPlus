@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
-  "name": "auto-compact",
-  "displayName": "AiPlus Auto Compact",
+  "name": "compact-reminder",
+  "displayName": "AiPlus Compact Reminder",
   "version": "0.4.6",
   "source": "bundled",
   "license": "Apache-2.0",
@@ -11,7 +11,7 @@
     "core/templates/compact-policy.json"
   ],
   "managedFiles": [
-    ".aiplus/modules/aiplus-auto-compact",
+    ".aiplus/modules/aiplus-compact-reminder",
     ".codex/compact/current-handoff.md",
     ".codex/compact/compact-policy.json",
     ".codex/compact/decision-log.md",

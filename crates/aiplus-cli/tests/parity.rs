@@ -161,19 +161,20 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(target.join(".codex/compact").exists());
     assert!(target.join("AGENTS.md").exists());
     assert!(!target
-        .join(".aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs")
+        .join(".aiplus/modules/aiplus-compact-reminder/core/scripts/compactctl.mjs")
         .exists());
     assert!(!target
-        .join(".aiplus/modules/aiplus-auto-compact/package.json")
+        .join(".aiplus/modules/aiplus-compact-reminder/package.json")
         .exists());
     assert!(!target
-        .join(".aiplus/modules/aiplus-auto-compact/tests/compactctl.acceptance.mjs")
+        .join(".aiplus/modules/aiplus-compact-reminder/tests/compactctl.acceptance.mjs")
         .exists());
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
-    assert!(status
-        .contains("modules=[agent-memory@0.5.1, auto-compact@0.4.6, auto-team-consultant@0.4.6]"));
+    assert!(status.contains(
+        "modules=[agent-memory@0.5.1, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
+    ));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("agentMemory="));
     assert!(status.contains("memoryRecordsActive="));
@@ -262,7 +263,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(doctor.contains("PASS AGENTS.md contains exactly one AiPlus managed block"));
     assert!(doctor.contains("PASS managed block points to .aiplus/AGENTS.aiplus.md"));
     assert!(doctor.contains("PASS bundled module manifests validate"));
-    assert!(doctor.contains("PASS module manifest auto-compact present"));
+    assert!(doctor.contains("PASS module manifest compact-reminder present"));
     assert!(doctor.contains("PASS module manifest auto-team-consultant present"));
     assert!(doctor.contains("PASS module manifest agent-memory present"));
     assert!(doctor.contains("agentMemory="));
@@ -305,8 +306,8 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     setup_fake_env(target);
 
     run(target, &["install", "codex"], 0);
-    let managed_schema =
-        target.join(".aiplus/modules/aiplus-auto-compact/core/schemas/compact-policy.schema.json");
+    let managed_schema = target
+        .join(".aiplus/modules/aiplus-compact-reminder/core/schemas/compact-policy.schema.json");
     fs::write(&managed_schema, b"{\"old\":\"managed file\"}\n").unwrap();
     let checkpoint = target.join(".codex/compact/checkpoints/keep-me.json");
     fs::write(&checkpoint, b"{\"checkpoint\":\"preserve\"}\n").unwrap();
@@ -314,7 +315,7 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     fs::write(&user_note, b"do not delete\n").unwrap();
     fs::write(
         target.join(".aiplus/AGENTS.aiplus.md"),
-        b"old guidance: node .aiplus/modules/aiplus-auto-compact/core/scripts/compactctl.mjs validate\n",
+        b"old guidance: node .aiplus/modules/aiplus-compact-reminder/core/scripts/compactctl.mjs validate\n",
     )
     .unwrap();
     for file in [
@@ -432,7 +433,7 @@ IN_PROGRESS
         .unwrap()
         .flat_map(|stamp| {
             let stamp = stamp.unwrap().path();
-            fs::read_dir(stamp.join(".aiplus/modules/aiplus-auto-compact/core/schemas"))
+            fs::read_dir(stamp.join(".aiplus/modules/aiplus-compact-reminder/core/schemas"))
                 .into_iter()
                 .flatten()
                 .map(|entry| entry.unwrap().path())

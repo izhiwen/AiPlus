@@ -16,10 +16,10 @@ pub struct ModuleSpec {
 
 pub const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
-        name: "auto-compact",
-        vendor_name: "aiplus-auto-compact",
+        name: "compact-reminder",
+        vendor_name: "aiplus-compact-reminder",
         version: "0.4.6",
-        path: ".aiplus/modules/aiplus-auto-compact",
+        path: ".aiplus/modules/aiplus-compact-reminder",
         required_files: &[
             "LICENSE",
             "core/templates/current-handoff.md",
@@ -105,7 +105,11 @@ pub fn bundled_module_specs() -> &'static [ModuleSpec] {
 
 pub fn normalize_module(value: Option<&str>) -> Option<&'static str> {
     match value? {
-        "auto-compact" | "aiplus-auto-compact" | "compact" => Some("auto-compact"),
+        "compact-reminder"
+        | "aiplus-compact-reminder"
+        | "auto-compact"
+        | "aiplus-auto-compact"
+        | "compact" => Some("compact-reminder"),
         "auto-team-consultant" | "aiplus-auto-team-consultant" | "team" => {
             Some("auto-team-consultant")
         }
@@ -147,7 +151,7 @@ pub fn validate_module_manifest(spec: ModuleSpec, manifest: &ModuleManifest) -> 
             manifest.schema_version
         ));
     }
-    if manifest.name != spec.name {
+    if manifest.name != spec.name && manifest.name != MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS {
         return Err(anyhow!(
             "module manifest name mismatch: expected {}, got {}",
             spec.name,
@@ -295,7 +299,7 @@ mod tests {
         assert_eq!(manifests.len(), MODULES.len());
         assert!(manifests
             .iter()
-            .any(|manifest| manifest.name == "auto-compact"));
+            .any(|manifest| manifest.name == "compact-reminder"));
         assert!(manifests
             .iter()
             .any(|manifest| manifest.name == "auto-team-consultant"));
@@ -306,7 +310,19 @@ mod tests {
 
     #[test]
     fn aliases_normalize_to_canonical_module_names() {
-        assert_eq!(normalize_module(Some("compact")), Some("auto-compact"));
+        assert_eq!(normalize_module(Some("compact")), Some("compact-reminder"));
+        assert_eq!(
+            normalize_module(Some("auto-compact")),
+            Some("compact-reminder")
+        );
+        assert_eq!(
+            normalize_module(Some("aiplus-auto-compact")),
+            Some("compact-reminder")
+        );
+        assert_eq!(
+            normalize_module(Some("aiplus-compact-reminder")),
+            Some("compact-reminder")
+        );
         assert_eq!(normalize_module(Some("team")), Some("auto-team-consultant"));
         assert_eq!(normalize_module(Some("memory")), Some("agent-memory"));
         assert_eq!(normalize_module(Some("unknown")), None);
@@ -314,7 +330,7 @@ mod tests {
 
     #[test]
     fn module_manifest_validation_rejects_schema_enum_and_boundary_errors() {
-        let spec = module_spec("auto-compact").unwrap();
+        let spec = module_spec("compact-reminder").unwrap();
         let mut manifest = bundled_module_manifest(spec).unwrap();
         manifest.schema_version = "999.0.0".to_string();
         assert!(validate_module_manifest(spec, &manifest)

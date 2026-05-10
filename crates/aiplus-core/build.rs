@@ -46,8 +46,8 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) ->
                 .to_string_lossy()
                 .replace('\\', "/");
             if path.file_name().and_then(|n| n.to_str()) == Some("compactctl.mjs")
-                || rel == "aiplus-auto-compact/package.json"
-                || rel.starts_with("aiplus-auto-compact/tests/")
+                || rel == "aiplus-compact-reminder/package.json"
+                || rel.starts_with("aiplus-compact-reminder/tests/")
             {
                 continue;
             }

@@ -60,7 +60,7 @@ use aiplus_core::{
     SkillCandidate,
     SkillRegistry,
     SnapshotBuilder,
-    MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS,
+    MODULE_SLUG_COMPACT_REMINDER,
     VELOCITY_SCHEMA_VERSION,
 };
 use anyhow::{anyhow, Context, Result};
@@ -756,7 +756,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -984,7 +984,7 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
     if !installed.contains_key(requested) {
         let spec = module_spec(requested).unwrap();
         copy_embedded_module(&root, spec, &mut plan, &Options::default())?;
-        if requested == MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS {
+        if requested == MODULE_SLUG_COMPACT_REMINDER {
             compact_init(&root, &mut plan, false)?;
         }
         if requested == "agent-memory" && !dry_run {
@@ -1137,8 +1137,7 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
     };
 
     if prefers_chinese_refresh(&trigger) {
-        let auto_compact =
-            module_refresh_status_zh(&modules, MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS);
+        let auto_compact = module_refresh_status_zh(&modules, MODULE_SLUG_COMPACT_REMINDER);
         let auto_team = module_refresh_status_zh(&modules, "auto-team-consultant");
         let agent_memory = module_refresh_status_zh(&modules, "agent-memory");
         println!("已刷新 AiPlus。");
@@ -1197,8 +1196,7 @@ fn command_refresh(trigger: Vec<String>) -> Result<()> {
         println!("- 不上传数据");
         println!("- 不改全局 agent config");
     } else {
-        let auto_compact =
-            module_refresh_status_en(&modules, MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS);
+        let auto_compact = module_refresh_status_en(&modules, MODULE_SLUG_COMPACT_REMINDER);
         let auto_team = module_refresh_status_en(&modules, "auto-team-consultant");
         let agent_memory = module_refresh_status_en(&modules, "agent-memory");
         println!("AiPlus refreshed.");
@@ -1408,7 +1406,7 @@ fn command_doctor() -> Result<()> {
             );
         }
     }
-    if modules.contains_key(MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS) {
+    if modules.contains_key(MODULE_SLUG_COMPACT_REMINDER) {
         push_check(
             &mut checks,
             ".codex/compact/ exists".to_string(),
@@ -5288,7 +5286,7 @@ fn install_base(
     )?;
     if module_names
         .iter()
-        .any(|name| name == MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS)
+        .any(|name| name == MODULE_SLUG_COMPACT_REMINDER)
     {
         compact_init(root, plan, false)?;
     }
@@ -5437,8 +5435,7 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
         "evidence-ledger.md",
         "compact-policy.json",
     ] {
-        let asset_path =
-            format!("aiplus-{MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS}/core/templates/{file}");
+        let asset_path = format!("aiplus-{MODULE_SLUG_COMPACT_REMINDER}/core/templates/{file}");
         let content =
             embedded_asset_text(&asset_path)?.replace("<ISO8601_TIMESTAMP>", &timestamp());
         write_compact_template(
@@ -5724,8 +5721,7 @@ fn detects_existing_aiplus_install(root: &Path) -> bool {
     {
         return true;
     }
-    let compact_path =
-        format!(".aiplus/modules/aiplus-{MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS}");
+    let compact_path = format!(".aiplus/modules/aiplus-{MODULE_SLUG_COMPACT_REMINDER}");
     [
         ".aiplus/AGENTS.aiplus.md",
         REFRESH_PROMPT_REL,
@@ -9298,7 +9294,7 @@ fn claude_advisor_agent_content() -> String {
 
 Use project-local AiPlus modules from .aiplus/modules/ when relevant.
 
-- Auto Compact: .aiplus/modules/aiplus-auto-compact/
+- Auto Compact: .aiplus/modules/aiplus-compact-reminder/
 - Auto Team Consultant: .aiplus/modules/aiplus-auto-team-consultant/
 - Agent Memory: .aiplus/modules/aiplus-agent-memory/
 
