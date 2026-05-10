@@ -24,10 +24,24 @@ From a target project:
 
 ```bash
 aiplus install codex
+aiplus compact remind
+aiplus compact remind --event phase-end
 aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 ```
+
+Auto Compact's core value is proactive reminder timing. For HEAVY tasks, run
+`aiplus compact remind --event long-session` at least every 30 minutes and at
+major phase boundaries, before review/QA, before many subagents, before release
+prep, and before Owner handoff. For MEDIUM tasks, run it at phase boundaries and
+before review/QA. For LIGHT tasks, run it only on user request or an obvious
+handoff point.
+
+If `REMINDER_DECISION=prepare_only`, update handoff/checkpoint first. If
+`REMINDER_DECISION=wait` or `blocked`, explain the safety reason and keep
+working. If `REMINDER_DECISION=remind_now`, run or confirm `aiplus compact
+prepare`, then suggest manual host compact.
 
 Only recommend manual compact after `checkpoint` returns `SAFE_TO_COMPACT` and every Owner gate is explicitly `APPROVED`. `UNKNOWN_PENDING` remains `UNKNOWN_NEEDS_REVIEW`; `DENIED` blocks compact recommendation.
 
@@ -42,6 +56,35 @@ After compact:
 
 I will resume from here.
 ```
+
+## Watch Mode
+
+For continuous monitoring during long sessions:
+
+```bash
+aiplus compact watch --once
+aiplus compact watch --interval 10m
+aiplus compact watch --once --json
+```
+
+`watch` evaluates the same decision logic as `remind` but records state to
+`.codex/compact/reminder-state.json`. It does not trigger host compact automatically.
+Use `--once` for a single evaluation or `--interval` for repeated checks.
+
+## Context Capsule
+
+After `aiplus compact prepare`, a `context-capsule.json` is created with
+hot/warm/cold context tiers, importance scoring, Owner gates, decisions, and
+recovery metadata. This capsule is redacted (no secrets, no raw transcript) and
+includes checksums for integrity. It helps resume work after compact by preserving
+the objective, current state, and next safe action.
+
+## Safety Boundaries
+
+- AiPlus never triggers host compact automatically.
+- AiPlus never captures raw transcript or secret values.
+- All state files are project-local (`.codex/compact/`).
+- No global agent config edits, no telemetry, no network calls from watch/remind.
 
 After compact:
 

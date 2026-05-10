@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_aiplus")
@@ -257,6 +258,13 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(doctor.contains("runtimeAdapters=[codex]"));
     assert!(doctor.contains("DOCTOR_STATUS=PASS"));
     assert!(doctor.contains("globalConfig=untouched"));
+    assert!(doctor.contains("PASS runtimeAdapter codex is supported"));
+    assert!(doctor.contains("PASS AGENTS.md contains exactly one AiPlus managed block"));
+    assert!(doctor.contains("PASS managed block points to .aiplus/AGENTS.aiplus.md"));
+    assert!(doctor.contains("PASS bundled module manifests validate"));
+    assert!(doctor.contains("PASS module manifest auto-compact present"));
+    assert!(doctor.contains("PASS module manifest auto-team-consultant present"));
+    assert!(doctor.contains("PASS module manifest agent-memory present"));
     assert!(doctor.contains("agentMemory="));
     assert!(doctor.contains("memoryRecordsActive="));
     assert!(doctor.contains("identity=advisor="));
@@ -267,6 +275,10 @@ fn install_status_doctor_update_add_uninstall_codex() {
     let update = stdout(&run(target, &["update"], 0));
     assert!(update.contains("UPDATE_STATUS=PASS"));
     assert!(update.contains("GLOBAL_CONFIG_UNTOUCHED"));
+
+    let rollback_dry = stdout(&run(target, &["rollback", "--dry-run"], 0));
+    assert!(rollback_dry.contains("AIPLUS_ROLLBACK"));
+    assert!(rollback_dry.contains("ROLLBACK_STATUS=DRY_RUN"));
 
     let add_dry = stdout(&run(
         target,
@@ -386,6 +398,25 @@ IN_PROGRESS
 
     let backups = target.join(".aiplus/backups");
     assert!(backups.exists());
+    let rollback_plan = fs::read_dir(&backups)
+        .unwrap()
+        .flat_map(|stamp| {
+            let stamp = stamp.unwrap().path();
+            fs::read_dir(stamp)
+                .into_iter()
+                .flatten()
+                .map(|entry| entry.unwrap().path())
+                .collect::<Vec<_>>()
+        })
+        .any(|path| path.file_name().unwrap() == "rollback-plan.json");
+    assert!(rollback_plan);
+    let rollback_dry = stdout(&run(
+        target,
+        &["rollback", "--id", "latest", "--dry-run"],
+        0,
+    ));
+    assert!(rollback_dry.contains("AIPLUS_ROLLBACK"));
+    assert!(rollback_dry.contains("ROLLBACK_STATUS=DRY_RUN"));
     let handoff = fs::read_to_string(target.join(".codex/compact/current-handoff.md")).unwrap();
     assert!(handoff.contains("Preserve this old user-authored goal."));
     assert!(handoff.contains("## Session Role"));
@@ -436,7 +467,10 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
                 fs::read_to_string(target.join(".claude/agents/aiplus-advisor.md")).unwrap();
             assert!(refresh.contains("记住这个"));
             assert!(refresh.contains("这次用了哪些记忆"));
+            assert!(refresh.contains("aiplus compact remind"));
+            assert!(refresh.contains("HEAVY work every 30 minutes"));
             assert!(advisor.contains("Agent Memory"));
+            assert!(advisor.contains("Auto Compact reminder schedule"));
             assert!(advisor.contains("把这次经验沉淀成 skill"));
         }
         if runtime == "opencode" || runtime == "all" {
@@ -444,8 +478,15 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
             let config = fs::read_to_string(target.join(".opencode/opencode.json")).unwrap();
             assert!(prompt.contains("新开 advisor"));
             assert!(prompt.contains("本次忽略我的偏好"));
-            assert!(config.contains("continuityKeywords"));
-            assert!(config.contains("把这次经验沉淀成 skill"));
+            assert!(prompt.contains("把这次经验沉淀成 skill"));
+            assert!(prompt.contains("aiplus compact remind --event long-session"));
+            assert!(prompt.contains("Do not click or call host compact"));
+            let parsed: serde_json::Value = serde_json::from_str(&config).unwrap();
+            assert_eq!(
+                parsed.get("$schema").and_then(|value| value.as_str()),
+                Some("https://opencode.ai/config.json")
+            );
+            assert!(parsed.get("aiplus").is_none());
         }
     }
 
@@ -463,6 +504,93 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
     assert!(forced.contains("UNINSTALL_STATUS=PASS"));
     assert!(!target.join(".aiplus").exists());
     assert!(target.join(".codex/compact").exists());
+}
+
+#[test]
+fn doctor_rejects_invalid_opencode_json_and_aiplus_top_level_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "opencode"], 0);
+
+    fs::write(
+        target.join(".opencode/opencode.json"),
+        r#"{"$schema": "https://opencode.ai/config.json",}"#,
+    )
+    .unwrap();
+    let invalid = stdout(&run(target, &["doctor"], 0));
+    assert!(invalid.contains("NEEDS_FIX .opencode/opencode.json parses as strict JSON"));
+    assert!(invalid.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    fs::write(
+        target.join(".opencode/opencode.json"),
+        r#"{"$schema":"https://opencode.ai/config.json","aiplus":{"localOnly":true}}"#,
+    )
+    .unwrap();
+    let unsupported_key = stdout(&run(target, &["doctor"], 0));
+    assert!(unsupported_key
+        .contains("NEEDS_FIX .opencode/opencode.json has no unsupported AiPlus top-level key"));
+    assert!(unsupported_key.contains("DOCTOR_STATUS=NEEDS_FIX"));
+}
+
+#[test]
+fn install_opencode_preserves_existing_valid_user_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    fs::create_dir(target.join(".opencode")).unwrap();
+    fs::write(
+        target.join(".opencode/opencode.json"),
+        r#"{"theme":"dark","provider":"local"}"#,
+    )
+    .unwrap();
+
+    let install = stdout(&run(target, &["install", "opencode"], 0));
+    assert!(install.contains("INSTALL_STATUS=PASS"));
+
+    let config = fs::read_to_string(target.join(".opencode/opencode.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&config).unwrap();
+    assert_eq!(
+        parsed.get("theme").and_then(|value| value.as_str()),
+        Some("dark")
+    );
+    assert_eq!(
+        parsed.get("provider").and_then(|value| value.as_str()),
+        Some("local")
+    );
+    assert!(parsed.get("aiplus").is_none());
+
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(doctor.contains("DOCTOR_STATUS=PASS"), "{doctor}");
+}
+
+#[test]
+fn doctor_validates_codex_managed_block_and_claude_adapter_content() {
+    let codex = tempfile::tempdir().unwrap();
+    setup_fake_env(codex.path());
+    run(codex.path(), &["install", "codex"], 0);
+    let agents = fs::read_to_string(codex.path().join("AGENTS.md")).unwrap();
+    fs::write(
+        codex.path().join("AGENTS.md"),
+        format!("{agents}\n{agents}"),
+    )
+    .unwrap();
+    let duplicate = stdout(&run(codex.path(), &["doctor"], 0));
+    assert!(duplicate.contains("NEEDS_FIX AGENTS.md contains exactly one AiPlus managed block"));
+    assert!(duplicate.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    let claude = tempfile::tempdir().unwrap();
+    setup_fake_env(claude.path());
+    run(claude.path(), &["install", "claude-code"], 0);
+    fs::write(
+        claude.path().join(".claude/commands/aiplus-refresh.md"),
+        "# Other Command\n",
+    )
+    .unwrap();
+    let bad_claude = stdout(&run(claude.path(), &["doctor"], 0));
+    assert!(bad_claude
+        .contains("NEEDS_FIX .claude/commands/aiplus-refresh.md is AiPlus refresh command"));
+    assert!(bad_claude.contains("DOCTOR_STATUS=NEEDS_FIX"));
 }
 
 #[test]
@@ -523,6 +651,150 @@ fn runtime_flags_compact_native_and_dangling_symlink_safety() {
 }
 
 #[test]
+fn rollback_dry_run_and_restore_only_managed_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let original_agents = fs::read_to_string(target.join("AGENTS.md")).unwrap();
+    fs::write(target.join("AGENTS.md"), "damaged managed block\n").unwrap();
+    let backup_dir = target.join(".aiplus/backups/manual-rollback");
+    fs::create_dir_all(&backup_dir).unwrap();
+    fs::write(backup_dir.join("AGENTS.md"), original_agents).unwrap();
+    fs::write(
+        backup_dir.join("rollback-plan.json"),
+        r#"{
+  "schemaVersion": "0.1.0",
+  "id": "manual-rollback",
+  "createdAt": "synthetic",
+  "entries": [
+    {
+      "action": "restore",
+      "originalPath": "AGENTS.md",
+      "backupPath": ".aiplus/backups/manual-rollback/AGENTS.md",
+      "managedFile": true
+    },
+    {
+      "action": "restore",
+      "originalPath": "user-owned.txt",
+      "backupPath": ".aiplus/backups/manual-rollback/user-owned.txt",
+      "managedFile": false
+    }
+  ]
+}
+"#,
+    )
+    .unwrap();
+
+    let dry = stdout(&run(
+        target,
+        &["rollback", "--id", "manual-rollback", "--dry-run"],
+        0,
+    ));
+    assert!(dry.contains("restore AGENTS.md"));
+    assert!(dry.contains("skip original=user-owned.txt reason=not_managed_file"));
+    assert!(fs::read_to_string(target.join("AGENTS.md"))
+        .unwrap()
+        .contains("damaged"));
+
+    let applied = stdout(&run(
+        target,
+        &["rollback", "--id", "manual-rollback", "--yes"],
+        0,
+    ));
+    assert!(applied.contains("ROLLBACK_STATUS=PASS"));
+    let restored = fs::read_to_string(target.join("AGENTS.md")).unwrap();
+    assert!(restored.contains("BEGIN AIPLUS MANAGED BLOCK"));
+    assert!(!target.join("user-owned.txt").exists());
+}
+
+#[test]
+fn rollback_rejects_symlinked_backup_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    fs::write(target.join("AGENTS.md"), "damaged managed block\n").unwrap();
+    let backup_dir = target.join(".aiplus/backups/symlink-rollback");
+    fs::create_dir_all(&backup_dir).unwrap();
+    let outside_backup = target.join("outside-backup.txt");
+    fs::write(&outside_backup, "malicious backup source\n").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside_backup, backup_dir.join("AGENTS.symlink")).unwrap();
+    #[cfg(not(unix))]
+    fs::write(
+        backup_dir.join("AGENTS.symlink"),
+        "not a symlink on this platform\n",
+    )
+    .unwrap();
+    fs::write(
+        backup_dir.join("rollback-plan.json"),
+        r#"{
+  "schemaVersion": "0.1.0",
+  "id": "symlink-rollback",
+  "createdAt": "synthetic",
+  "entries": [
+    {
+      "action": "restore",
+      "originalPath": "AGENTS.md",
+      "backupPath": ".aiplus/backups/symlink-rollback/AGENTS.symlink",
+      "managedFile": true
+    }
+  ]
+}
+"#,
+    )
+    .unwrap();
+
+    let applied = stdout(&run(
+        target,
+        &["rollback", "--id", "symlink-rollback", "--yes"],
+        0,
+    ));
+    #[cfg(unix)]
+    {
+        assert!(applied.contains("skip original=AGENTS.md reason=backup_symlink"));
+        assert!(applied.contains("skipped=1"));
+        assert!(fs::read_to_string(target.join("AGENTS.md"))
+            .unwrap()
+            .contains("damaged managed block"));
+    }
+}
+
+#[test]
+fn generated_rollback_plan_keeps_multiple_backup_entries() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    fs::write(target.join("AGENTS.md"), "changed managed block\n").unwrap();
+    fs::write(
+        target.join(".aiplus/AGENTS.aiplus.md"),
+        "changed aiplus guidance\n",
+    )
+    .unwrap();
+    let reinstall = stdout(&run(target, &["install", "codex"], 0));
+    assert!(reinstall.contains("UPGRADE_STATUS=PASS"));
+
+    let rollback_plan = find_latest_rollback_plan(target);
+    let text = fs::read_to_string(rollback_plan).unwrap();
+    assert!(text.contains("\"originalPath\": \"AGENTS.md\""));
+    assert!(text.contains("\"originalPath\": \".aiplus/AGENTS.aiplus.md\""));
+
+    let rollback = stdout(&run(target, &["rollback", "--id", "latest", "--yes"], 0));
+    assert!(rollback.contains("ROLLBACK_STATUS=PASS"));
+    assert!(fs::read_to_string(target.join("AGENTS.md"))
+        .unwrap()
+        .contains("changed managed block"));
+    assert!(fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md"))
+        .unwrap()
+        .contains("changed aiplus guidance"));
+}
+
+#[test]
 fn doctor_manifest_diagnostics_are_row_accurate() {
     let missing = tempfile::tempdir().unwrap();
     setup_fake_env(missing.path());
@@ -558,6 +830,33 @@ fn doctor_manifest_diagnostics_are_row_accurate() {
     assert!(wrong_doctor.contains("NEEDS_FIX manifest installer is aiplus"));
     assert!(wrong_doctor.contains("installed=no"));
     assert!(wrong_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    let future = tempfile::tempdir().unwrap();
+    setup_fake_env(future.path());
+    fs::create_dir(future.path().join(".aiplus")).unwrap();
+    fs::write(
+        future.path().join(".aiplus/manifest.json"),
+        r#"{"installer":"aiplus","schemaVersion":"999.0.0","runtimeAdapters":["codex"],"modules":{}}"#,
+    )
+    .unwrap();
+    let future_doctor = stdout(&run(future.path(), &["doctor"], 0));
+    assert!(future_doctor.contains("PASS manifest installer is aiplus"));
+    assert!(future_doctor.contains("NEEDS_FIX manifest schemaVersion supported"));
+    assert!(future_doctor.contains("installed=no"));
+    assert!(future_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
+
+    let unknown_runtime = tempfile::tempdir().unwrap();
+    setup_fake_env(unknown_runtime.path());
+    fs::create_dir(unknown_runtime.path().join(".aiplus")).unwrap();
+    fs::write(
+        unknown_runtime.path().join(".aiplus/manifest.json"),
+        r#"{"installer":"aiplus","schemaVersion":"0.5.1","runtimeAdapters":["opencode","bogus"],"modules":{}}"#,
+    )
+    .unwrap();
+    let unknown_runtime_doctor = stdout(&run(unknown_runtime.path(), &["doctor"], 0));
+    assert!(unknown_runtime_doctor.contains("PASS runtimeAdapter opencode is supported"));
+    assert!(unknown_runtime_doctor.contains("NEEDS_FIX runtimeAdapter bogus is supported"));
+    assert!(unknown_runtime_doctor.contains("DOCTOR_STATUS=NEEDS_FIX"));
 }
 
 #[test]
@@ -735,6 +1034,324 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     .unwrap();
     let sensitive = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
     assert!(stderr(&sensitive).contains("sensitive pattern detected (authorization header)"));
+}
+
+#[test]
+fn compact_remind_decisions_snooze_handoff_json_and_guidance() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let template = run(target, &["compact", "remind"], 2);
+    let template_out = stdout(&template);
+    assert!(template_out.contains("COMPACT_REMINDER"));
+    assert!(template_out.contains("REMINDER_DECISION=wait"));
+    assert!(template_out.contains("REMINDER_LEVEL=safety_block"));
+    assert!(template_out.contains("HANDOFF_STATE=template_only"));
+    assert!(template_out.contains("SECRET_VALUES_PRINTED=no"));
+
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+    let prepare_only = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "phase-end"],
+        0,
+    ));
+    assert!(prepare_only.contains("REMINDER_DECISION=prepare_only"));
+    assert!(prepare_only.contains("REMINDER_LEVEL=soft"));
+    assert!(prepare_only.contains("HANDOFF_STATE=current"));
+    assert!(prepare_only.contains("RECOVERY_CONFIDENCE=medium"));
+    assert!(prepare_only.contains("LAST_CHECKPOINT_AGE=missing"));
+    assert!(prepare_only.contains("ESTIMATED_TOKENS_SAVED="));
+    assert!(prepare_only.contains("ESTIMATED_USD_SAVED="));
+    assert!(prepare_only.contains("SECRET_VALUES_PRINTED=no"));
+
+    let prepare = stdout(&run(target, &["compact", "prepare"], 0));
+    assert!(prepare.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+
+    let ready = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "before-review"],
+        0,
+    ));
+    assert!(ready.contains("REMINDER_DECISION=remind_now"));
+    assert!(ready.contains("REMINDER_LEVEL=ready"));
+    assert!(ready.contains("RECOVERY_CONFIDENCE=high"));
+    assert!(ready.contains("MANUAL_COMPACT_RECOMMENDED=yes"));
+    assert!(ready.contains("HOST_COMPACT_TRIGGERED=no"));
+
+    let json = stdout(&run(target, &["compact", "remind", "--json"], 0));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        parsed
+            .get("reminderDecision")
+            .and_then(|value| value.as_str()),
+        Some("remind_now")
+    );
+    assert_eq!(
+        parsed
+            .get("secretValuesPrinted")
+            .and_then(|value| value.as_str()),
+        Some("no")
+    );
+    assert_eq!(
+        parsed
+            .get("hostCompactTriggered")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+
+    let snooze_set = stdout(&run(target, &["compact", "remind", "--snooze", "30m"], 0));
+    assert!(snooze_set.contains("SNOOZE_STATUS=set"));
+    assert!(snooze_set.contains("REMINDER_DECISION=remind_now"));
+    let snoozed = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "long-session"],
+        2,
+    ));
+    assert!(snoozed.contains("SNOOZE_STATUS=active"));
+    assert!(snoozed.contains("REMINDER_DECISION=wait"));
+    let snooze_clear = stdout(&run(target, &["compact", "remind", "--clear-snooze"], 0));
+    assert!(snooze_clear.contains("SNOOZE_STATUS=cleared"));
+
+    make_compact_handoff_current(target, "ACTIVE_WORK", now_unix_millis_marker());
+    let active = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "long-session"],
+        2,
+    ));
+    assert!(active.contains("READINESS_STATE=NOT_RECOMMENDED_DURING_ACTIVE_WORK"));
+    assert!(active.contains("REMINDER_DECISION=wait"));
+    assert!(active.contains("REMINDER_LEVEL=safety_block"));
+
+    make_compact_handoff_current(target, "PASS", "unix-1ms".to_string());
+    let stale = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "phase-end"],
+        2,
+    ));
+    assert!(stale.contains("HANDOFF_STATE=stale"));
+    assert!(stale.contains("REMINDER_DECISION=wait"));
+
+    fs::write(target.join(".codex/compact/compact-policy.json"), "{ bad").unwrap();
+    let blocked = stdout(&run(target, &["compact", "remind"], 1));
+    assert!(blocked.contains("REMINDER_DECISION=blocked"));
+    assert!(blocked.contains("REMINDER_LEVEL=safety_block"));
+
+    let agents = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    assert!(agents.contains("aiplus compact remind --event long-session"));
+    assert!(agents.contains("HEAVY task"));
+    assert!(agents.contains("REMINDER_DECISION=remind_now"));
+    assert!(agents.contains("aiplus compact savings"));
+}
+
+#[test]
+fn compact_remind_is_offline_no_network_no_cache_write() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    let no_network_path = make_empty_path();
+    let cache_dir = target.join("fake-home/.cache/aiplus");
+    fs::create_dir_all(&cache_dir).unwrap();
+
+    let remind = stdout(&run_with_env(
+        target,
+        &["compact", "remind", "--event", "before-review"],
+        0,
+        &[
+            ("PATH", no_network_path.to_str().unwrap()),
+            ("HOME", target.join("fake-home").to_str().unwrap()),
+        ],
+    ));
+    assert!(
+        remind.contains("REMINDER_DECISION=prepare_only")
+            || remind.contains("REMINDER_DECISION=remind_now"),
+        "remind should return safe decision without network: got {remind}"
+    );
+    assert!(remind.contains("SECRET_VALUES_PRINTED=no"));
+
+    let cache_after = fs::read_dir(&cache_dir)
+        .unwrap()
+        .filter(|e| e.as_ref().unwrap().path().is_file())
+        .count();
+    assert_eq!(
+        cache_after, 0,
+        "remind must not write user-level pricing cache"
+    );
+}
+
+#[test]
+fn compact_remind_reaches_remind_now_with_current_handoff_and_checkpoint() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    let prepare = stdout(&run(target, &["compact", "prepare"], 0));
+    assert!(prepare.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+
+    let remind = stdout(&run(
+        target,
+        &["compact", "remind", "--event", "before-review"],
+        0,
+    ));
+    assert!(remind.contains("REMINDER_DECISION=remind_now"));
+    assert!(remind.contains("REMINDER_LEVEL=ready"));
+    assert!(remind.contains("MANUAL_COMPACT_RECOMMENDED=yes"));
+    assert!(remind.contains("HANDOFF_STATE=current"));
+    assert!(remind.contains("RECOVERY_CONFIDENCE=high"));
+    assert!(remind.contains("SECRET_VALUES_PRINTED=no"));
+    assert!(remind.contains("HOST_COMPACT_TRIGGERED=no"));
+
+    let json = stdout(&run(target, &["compact", "remind", "--json"], 0));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        parsed.get("reminderDecision").and_then(|v| v.as_str()),
+        Some("remind_now")
+    );
+    assert_eq!(
+        parsed.get("reminderLevel").and_then(|v| v.as_str()),
+        Some("ready")
+    );
+    assert_eq!(
+        parsed
+            .get("manualCompactRecommended")
+            .and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        parsed.get("handoffState").and_then(|v| v.as_str()),
+        Some("current")
+    );
+    assert_eq!(
+        parsed.get("recoveryConfidence").and_then(|v| v.as_str()),
+        Some("high")
+    );
+    assert_eq!(
+        parsed.get("secretValuesPrinted").and_then(|v| v.as_str()),
+        Some("no")
+    );
+    assert_eq!(
+        parsed.get("hostCompactTriggered").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+}
+
+#[test]
+fn compact_watch_once_and_json_output() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    let watch_once = stdout(&run(target, &["compact", "watch", "--once"], 0));
+    assert!(watch_once.contains("COMPACT_WATCH"));
+    assert!(watch_once.contains("WATCH_MODE=once"));
+    assert!(watch_once.contains("WATCH_ITERATION=1"));
+    assert!(watch_once.contains("HOST_COMPACT_TRIGGERED=no"));
+    assert!(watch_once.contains("SECRET_VALUES_PRINTED=no"));
+    assert!(watch_once.contains("RAW_TRANSCRIPT_CAPTURED=no"));
+
+    let watch_json = stdout(&run(target, &["compact", "watch", "--once", "--json"], 0));
+    let last_json = watch_json.lines().last().unwrap_or("{}");
+    let parsed: serde_json::Value = serde_json::from_str(last_json).unwrap();
+    assert_eq!(parsed.get("status").and_then(|v| v.as_str()), Some("PASS"));
+    assert_eq!(
+        parsed.get("watchMode").and_then(|v| v.as_str()),
+        Some("once")
+    );
+    assert_eq!(parsed.get("iteration").and_then(|v| v.as_u64()), Some(1));
+    assert_eq!(
+        parsed.get("hostCompactTriggered").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        parsed.get("secretValuesPrinted").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        parsed
+            .get("rawTranscriptCaptured")
+            .and_then(|v| v.as_bool()),
+        Some(false)
+    );
+}
+
+#[test]
+fn compact_watch_creates_reminder_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    run(target, &["compact", "watch", "--once"], 0);
+
+    let state_path = target.join(".codex/compact/reminder-state.json");
+    assert!(state_path.exists(), "reminder-state.json should be created");
+    let state_text = fs::read_to_string(&state_path).unwrap();
+    let state: serde_json::Value = serde_json::from_str(&state_text).unwrap();
+    assert_eq!(state.get("schemaVersion").and_then(|v| v.as_u64()), Some(1));
+    assert_eq!(
+        state.get("manualCompactOnly").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        state.get("hostCompactTriggered").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert!(state.get("watchCount").and_then(|v| v.as_u64()).unwrap() >= 1);
+}
+
+#[test]
+fn compact_prepare_creates_context_capsule() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+    approve_compact_state(target);
+    make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
+
+    let prepare = stdout(&run(target, &["compact", "prepare"], 0));
+    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json"));
+
+    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    assert!(
+        capsule_path.exists(),
+        "context-capsule.json should be created"
+    );
+    let capsule_text = fs::read_to_string(&capsule_path).unwrap();
+    let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
+    assert_eq!(
+        capsule.get("schemaVersion").and_then(|v| v.as_u64()),
+        Some(1)
+    );
+    assert!(capsule.get("projectId").is_some());
+    assert!(!capsule
+        .get("redaction")
+        .and_then(|r| r.get("secretValuesPrinted"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true));
+    assert!(!capsule
+        .get("redaction")
+        .and_then(|r| r.get("rawTranscriptCaptured"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true));
+    assert!(capsule
+        .get("checksums")
+        .and_then(|c| c.as_object())
+        .map(|o| !o.is_empty())
+        .unwrap_or(false));
 }
 
 #[test]
@@ -1885,6 +2502,56 @@ fn approve_compact_state(target: &Path) {
     fs::write(target.join(".codex/compact/compact-policy.json"), policy).unwrap();
 }
 
+fn make_compact_handoff_current(target: &Path, phase: &str, last_updated: String) {
+    let path = target.join(".codex/compact/current-handoff.md");
+    let mut handoff = fs::read_to_string(&path).unwrap();
+    handoff = handoff.replace(
+        "Synthetic template. Replace placeholders before use.\n\n",
+        "",
+    );
+    handoff = handoff.replace("<REPO_ROOT>", "target");
+    handoff = replace_section_body(&handoff, "Last Updated", &last_updated);
+    handoff = replace_section_body(
+        &handoff,
+        "Current Goal",
+        "Deliver Auto Compact reminder engine.",
+    );
+    handoff = replace_section_body(&handoff, "Current Phase", phase);
+    handoff = replace_section_body(
+        &handoff,
+        "Next 3 Actions",
+        "1. Run targeted reminder tests.\n2. Run cross-runtime dogfood.\n3. Hand off for Rust Lead review.",
+    );
+    fs::write(path, handoff).unwrap();
+}
+
+fn replace_section_body(text: &str, heading: &str, body: &str) -> String {
+    let marker = format!("## {heading}");
+    let Some(start) = text.find(&marker) else {
+        return text.to_string();
+    };
+    let body_start = start + marker.len();
+    let rest = &text[body_start..];
+    let next = rest.find("\n## ").map(|offset| body_start + offset);
+    let mut out = String::new();
+    out.push_str(&text[..body_start]);
+    out.push_str("\n\n");
+    out.push_str(body);
+    out.push('\n');
+    if let Some(next) = next {
+        out.push_str(&text[next..]);
+    }
+    out
+}
+
+fn now_unix_millis_marker() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    format!("unix-{millis}ms")
+}
+
 fn seed_pricing_cache(target: &Path, models: &[(&str, f64)]) {
     let cache = target.join("fake-home/.cache/aiplus");
     fs::create_dir_all(&cache).unwrap();
@@ -1912,6 +2579,18 @@ fn seed_pricing_cache(target: &Path, models: &[(&str, f64)]) {
         .to_string(),
     )
     .unwrap();
+}
+
+fn find_latest_rollback_plan(target: &Path) -> PathBuf {
+    let mut plans = Vec::new();
+    for entry in fs::read_dir(target.join(".aiplus/backups")).unwrap() {
+        let path = entry.unwrap().path().join("rollback-plan.json");
+        if path.exists() {
+            plans.push(path);
+        }
+    }
+    plans.sort();
+    plans.pop().unwrap()
 }
 
 fn savings_event_fixture(baseline: u64, saved: u64, reduction: f64, cost: Option<f64>) -> String {

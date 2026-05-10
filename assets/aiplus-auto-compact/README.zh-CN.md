@@ -96,6 +96,11 @@ module-only path 不是 beginner install path。旧 Node helper 只保留在
 保存进度
 ```
 
+agent 应在安全且高价值的时机主动运行 `aiplus compact remind`：HEAVY 任务每 30
+分钟或 major phase boundary，MEDIUM 任务在阶段边界或 review/QA 前，以及
+subagent 批量启动、release prep、Owner handoff 前。Auto Compact 不会自动触发 host
+compact；它只决定 wait、prepare_only，还是建议用户手动 host compact。
+
 agent 应把 `aiplus compact prepare` 当作 backend tool 自动使用。如果 `prepare`
 还不可用，它可以 fallback 到最接近的支持序列：`aiplus compact validate` 后接
 `aiplus compact checkpoint`。如果 checkpoint 已准备好，agent 应推荐用户手动

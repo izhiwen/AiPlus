@@ -3,12 +3,16 @@
 This public repository contains the Rust mainline `aiplus` CLI and bundled
 module snapshots used for project-local installs.
 
+Each bundled snapshot includes `aiplus-module.json`. The Rust `aiplus-core`
+crate validates these manifests against the static registry before `doctor`
+reports module health.
+
 ## Included In This Repository
 
 | Component | Status | License | Purpose |
 | --- | --- | --- | --- |
 | `aiplus` Rust CLI | Mainline public binary/source package | Apache-2.0 | Project-local install/update/add/status/doctor/uninstall/compact workflows |
-| `assets/aiplus-auto-compact` | Bundled snapshot | Apache-2.0 | Natural-language compact readiness, checkpoint, validate, score, and resume workflow assets |
+| `assets/aiplus-auto-compact` | Bundled snapshot | Apache-2.0 | Proactive compact reminder, checkpoint, handoff, savings preview, validate, score, and resume workflow assets |
 | `assets/aiplus-auto-team-consultant` | Bundled snapshot | MIT, preserved | Advisor/CEO/Reviewer/Builder routing assets |
 | `assets/aiplus-agent-memory` | Bundled snapshot | Apache-2.0 | Agent Continuity foundation for local Memory Context, Role Identity, and Skill Candidate governance |
 

@@ -1,6 +1,16 @@
 # AiPlus Auto Compact Core Protocol
 
-The core protocol defines local compact/resume state that any host agent can read, validate, checkpoint, and resume from. It is intentionally platform-neutral: adapters may expose the workflow inside a specific agent runtime, but the core files do not depend on a hosted API, cloud service, remote repository, global install, or automatic compact trigger.
+The core protocol defines local compact/reminder/resume state that any host agent
+can read, validate, checkpoint, and resume from. It is intentionally
+platform-neutral: adapters may expose the workflow inside a specific agent
+runtime, but the core files do not depend on a hosted API, cloud service, remote
+repository, global install, or automatic host compact trigger.
+
+AiPlus Auto Compact does not replace Codex, Claude Code, or OpenCode compact.
+Its core value is proactive reminder timing: at stable high-value moments it
+runs `aiplus compact remind`, prepares a checkpoint/handoff first, estimates
+token/USD savings, and then tells the agent whether to wait, prepare only, or
+recommend manual host compact.
 
 ## State Location
 
@@ -28,6 +38,24 @@ The core CLI treats:
 - denied owner gates, validation errors, and sensitive warnings as `BLOCKED_DO_NOT_COMPACT`;
 - pending owner gates or unknown versions as `UNKNOWN_NEEDS_REVIEW`;
 - clean validation with no denied or pending gates as `SAFE_TO_COMPACT`.
+
+## Reminder Contract
+
+`aiplus compact remind` is the proactive decision surface. It never clicks or
+calls the host compact control. It reports:
+
+- `REMINDER_DECISION=remind_now | prepare_only | wait | blocked`
+- `REMINDER_LEVEL=soft | ready | safety_block`
+- `HANDOFF_STATE=missing | template_only | stale | current`
+- `RECOVERY_CONFIDENCE=high | medium | low`
+- estimated token/USD savings when local pricing is available
+
+Adapters should call it on HEAVY tasks every 30 minutes or major phase boundary,
+on MEDIUM tasks at phase boundaries or before review/QA, and before subagent
+bursts, release prep, or Owner handoff. If the decision is `remind_now`, the
+agent should run or confirm `aiplus compact prepare`, then suggest manual host
+compact. If the decision is `prepare_only`, `wait`, or `blocked`, the agent must
+not suggest host compact yet.
 
 ## Redaction Contract
 

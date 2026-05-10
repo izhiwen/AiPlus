@@ -56,13 +56,22 @@ You can then invoke the namespaced slash commands in Claude Code.
 When shell validation is needed, use:
 
 ```bash
+aiplus compact remind
+aiplus compact remind --event phase-end
 aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume
 ```
 
-Before compact, the agent should treat natural language such as "prepare compact" or "save progress" as the primary interface and run `aiplus compact prepare`. If checkpoint state is ready, it can recommend
+Auto Compact's primary behavior is proactive reminder timing. For HEAVY tasks,
+run `aiplus compact remind --event long-session` at least every 30 minutes and
+at major phase boundaries, before review/QA, before many subagents, before
+release prep, and before Owner handoff. For MEDIUM tasks, run it at phase
+boundaries and before review/QA. For LIGHT tasks, run it only on user request or
+an obvious handoff point.
+
+Before compact, the agent should treat natural language such as "prepare compact" or "save progress" as the primary interface and run `aiplus compact prepare`. If `REMINDER_DECISION=prepare_only`, update handoff/checkpoint first. If `REMINDER_DECISION=wait` or `blocked`, explain the safety reason and keep working. If checkpoint state is ready, it can recommend
 manual compact and explain that resume is best-effort: after compact, run
 `aiplus compact resume`; if the agent does not reply, explicit AiPlus messages
 such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
@@ -70,6 +79,34 @@ such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`, `aiplus status`,
 flow. Generic messages such as `继续`, `刷新`, `refresh`, `continue`, `resume`,
 `go on`, or `接着` should try AiPlus first when possible; when project-specific refresh
 rules conflict, report AiPlus status before project status.
+
+## Watch Mode
+
+For daemon-lite continuous monitoring:
+
+```bash
+aiplus compact watch --once
+aiplus compact watch --interval 10m
+```
+
+`watch` uses the same conservative decision logic as `remind` and updates
+`.codex/compact/reminder-state.json`. It is safe to interrupt (Ctrl+C).
+Watch never triggers host compact automatically.
+
+## Context Capsule
+
+`aiplus compact prepare` creates `.codex/compact/context-capsule.json` with
+hierarchical hot/warm/cold tiers, importance scoring, Owner gates, decisions,
+and recovery metadata. The capsule is redacted: no secrets, no raw transcript.
+It includes checksums for integrity verification. Use the capsule to resume
+objective, current state, and next safe action after compact.
+
+## Safety Boundaries
+
+- AiPlus never triggers host compact automatically.
+- AiPlus never captures raw transcript or secret values.
+- All state files are project-local (`.codex/compact/`).
+- No global agent config edits, no telemetry, no network calls from watch/remind.
 
 ## Optional Hook Concept
 

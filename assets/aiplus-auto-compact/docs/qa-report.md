@@ -15,15 +15,15 @@ submission, global install, or `$CODEX_HOME` modification was performed.
 
 ## Commands and Results
 
-Run from this repository root unless a row explicitly names the sibling
-`../aiplus-rust` checkout.
+Run from this repository root unless a row explicitly names the active
+`../aiplus-public` checkout.
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Legacy compatibility fixture | `core/scripts/compactctl.mjs` review | PASS, retained only for archived history and package acceptance tests; not an active compact execution path |
 | Acceptance tests | `rtk npm test` | PASS, 15/15 tests passed |
-| AiPlus CLI command truth | `rtk cargo test` from the sibling `../aiplus-rust` checkout | PASS, 6/6 tests passed |
-| AiPlus CLI help | `rtk cargo run -p aiplus-cli -- --help` from the sibling `../aiplus-rust` checkout | PASS, shows `install`, `status`, `doctor`, `compact` |
+| AiPlus CLI command truth | `rtk cargo test` from the active `../aiplus-public` checkout | PASS, 6/6 tests passed |
+| AiPlus CLI help | `rtk cargo run -p aiplus-cli -- --help` from the active `../aiplus-public` checkout | PASS, shows `install`, `status`, `doctor`, `compact` |
 | JSON parse | Recursive Node parser for `package.json`, `plugin.json`, `opencode.json.example`, `hooks.example.json` | PASS |
 | Required-file check | Node existence check for core, Codex, Claude Code, OpenCode, and examples | PASS |
 | README relative link/path sanity | Node markdown link checker across `.md` files | PASS |
@@ -47,7 +47,7 @@ Run from this repository root unless a row explicitly names the sibling
 
 The passing tests covered init behavior, idempotence, valid and invalid validation cases, owner-gate handling, version review paths, secret/PII leakage warnings, resume-blocked output, parseable checkpoint JSON, and unknown-command usage output.
 
-`rtk cargo test` in the sibling AiPlus CLI workspace reported 6/6 tests passed,
+`rtk cargo test` in the active AiPlus CLI workspace reported 6/6 tests passed,
 including Rust-native compact coverage that does not invoke Node.
 
 ## Adapter Coverage

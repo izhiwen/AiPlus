@@ -18,6 +18,12 @@ parsing, file planning, safe writes, runtime adapter generation, manifest
 serialization, status, doctor, update, add, uninstall, and Rust-native compact
 logic.
 
+`crates/aiplus-core` is the module-system foundation. It owns the bundled module
+registry, module manifest parsing, embedded asset access, safe project path
+helpers, install plan types, project manifest types, and rollback plan types.
+The CLI remains responsible for clap parsing, command dispatch, stdout/stderr
+formatting, and exit-code mapping.
+
 ## Asset Strategy
 
 The selected strategy is Option C: a Rust-side `assets/` directory derived from
@@ -39,6 +45,7 @@ existing licenses:
 
 - `aiplus-auto-compact`: Apache-2.0
 - `aiplus-auto-team-consultant`: MIT
+- `aiplus-agent-memory`: Apache-2.0
 
 Licensing is not a safety, privacy, compliance, correctness, or release
 certification.
@@ -141,6 +148,7 @@ aiplus/
     README.md
     aiplus-auto-compact/
     aiplus-auto-team-consultant/
+    aiplus-agent-memory/
   docs/
     architecture.md
     safety.md

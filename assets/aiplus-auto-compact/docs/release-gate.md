@@ -17,7 +17,7 @@ to `https://github.com/izhiwen/aiplus-auto-compact`.
 | --- | --- | --- |
 | Legacy compatibility fixture | PASS | `core/scripts/compactctl.mjs` retained only for archived history and package acceptance tests; not an active compact execution path |
 | Test suite | PASS | `rtk npm test`, 15/15 acceptance tests passed |
-| AiPlus CLI alignment | PASS | `rtk cargo test` from the sibling `../aiplus-rust` checkout, 6/6 tests passed; `cargo run -p aiplus-cli -- --help` shows `compact` |
+| AiPlus CLI alignment | PASS | `rtk cargo test` from the active `../aiplus-public` checkout, 6/6 tests passed; `cargo run -p aiplus-cli -- --help` shows `compact` |
 | Manifest/config JSON parse | PASS | Parsed package metadata, Codex plugin manifest, Claude plugin manifest, Claude hook example, and OpenCode config example |
 | Adapter required files | PASS | Required Codex, Claude Code, and OpenCode adapter files exist |
 | README runtime coverage | PASS | Root README covers AiPlus CLI (`aiplus`), Codex, Claude Code, OpenCode, validation, safety, and current release status |
@@ -61,7 +61,7 @@ process.exit(fail?1:0);
 NODE
 ```
 
-Run AiPlus CLI alignment checks from the sibling `../aiplus-rust` checkout:
+Run AiPlus CLI alignment checks from the active `../aiplus-public` checkout:
 
 ```bash
 rtk cargo test

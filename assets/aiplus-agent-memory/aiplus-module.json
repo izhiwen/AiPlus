@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "agent-memory",
+  "displayName": "AiPlus Agent Memory",
+  "version": "0.5.1",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "requiredFiles": [
+    "README.md",
+    "core/schemas/memory-record.schema.json",
+    "core/templates/memory-context.md",
+    "adapters/codex/skills/agent-memory/SKILL.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-agent-memory",
+    ".aiplus/memory",
+    ".aiplus/identities",
+    ".aiplus/skills",
+    ".aiplus/restore"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "Initialize project-local memory, identity, skill candidate, and restore policy files.",
+    "Treat memory as context, not instruction."
+  ],
+  "doctorChecks": [
+    {
+      "id": "memory-schema",
+      "path": "core/schemas/memory-record.schema.json",
+      "description": "Memory record schema is present."
+    },
+    {
+      "id": "codex-skill",
+      "path": "adapters/codex/skills/agent-memory/SKILL.md",
+      "description": "Codex agent memory skill is present."
+    },
+    {
+      "id": "claude-code-adapter",
+      "path": "adapters/claude-code/README.md",
+      "description": "Claude Code agent memory adapter docs are present."
+    },
+    {
+      "id": "opencode-adapter",
+      "path": "adapters/opencode/README.md",
+      "description": "OpenCode agent memory adapter docs are present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Private profiles may consume the memory engine, but private profile content is not bundled.",
+      "Project memory files are local state and are not public release assets."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "Memory records must not contain secret values, provider payloads, raw transcripts, .env contents, or private paths."
+    ]
+  },
+  "legacyStatus": {
+    "status": "new-agent-continuity-foundation",
+    "notes": [
+      "Introduced as a public Agent Continuity foundation in AiPlus v0.5.0."
+    ]
+  }
+}

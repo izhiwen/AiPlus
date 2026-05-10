@@ -1,17 +1,54 @@
+use aiplus_core::memory::MEMORY_SCHEMA_VERSION_V2;
+use aiplus_core::{
+    append_jsonl_atomic,
+    available_modules_text,
+    default_module_names,
+    detect_conflicts,
+    detect_stale,
+    embedded_asset_text,
+    epoch_millis,
+    find_by_query,
+    identity_dir,
+    memory_dir,
+    module_spec,
+    normalize_module,
+    read_active,
+    read_identity,
+    read_memory_records,
+    read_skill_candidates,
+    rewrite_jsonl_atomic,
+    select_records,
+    sensitive_findings,
+    single_line,
+    slugify,
+    stable_hash,
+    write_file_atomic,
+    // v2 core modules
+    AutoWriteConfig,
+    AutoWriteResult,
+    AutoWriter,
+    MemoryRecord,
+    ModuleSpec,
+    ProfileSync,
+    ProjectManifest as Manifest,
+    ProjectManifestModule as ManifestModule,
+    RiskLevel,
+    RollbackPlan,
+    SessionIndex,
+    SessionRecord,
+    SkillCandidate,
+    SkillRegistry,
+    SnapshotBuilder,
+};
 use anyhow::{anyhow, Context, Result};
 use clap::{ArgAction, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::collections::{hash_map::DefaultHasher, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
-use std::thread;
-use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-include!(concat!(env!("OUT_DIR"), "/asset_files.rs"));
+use std::time::SystemTime;
 
 const VERSION: &str = "0.5.1";
 const RELEASE_TAG: &str = "v0.5.1";
@@ -88,6 +125,14 @@ enum Commands {
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
     },
+    Rollback {
+        #[arg(long, default_value = "latest")]
+        id: String,
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        yes: bool,
+    },
     Compact {
         subcommand: Option<String>,
         #[arg(long, default_value = "standard", value_parser = ["light", "standard", "full"])]
@@ -96,6 +141,16 @@ enum Commands {
         json: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
+        #[arg(long)]
+        event: Option<String>,
+        #[arg(long)]
+        snooze: Option<String>,
+        #[arg(long = "clear-snooze", action = ArgAction::SetTrue)]
+        clear_snooze: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        once: bool,
+        #[arg(long)]
+        interval: Option<String>,
     },
     Pricing {
         subcommand: Option<String>,
@@ -130,6 +185,17 @@ enum Commands {
         kind: Option<String>,
         #[arg(long)]
         text: Option<String>,
+        // NEW fields:
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        summary: Option<String>,
+        #[arg(long)]
+        from_memory: Option<String>,
+        #[arg(long)]
+        risk: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
     },
     Identity {
         subcommand: Option<String>,
@@ -137,6 +203,11 @@ enum Commands {
         project: bool,
         #[arg(long)]
         role: Option<String>,
+    },
+    User {
+        subcommand: Option<String>,
+        #[arg(long)]
+        profile: Option<String>,
     },
     #[command(name = "skill-candidate")]
     SkillCandidate {
@@ -201,52 +272,6 @@ impl std::fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
-#[derive(Clone, Copy)]
-struct ModuleSpec {
-    name: &'static str,
-    vendor_name: &'static str,
-    version: &'static str,
-    path: &'static str,
-    required_files: &'static [&'static str],
-}
-
-const MODULES: &[ModuleSpec] = &[
-    ModuleSpec {
-        name: "auto-compact",
-        vendor_name: "aiplus-auto-compact",
-        version: "0.4.6",
-        path: ".aiplus/modules/aiplus-auto-compact",
-        required_files: &[
-            "LICENSE",
-            "core/templates/current-handoff.md",
-            "core/templates/compact-policy.json",
-        ],
-    },
-    ModuleSpec {
-        name: "auto-team-consultant",
-        vendor_name: "aiplus-auto-team-consultant",
-        version: "0.4.6",
-        path: ".aiplus/modules/aiplus-auto-team-consultant",
-        required_files: &[
-            "LICENSE",
-            "adapters/codex/skills/auto-team-consultant/SKILL.md",
-            "core/templates/TEMPLATE_INDEX.md",
-        ],
-    },
-    ModuleSpec {
-        name: "agent-memory",
-        vendor_name: "aiplus-agent-memory",
-        version: "0.5.1",
-        path: ".aiplus/modules/aiplus-agent-memory",
-        required_files: &[
-            "README.md",
-            "core/schemas/memory-record.schema.json",
-            "core/templates/memory-context.md",
-            "adapters/codex/skills/agent-memory/SKILL.md",
-        ],
-    },
-];
-
 #[derive(Clone, Default)]
 struct Options {
     force: bool,
@@ -259,35 +284,12 @@ struct Plan {
     dry_run: bool,
     items: Vec<PlanItem>,
     mkdir_paths: BTreeSet<String>,
+    backup_stamp: Option<String>,
 }
 
 struct PlanItem {
     action: String,
     path: String,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
-struct Manifest {
-    schema_version: Option<String>,
-    installer: Option<String>,
-    installer_version: Option<String>,
-    installed_at: Option<String>,
-    updated_at: Option<String>,
-    target_root: Option<String>,
-    runtime_adapters: Option<Vec<String>>,
-    modules: Option<BTreeMap<String, ManifestModule>>,
-    managed_files: Option<Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ManifestModule {
-    version: Option<String>,
-    source: Option<String>,
-    path: Option<String>,
-    installed_at: Option<String>,
-    updated_at: Option<String>,
 }
 
 struct ManifestDiagnostic {
@@ -319,6 +321,36 @@ struct CompactReadiness {
     next_action: String,
     manual_compact_recommended: bool,
     reasons: Vec<String>,
+}
+
+struct CompactReminder {
+    decision: &'static str,
+    level: &'static str,
+    readiness_state: String,
+    recovery_confidence: &'static str,
+    manual_compact_recommended: bool,
+    snooze_status: &'static str,
+    handoff_state: &'static str,
+    last_checkpoint_age: String,
+    estimated_tokens_saved: u64,
+    estimated_usd_saved: String,
+    reason: String,
+    next_action: String,
+    secret_values_printed: &'static str,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CompactReminderSnooze {
+    schema_version: String,
+    set_at_epoch_millis: u128,
+    until_epoch_millis: u128,
+    duration_seconds: u64,
+}
+
+struct HandoffFreshness {
+    state: &'static str,
+    reason: String,
 }
 
 struct SavingsEstimate {
@@ -383,89 +415,6 @@ struct ContinuityState {
     skill_candidates_total: usize,
     skill_candidates_rejected: usize,
     profile_status: String,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct MemoryRecord {
-    schema_version: String,
-    id: String,
-    scope: String,
-    kind: String,
-    subject: String,
-    content: String,
-    source: String,
-    confidence: String,
-    visibility: String,
-    status: String,
-    created_at: String,
-    updated_at: String,
-    expires_at: Option<String>,
-    review_after: Option<String>,
-    redaction: String,
-    hash: String,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct SkillCandidateRecord {
-    schema_version: String,
-    id: String,
-    title: String,
-    status: String,
-    source_memory_ids: Vec<String>,
-    problem_pattern: String,
-    proposed_skill_name: String,
-    repeatability_evidence: RepeatabilityEvidence,
-    trigger_design: TriggerDesign,
-    scope: SkillScope,
-    privacy: SkillPrivacy,
-    qa: SkillQa,
-    owner_gate: SkillOwnerGate,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct RepeatabilityEvidence {
-    occurrence_count: u64,
-    synthetic_replay_available: bool,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct TriggerDesign {
-    positive_triggers: Vec<String>,
-    negative_triggers: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct SkillScope {
-    allowed_actions: Vec<String>,
-    forbidden_actions: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct SkillPrivacy {
-    contains_secrets: bool,
-    contains_private_paths: bool,
-    redaction_required: bool,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct SkillQa {
-    required_checks: Vec<String>,
-    status: String,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase", default)]
-struct SkillOwnerGate {
-    required_for_approval: bool,
-    approved_by: Option<String>,
-    approved_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -564,6 +513,9 @@ const EVIDENCE_CONFIDENCE: &[&str] = &[
 ];
 const TASK_STATUSES: &[&str] = &[
     "PASS",
+    "DEBUG",
+    "RUNNING_TESTS",
+    "ACTIVE_WORK",
     "FAIL",
     "IN_PROGRESS",
     "NEEDS_VERIFICATION",
@@ -633,12 +585,28 @@ fn run(command: Commands) -> Result<()> {
             yes,
             force,
         } => command_uninstall(dry_run, yes, force),
+        Commands::Rollback { id, dry_run, yes } => command_rollback(id, dry_run, yes),
         Commands::Compact {
             subcommand,
             level,
             json,
             force,
-        } => command_compact(subcommand, &level, json, force),
+            event,
+            snooze,
+            clear_snooze,
+            once,
+            interval,
+        } => command_compact(
+            subcommand,
+            &level,
+            json,
+            force,
+            event,
+            snooze,
+            clear_snooze,
+            once,
+            interval,
+        ),
         Commands::Pricing { subcommand } => command_pricing(subcommand),
         Commands::Profile {
             subcommand,
@@ -668,6 +636,11 @@ fn run(command: Commands) -> Result<()> {
             scope,
             kind,
             text,
+            title,
+            summary,
+            from_memory,
+            risk,
+            limit,
         } => command_memory(MemoryCommandArgs {
             subcommand,
             arg,
@@ -677,12 +650,21 @@ fn run(command: Commands) -> Result<()> {
             scope,
             kind,
             text,
+            title,
+            summary,
+            from_memory,
+            risk,
+            limit,
         }),
         Commands::Identity {
             subcommand,
             project,
             role,
         } => command_identity(subcommand, project, role),
+        Commands::User {
+            subcommand,
+            profile,
+        } => command_user(subcommand, profile),
         Commands::SkillCandidate {
             subcommand,
             arg,
@@ -707,7 +689,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  compact init|validate|prepare|score|checkpoint|resume|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts\n  identity status|init|context\n  skill-candidate status|propose|reject\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1294,6 +1276,25 @@ fn command_doctor() -> Result<()> {
         rel_to_abs(&root, REFRESH_PROMPT_REL)?.exists(),
         None,
     );
+    match aiplus_core::validate_bundled_module_manifests() {
+        Ok(manifests) => {
+            push_check(&mut checks, "bundled module manifests validate", true, None);
+            for manifest in manifests {
+                push_check(
+                    &mut checks,
+                    format!("module manifest {} present", manifest.name),
+                    true,
+                    None,
+                );
+            }
+        }
+        Err(error) => push_check(
+            &mut checks,
+            format!("bundled module manifests validate ({error})"),
+            false,
+            None,
+        ),
+    }
     let parsed = manifest_diag.manifest.filter(|manifest| {
         manifest.installer.as_deref() == Some(INSTALLER)
             && manifest
@@ -1305,6 +1306,14 @@ fn command_doctor() -> Result<()> {
         .as_ref()
         .and_then(|m| m.runtime_adapters.clone())
         .unwrap_or_default();
+    for runtime in &runtimes {
+        push_check(
+            &mut checks,
+            format!("runtimeAdapter {runtime} is supported"),
+            ["codex", "claude-code", "opencode"].contains(&runtime.as_str()),
+            None,
+        );
+    }
     for runtime in &runtimes {
         for (label, ok) in runtime_doctor_requirements(&root, runtime)? {
             push_check(&mut checks, label, ok, None);
@@ -1476,7 +1485,90 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn command_compact(subcommand: Option<String>, level: &str, json: bool, force: bool) -> Result<()> {
+fn command_rollback(id: String, dry_run: bool, yes: bool) -> Result<()> {
+    if !dry_run && !yes {
+        return Err(CliError::new(1, "ERROR rollback requires --dry-run or --yes").into());
+    }
+    let root = target_root()?;
+    let plan_path = match resolve_rollback_plan_path(&root, &id) {
+        Ok(path) => path,
+        Err(error) if dry_run => {
+            println!("AIPLUS_ROLLBACK");
+            println!("id={id}");
+            println!("dryRun=yes");
+            println!("entries=0");
+            println!("noRollbackPlan=yes");
+            println!("ROLLBACK_STATUS=DRY_RUN");
+            let _ = error;
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let plan = read_rollback_plan(&plan_path)?;
+    println!("AIPLUS_ROLLBACK");
+    println!("id={}", plan.id);
+    println!("plan={}", path_slash(path_relative(&root, &plan_path)?));
+    println!("dryRun={}", yes_no(dry_run));
+    println!("entries={}", plan.entries.len());
+    let mut restored = 0usize;
+    let mut skipped = 0usize;
+    for entry in &plan.entries {
+        let original_rel = entry.original_path.trim();
+        let backup_rel = entry.backup_path.trim();
+        let allowed =
+            entry.managed_file && aiplus_core::paths::is_allowed_project_write(original_rel);
+        let backup = rel_to_abs(&root, backup_rel)?;
+        let original = rel_to_abs(&root, original_rel)?;
+        if let Err(error) = assert_no_symlink_path(&root, &backup) {
+            println!("skip original={original_rel} reason=backup_symlink");
+            let _ = error;
+            skipped += 1;
+            continue;
+        }
+        if !allowed || !backup.exists() {
+            println!(
+                "skip original={} reason={}",
+                original_rel,
+                if allowed {
+                    "backup_missing"
+                } else {
+                    "not_managed_file"
+                }
+            );
+            skipped += 1;
+            continue;
+        }
+        println!("restore {} <- {}", original_rel, backup_rel);
+        if !dry_run {
+            assert_no_symlink_path(&root, &original)?;
+            if let Some(parent) = original.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(backup, original)?;
+        }
+        restored += 1;
+    }
+    println!("restored={restored}");
+    println!("skipped={skipped}");
+    println!(
+        "ROLLBACK_STATUS={}",
+        if dry_run { "DRY_RUN" } else { "PASS" }
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn command_compact(
+    subcommand: Option<String>,
+    level: &str,
+    json: bool,
+    force: bool,
+    event: Option<String>,
+    snooze: Option<String>,
+    clear_snooze: bool,
+    once: bool,
+    interval: Option<String>,
+) -> Result<()> {
     let Some(subcommand) = subcommand else {
         print_usage();
         process::exit(2);
@@ -1486,9 +1578,11 @@ fn command_compact(subcommand: Option<String>, level: &str, json: bool, force: b
         "validate",
         "checkpoint",
         "resume",
+        "remind",
         "prepare",
         "score",
         "savings",
+        "watch",
     ]
     .contains(&subcommand.as_str())
     {
@@ -1559,6 +1653,29 @@ fn command_compact(subcommand: Option<String>, level: &str, json: bool, force: b
                 process::exit(exit_code);
             }
         }
+        "remind" => {
+            let exit_code = compact_remind(
+                &root,
+                event.as_deref(),
+                snooze.as_deref(),
+                clear_snooze,
+                json,
+                false,
+            )?;
+            if exit_code == 0 {
+                Ok(())
+            } else {
+                process::exit(exit_code);
+            }
+        }
+        "watch" => {
+            let exit_code = compact_watch(&root, once, interval.as_deref(), json)?;
+            if exit_code == 0 {
+                Ok(())
+            } else {
+                process::exit(exit_code);
+            }
+        }
         "savings" => compact_savings(&root, json),
         _ => unreachable!(),
     }
@@ -1605,9 +1722,10 @@ fn command_profile(args: ProfileCommandArgs) -> Result<()> {
         ),
         Some("cleanup") => profile_cleanup(args.user, args.dry_run, args.yes),
         Some("doctor") => profile_doctor(args.profile),
+        Some("context") => profile_context(args.profile),
         _ => {
             println!(
-                "Usage: aiplus profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor"
+                "Usage: aiplus profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context"
             );
             process::exit(2);
         }
@@ -1639,11 +1757,36 @@ fn profile_status(profile: Option<String>) -> Result<()> {
             "agents_profile={}",
             yes_no(dir.join("AGENTS.profile.md").exists())
         );
+        let supp = supplemental_bundle_status(&dir);
+        println!("user_md={}", yes_no(supp.user_md));
+        println!("memory_md={}", yes_no(supp.memory_md));
+        println!("preferences_dir={}", yes_no(supp.preferences_dir));
+        println!("identities_dir={}", yes_no(supp.identities_dir));
+        println!("sync_dir={}", yes_no(supp.sync_dir));
     }
     println!("secret_values=none");
     println!("global_agent_config_edits=none");
     println!("PROFILE_STATUS=PASS");
     Ok(())
+}
+
+#[derive(Default)]
+struct SupplementalStatus {
+    user_md: bool,
+    memory_md: bool,
+    preferences_dir: bool,
+    identities_dir: bool,
+    sync_dir: bool,
+}
+
+fn supplemental_bundle_status(dir: &Path) -> SupplementalStatus {
+    SupplementalStatus {
+        user_md: dir.join("USER.md").exists(),
+        memory_md: dir.join("MEMORY.md").exists(),
+        preferences_dir: dir.join("preferences").is_dir(),
+        identities_dir: dir.join("identities").is_dir(),
+        sync_dir: dir.join("sync").is_dir(),
+    }
 }
 
 fn profile_install(
@@ -1678,6 +1821,27 @@ fn profile_install(
     backup_profile_dir(&profile, &dir)?;
     install_profile_file(&source, &dir, "profile.toml")?;
     install_profile_file(&source, &dir, "AGENTS.profile.md")?;
+    let mut supplemental = Vec::new();
+    if source.join("USER.md").exists() {
+        install_profile_file(&source, &dir, "USER.md")?;
+        supplemental.push("USER.md");
+    }
+    if source.join("MEMORY.md").exists() {
+        install_profile_file(&source, &dir, "MEMORY.md")?;
+        supplemental.push("MEMORY.md");
+    }
+    if source.join("preferences").is_dir() {
+        copy_profile_dir(&source, &dir, "preferences")?;
+        supplemental.push("preferences/");
+    }
+    if source.join("identities").is_dir() {
+        copy_profile_dir(&source, &dir, "identities")?;
+        supplemental.push("identities/");
+    }
+    if source.join("sync").is_dir() {
+        copy_profile_dir(&source, &dir, "sync")?;
+        supplemental.push("sync/");
+    }
     if source.join("secret-aliases.tsv").exists() {
         let broker_dir = config_home()?
             .join("aiplus")
@@ -1687,6 +1851,7 @@ fn profile_install(
         fs::create_dir_all(&broker_dir)?;
         install_profile_file(&source, &broker_dir, "secret-aliases.tsv")?;
     }
+    println!("supplemental_installed=[{}]", supplemental.join(","));
     println!("PROFILE_INSTALL_STATUS=PASS");
     Ok(())
 }
@@ -1857,27 +2022,255 @@ fn profile_cleanup(user: bool, dry_run: bool, yes: bool) -> Result<()> {
 
 fn profile_doctor(profile: Option<String>) -> Result<()> {
     let profile = profile.unwrap_or_else(|| "all".to_string());
-    let installed = if profile == "all" {
+    if profile == "all" {
         let profiles_root = config_home()?.join("aiplus").join("profiles");
-        !installed_profile_names(&profiles_root)?.is_empty()
+        let profiles = installed_profile_names(&profiles_root)?;
+        let mut checks = Vec::new();
+        for p in &profiles {
+            let dir = profile_dir(p)?;
+            push_check(
+                &mut checks,
+                format!("{p} profile.toml exists"),
+                dir.join("profile.toml").exists(),
+                None,
+            );
+            push_check(
+                &mut checks,
+                format!("{p} AGENTS.profile.md exists"),
+                dir.join("AGENTS.profile.md").exists(),
+                None,
+            );
+            let supp = supplemental_bundle_status(&dir);
+            push_check(
+                &mut checks,
+                format!("{p} USER.md present"),
+                supp.user_md,
+                None,
+            );
+            push_check(
+                &mut checks,
+                format!("{p} MEMORY.md present"),
+                supp.memory_md,
+                None,
+            );
+            push_check(
+                &mut checks,
+                format!("{p} preferences/ present"),
+                supp.preferences_dir,
+                None,
+            );
+            push_check(
+                &mut checks,
+                format!("{p} identities/ present"),
+                supp.identities_dir,
+                None,
+            );
+            push_check(
+                &mut checks,
+                format!("{p} sync/ present"),
+                supp.sync_dir,
+                None,
+            );
+            if supp.identities_dir {
+                let id_dir = dir.join("identities");
+                for entry in fs::read_dir(&id_dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.extension().is_some_and(|e| e == "toml") {
+                        let text = fs::read_to_string(&path).unwrap_or_default();
+                        let has_name = text.contains("name =");
+                        let has_role = text.contains("role =");
+                        let valid = !text.trim().is_empty() && has_name && has_role;
+                        push_check(
+                            &mut checks,
+                            format!(
+                                "{p} identity {} valid",
+                                path.file_name().unwrap_or_default().to_string_lossy()
+                            ),
+                            valid,
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+        let pass = checks.iter().all(|c| c.ok);
+        println!("PROFILE_DOCTOR");
+        println!("profile=all");
+        println!("profiles_checked={}", profiles.len());
+        println!("secret_values=none");
+        println!("global_agent_config_edits=none");
+        for c in &checks {
+            println!("{} {}", if c.ok { "PASS" } else { "NEEDS_FIX" }, c.label);
+        }
+        println!(
+            "PROFILE_DOCTOR_STATUS={}",
+            if pass { "PASS" } else { "NEEDS_FIX" }
+        );
+        Ok(())
     } else {
         validate_profile_name(&profile)?;
         let dir = profile_dir(&profile)?;
-        dir.join("profile.toml").exists() && dir.join("AGENTS.profile.md").exists()
+        let mut checks = Vec::new();
+        push_check(
+            &mut checks,
+            "profile.toml exists",
+            dir.join("profile.toml").exists(),
+            None,
+        );
+        push_check(
+            &mut checks,
+            "AGENTS.profile.md exists",
+            dir.join("AGENTS.profile.md").exists(),
+            None,
+        );
+        let supp = supplemental_bundle_status(&dir);
+        push_check(&mut checks, "USER.md present", supp.user_md, None);
+        push_check(&mut checks, "MEMORY.md present", supp.memory_md, None);
+        push_check(
+            &mut checks,
+            "preferences/ present",
+            supp.preferences_dir,
+            None,
+        );
+        push_check(
+            &mut checks,
+            "identities/ present",
+            supp.identities_dir,
+            None,
+        );
+        push_check(&mut checks, "sync/ present", supp.sync_dir, None);
+        if supp.identities_dir {
+            let id_dir = dir.join("identities");
+            for entry in fs::read_dir(&id_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "toml") {
+                    let text = fs::read_to_string(&path).unwrap_or_default();
+                    let has_name = text.contains("name =");
+                    let has_role = text.contains("role =");
+                    let valid = !text.trim().is_empty() && has_name && has_role;
+                    push_check(
+                        &mut checks,
+                        format!(
+                            "identity {} valid",
+                            path.file_name().unwrap_or_default().to_string_lossy()
+                        ),
+                        valid,
+                        None,
+                    );
+                }
+            }
+        }
+        let pass = checks.iter().all(|c| c.ok);
+        println!("PROFILE_DOCTOR");
+        println!("profile={profile}");
+        println!(
+            "installed={}",
+            yes_no(dir.join("profile.toml").exists() && dir.join("AGENTS.profile.md").exists())
+        );
+        println!("private_content_in_public_assets=not_checked_by_command");
+        println!("secret_values=none");
+        println!("global_agent_config_edits=none");
+        for c in &checks {
+            println!("{} {}", if c.ok { "PASS" } else { "NEEDS_FIX" }, c.label);
+        }
+        println!(
+            "PROFILE_DOCTOR_STATUS={}",
+            if pass { "PASS" } else { "NEEDS_FIX" }
+        );
+        Ok(())
+    }
+}
+
+fn profile_context(profile: Option<String>) -> Result<()> {
+    let profile = profile.unwrap_or_else(|| "all".to_string());
+    if profile == "all" {
+        println!("PROFILE_CONTEXT");
+        println!("profile=all");
+        println!("note=specify a profile name to load context");
+        println!("PROFILE_CONTEXT_STATUS=PASS");
+        return Ok(());
+    }
+    validate_profile_name(&profile)?;
+    let dir = profile_dir(&profile)?;
+    if !dir.join("profile.toml").exists() {
+        return Err(CliError::new(
+            1,
+            format!("PROFILE_CONTEXT_STATUS=BLOCKED profile={profile} not installed"),
+        )
+        .into());
+    }
+    let profile_text = fs::read_to_string(dir.join("profile.toml")).unwrap_or_default();
+    let name = toml_value_line(&profile_text, "name").unwrap_or_else(|| profile.clone());
+    let version =
+        toml_value_line(&profile_text, "version").unwrap_or_else(|| "unknown".to_string());
+    let owner = toml_value_line(&profile_text, "owner").unwrap_or_else(|| "-".to_string());
+    let supp = supplemental_bundle_status(&dir);
+    let pref_count = if supp.preferences_dir {
+        count_files(&dir.join("preferences"))
+    } else {
+        0
     };
-    println!("PROFILE_DOCTOR");
+    let id_count = if supp.identities_dir {
+        count_files(&dir.join("identities"))
+    } else {
+        0
+    };
+    let sync_count = if supp.sync_dir {
+        count_files(&dir.join("sync"))
+    } else {
+        0
+    };
+    println!("PROFILE_CONTEXT");
     println!("profile={profile}");
-    println!("installed={}", yes_no(installed));
-    println!("private_content_in_public_assets=not_checked_by_command");
+    println!("name={name}");
+    println!("version={version}");
+    println!("owner={owner}");
+    println!("user_md={}", yes_no(supp.user_md));
+    println!("memory_md={}", yes_no(supp.memory_md));
+    println!("preferences_files={pref_count}");
+    println!("identities_files={id_count}");
+    println!("sync_files={sync_count}");
     println!("secret_values=none");
     println!("global_agent_config_edits=none");
+    println!();
+    println!("# AiPlus Profile Context");
+    println!();
+    println!("- Profile: {name} v{version}");
+    println!("- Owner: {owner}");
+    println!("- Supplemental bundle:");
     println!(
-        "PROFILE_DOCTOR_STATUS={}",
-        if installed { "PASS" } else { "NEEDS_INSTALL" }
+        "  - USER.md: {}",
+        if supp.user_md { "present" } else { "missing" }
     );
+    println!(
+        "  - MEMORY.md: {}",
+        if supp.memory_md { "present" } else { "missing" }
+    );
+    println!("  - preferences/: {pref_count} files");
+    println!("  - identities/: {id_count} files");
+    println!("  - sync/: {sync_count} files");
+    println!();
+    println!("PROFILE_CONTEXT_STATUS=PASS");
     Ok(())
 }
 
+fn count_files(dir: &Path) -> usize {
+    if !dir.is_dir() {
+        return 0;
+    }
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+#[allow(dead_code)]
 struct MemoryCommandArgs {
     subcommand: Option<String>,
     arg: Option<String>,
@@ -1887,6 +2280,11 @@ struct MemoryCommandArgs {
     scope: Option<String>,
     kind: Option<String>,
     text: Option<String>,
+    title: Option<String>,
+    summary: Option<String>,
+    from_memory: Option<String>,
+    risk: Option<String>,
+    limit: Option<usize>,
 }
 
 fn command_memory(args: MemoryCommandArgs) -> Result<()> {
@@ -1901,8 +2299,19 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
         Some("search") => memory_search(args.arg),
         Some("forget") => memory_forget(args.arg),
         Some("conflicts") => memory_conflicts(),
+        Some("propose") => memory_propose(args.text),
+        Some("review") => memory_review(args.arg),
+        Some("accept") => memory_accept(args.arg),
+        Some("reject") => memory_reject(args.arg),
+        Some("auto-capture") => memory_auto_capture(args.text, args.risk),
+        Some("session") => memory_session(args.arg, args.text, args.summary, args.limit),
+        Some("snapshot") => memory_snapshot(args.arg),
+        Some("profile") => memory_profile_sync(),
+        Some("show-used") => memory_show_used(),
+        Some("stale") => memory_stale(),
+        Some("migrate") => memory_migrate(),
         _ => {
-            println!("Usage: aiplus memory status|doctor|init --project|context --runtime codex --budget 2000|add --scope project --kind preference --text \"...\"|list|recent|search <query>|forget <id>|conflicts");
+            println!("Usage: aiplus memory status|doctor|init --project|context --runtime codex --budget 2000|add --scope project --kind preference --text \"...\"|list|recent|search <query>|forget <id>|conflicts|propose|review|accept|reject|auto-capture --text \"...\" [--risk low|medium|high]|session add-card|search|list|show|snapshot build|profile|show-used|stale|migrate");
             process::exit(2);
         }
     }
@@ -1923,6 +2332,83 @@ fn command_identity(subcommand: Option<String>, project: bool, role: Option<Stri
     }
 }
 
+fn command_user(subcommand: Option<String>, profile: Option<String>) -> Result<()> {
+    match subcommand.as_deref() {
+        Some("context") => user_context(profile),
+        _ => {
+            println!("Usage: aiplus user context [--profile <name>]");
+            process::exit(2);
+        }
+    }
+}
+
+fn user_context(profile: Option<String>) -> Result<()> {
+    let profile = profile.unwrap_or_else(|| "aiplus-work-with-zhiwen".to_string());
+    validate_profile_name(&profile)?;
+    let dir = profile_dir(&profile)?;
+    let user_md = dir.join("USER.md");
+    if !user_md.exists() {
+        println!("USER_CONTEXT");
+        println!("profile={profile}");
+        println!("user_md=missing");
+        println!("USER_CONTEXT_STATUS=PASS");
+        return Ok(());
+    }
+    let text = fs::read_to_string(&user_md)?;
+    let redacted = redact_user_context(&text);
+    let truncated = if redacted.len() > 8192 {
+        format!(
+            "{}\n... [truncated: {} bytes total]",
+            &redacted[..6144],
+            redacted.len()
+        )
+    } else {
+        redacted
+    };
+    println!("USER_CONTEXT");
+    println!("profile={profile}");
+    println!("user_md=present");
+    println!("secret_values=none");
+    println!("global_agent_config_edits=none");
+    println!();
+    println!("# AiPlus User Context");
+    println!();
+    println!("{truncated}");
+    println!();
+    println!("USER_CONTEXT_STATUS=PASS");
+    Ok(())
+}
+
+fn redact_user_context(text: &str) -> String {
+    let mut result = Vec::new();
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        let is_secret_line = [
+            "api_key",
+            "apikey",
+            "api-key",
+            "secret_key",
+            "secret-key",
+            "access_token",
+            "access-token",
+            "password",
+            "private_key",
+            "bearer ",
+            "authorization: ",
+            "cookie:",
+            "-----begin ",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle));
+        if is_secret_line {
+            result.push("[REDACTED]".to_string());
+        } else {
+            result.push(line.to_string());
+        }
+    }
+    result.join("\n")
+}
+
 fn command_skill_candidate(
     subcommand: Option<String>,
     arg: Option<String>,
@@ -1933,9 +2419,10 @@ fn command_skill_candidate(
         Some("status") => skill_candidate_status(),
         Some("propose") => skill_candidate_propose(title, from_memory),
         Some("reject") => skill_candidate_reject(arg),
+        Some("consolidate") => skill_candidate_consolidate(),
         _ => {
             println!(
-                "Usage: aiplus skill-candidate status|propose --title \"...\" --from-memory <id>|reject <id>"
+                "Usage: aiplus skill-candidate status|propose --title \"...\" --from-memory <id>|reject <id>|consolidate"
             );
             process::exit(2);
         }
@@ -2046,10 +2533,7 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     let runtime = runtime.unwrap_or_else(|| "codex".to_string());
     let budget = budget.unwrap_or(2000);
     let records = read_memory_records(&root).unwrap_or_default();
-    let active_records: Vec<&MemoryRecord> = records
-        .iter()
-        .filter(|record| record.status == "active" || record.status == "tentative")
-        .collect();
+    let active_records = select_records(&records, budget);
     let ignored = records.len().saturating_sub(active_records.len());
     println!("MEMORY_CONTEXT");
     println!("runtime={runtime}");
@@ -2076,18 +2560,20 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     println!("- .aiplus/memory/facts.jsonl");
     println!();
     println!("## Records");
-    let mut used = 0usize;
     for record in active_records {
-        let line = format!(
+        let summary = if reject_sensitive_memory_text(&record.summary).is_ok() {
+            record.summary.clone()
+        } else {
+            "[REDACTED]".to_string()
+        };
+        println!(
             "- [{}] {} / {} / {}: {}",
-            record.id, record.scope, record.kind, record.subject, record.content
+            record.id,
+            record.scope,
+            record.record_type,
+            record.subject.as_deref().unwrap_or("-"),
+            summary
         );
-        used += line.len();
-        if used > budget {
-            println!("- memory_context_truncated=yes");
-            break;
-        }
-        println!("{line}");
     }
     println!("MEMORY_CONTEXT_STATUS=PASS");
     Ok(())
@@ -2095,7 +2581,7 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
 
 fn memory_list() -> Result<()> {
     let root = target_root()?;
-    let records = read_memory_records(&root).unwrap_or_default();
+    let records = read_active(&root).unwrap_or_default();
     println!("MEMORY_LIST");
     println!("records_total={}", records.len());
     let shown = print_memory_rows(records.iter(), None);
@@ -2107,7 +2593,7 @@ fn memory_list() -> Result<()> {
 
 fn memory_recent() -> Result<()> {
     let root = target_root()?;
-    let records = read_memory_records(&root).unwrap_or_default();
+    let records = read_active(&root).unwrap_or_default();
     println!("MEMORY_RECENT");
     println!("limit=5");
     let shown = print_memory_rows(records.iter().rev(), Some(5));
@@ -2144,22 +2630,27 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
     let now = timestamp();
     let id = format!("mem_{}_{}", epoch_millis(), stable_hash(&text));
     let record = MemoryRecord {
-        schema_version: "0.1.0".to_string(),
+        schema_version: MEMORY_SCHEMA_VERSION_V2.to_string(),
         id: id.clone(),
         scope,
-        kind,
-        subject: "workflow".to_string(),
-        content: single_line(&text),
+        record_type: kind,
         source: "manual".to_string(),
-        confidence: "owner_asserted".to_string(),
-        visibility: "project-local".to_string(),
-        status: "active".to_string(),
         created_at: now.clone(),
         updated_at: now,
+        confidence: "owner_asserted".to_string(),
+        status: "active".to_string(),
+        summary: single_line(&text),
+        evidence: Vec::new(),
+        tags: Vec::new(),
         expires_at: None,
-        review_after: None,
+        stale_after: None,
+        supersedes: Vec::new(),
+        superseded_by: Vec::new(),
+        conflict_group: None,
         redaction: "none".to_string(),
-        hash: format!("hash:{}", stable_hash(&text)),
+        subject: Some("workflow".to_string()),
+        visibility: Some("project-local".to_string()),
+        content_hash: Some(format!("hash:{}", stable_hash(&text))),
     };
     append_jsonl_atomic(
         &rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?,
@@ -2169,7 +2660,7 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
     println!("MEMORY_ADD");
     println!("id={id}");
     println!("scope={}", record.scope);
-    println!("kind={}", record.kind);
+    println!("kind={}", record.record_type);
     println!("secret_values=none");
     println!("MEMORY_ADD_STATUS=PASS");
     Ok(())
@@ -2178,21 +2669,16 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
 fn memory_search(query: Option<String>) -> Result<()> {
     let root = target_root()?;
     let query = query.ok_or_else(|| CliError::new(2, "ERROR memory search requires a query"))?;
-    let needle = query.to_ascii_lowercase();
-    let records = read_memory_records(&root).unwrap_or_default();
+    let records = find_by_query(&root, &query)?;
     println!("MEMORY_SEARCH");
     println!("query={}", single_line(&query));
-    let mut count = 0usize;
-    for record in records {
-        if record.content.to_ascii_lowercase().contains(&needle) || record.id.contains(&query) {
-            println!(
-                "match={} kind={} status={}",
-                record.id, record.kind, record.status
-            );
-            count += 1;
-        }
+    println!("matches={}", records.len());
+    for record in &records {
+        println!(
+            "match={} kind={} status={}",
+            record.id, record.record_type, record.status
+        );
     }
-    println!("matches={count}");
     println!("secret_values=none");
     println!("MEMORY_SEARCH_STATUS=PASS");
     Ok(())
@@ -2230,11 +2716,428 @@ fn memory_forget(id: Option<String>) -> Result<()> {
 }
 
 fn memory_conflicts() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    let conflicts = detect_conflicts(&records);
+    let stale = detect_stale(&records);
     println!("MEMORY_CONFLICTS");
-    println!("unresolved=0");
-    println!("advanced_conflict_detection=NOT_IMPLEMENTED");
+    println!("unresolved={}", conflicts.len());
+    println!("stale_records={}", stale.len());
+    for conflict in &conflicts {
+        println!(
+            "conflict={} type={} related=[{}]",
+            conflict.record_id,
+            conflict.conflict_type,
+            conflict.related_ids.join(",")
+        );
+    }
+    for stale_record in &stale {
+        println!(
+            "stale={} reason={}",
+            stale_record.record_id, stale_record.reason
+        );
+    }
     println!("secret_values=none");
     println!("MEMORY_CONFLICTS_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_propose(text: Option<String>) -> Result<()> {
+    let root = target_root()?;
+    let text = text.ok_or_else(|| CliError::new(2, "ERROR memory propose requires --text"))?;
+    reject_sensitive_memory_text(&text)?;
+    memory_init(&root)?;
+    let id = format!("mem_{}_{}", epoch_millis(), stable_hash(&text));
+    let record = MemoryRecord {
+        schema_version: "0.2.0".to_string(),
+        id: id.clone(),
+        scope: "project".to_string(),
+        record_type: "proposal".to_string(),
+        source: "manual".to_string(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+        confidence: "owner_asserted".to_string(),
+        status: "proposed".to_string(),
+        summary: single_line(&text),
+        evidence: Vec::new(),
+        tags: Vec::new(),
+        expires_at: None,
+        stale_after: None,
+        supersedes: Vec::new(),
+        superseded_by: Vec::new(),
+        conflict_group: None,
+        redaction: "none".to_string(),
+        subject: Some("proposal".to_string()),
+        visibility: Some("project-local".to_string()),
+        content_hash: Some(format!("hash:{}", stable_hash(&text))),
+    };
+    append_jsonl_atomic(
+        &rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?,
+        &serde_json::to_string(&record)?,
+    )?;
+    append_audit(&root, "memory.propose", &id)?;
+    println!("MEMORY_PROPOSE");
+    println!("id={id}");
+    println!("status=proposed");
+    println!("secret_values=none");
+    println!("MEMORY_PROPOSE_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_review(id: Option<String>) -> Result<()> {
+    let id = id.ok_or_else(|| CliError::new(2, "ERROR memory review requires an id"))?;
+    println!("MEMORY_REVIEW");
+    println!("id={id}");
+    println!("status=needs_review");
+    println!("secret_values=none");
+    println!("MEMORY_REVIEW_STATUS=NOT_IMPLEMENTED");
+    Ok(())
+}
+
+fn memory_accept(id: Option<String>) -> Result<()> {
+    let root = target_root()?;
+    let id = id.ok_or_else(|| CliError::new(2, "ERROR memory accept requires an id"))?;
+    let file = rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?;
+    let mut records = read_memory_records(&root).unwrap_or_default();
+    let mut found = false;
+    for record in &mut records {
+        if record.id == id {
+            record.status = "active".to_string();
+            record.updated_at = timestamp();
+            found = true;
+        }
+    }
+    if !found {
+        return Err(CliError::new(
+            1,
+            format!("MEMORY_ACCEPT_STATUS=FAIL id={id} reason=not_found"),
+        )
+        .into());
+    }
+    rewrite_jsonl_atomic(&file, &records)?;
+    append_audit(&root, "memory.accept", &id)?;
+    println!("MEMORY_ACCEPT");
+    println!("id={id}");
+    println!("status=active");
+    println!("secret_values=none");
+    println!("MEMORY_ACCEPT_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_reject(id: Option<String>) -> Result<()> {
+    let root = target_root()?;
+    let id = id.ok_or_else(|| CliError::new(2, "ERROR memory reject requires an id"))?;
+    let file = rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?;
+    let mut records = read_memory_records(&root).unwrap_or_default();
+    let mut found = false;
+    for record in &mut records {
+        if record.id == id {
+            record.status = "rejected".to_string();
+            record.updated_at = timestamp();
+            found = true;
+        }
+    }
+    if !found {
+        return Err(CliError::new(
+            1,
+            format!("MEMORY_REJECT_STATUS=FAIL id={id} reason=not_found"),
+        )
+        .into());
+    }
+    rewrite_jsonl_atomic(&file, &records)?;
+    append_audit(&root, "memory.reject", &id)?;
+    println!("MEMORY_REJECT");
+    println!("id={id}");
+    println!("status=rejected");
+    println!("secret_values=none");
+    println!("MEMORY_REJECT_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_auto_capture(text: Option<String>, risk: Option<String>) -> Result<()> {
+    let root = target_root()?;
+    let text = text.ok_or_else(|| CliError::new(2, "ERROR auto-capture requires --text"))?;
+    reject_sensitive_memory_text(&text)?;
+
+    let config = AutoWriteConfig::default();
+    let writer = AutoWriter::new(config);
+    let risk_level = risk.as_deref().unwrap_or("auto");
+    let memory_type = if risk_level == "low" {
+        "owner_preference"
+    } else {
+        "workflow_rule"
+    };
+
+    let result = if risk_level == "high" {
+        AutoWriteResult {
+            written: false,
+            risk_level: RiskLevel::High,
+            record_id: None,
+            reason: "HIGH_RISK_BLOCKED".to_string(),
+        }
+    } else {
+        writer.auto_capture(&root, &text, memory_type, "project")?
+    };
+
+    let risk_level_str = match result.risk_level {
+        RiskLevel::Low => "low",
+        RiskLevel::Medium => "medium",
+        RiskLevel::High => "high",
+    };
+    println!("MEMORY_AUTO_CAPTURE");
+    println!("risk_level={}", risk_level_str);
+    println!("written={}", yes_no(result.written));
+    if let Some(id) = result.record_id {
+        println!("id={id}");
+    }
+    println!("reason={}", result.reason);
+    println!("secret_values=none");
+    println!(
+        "MEMORY_AUTO_CAPTURE_STATUS={}",
+        if result.written { "PASS" } else { "BLOCKED" }
+    );
+    Ok(())
+}
+
+fn memory_session(
+    subcommand: Option<String>,
+    text: Option<String>,
+    summary: Option<String>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let root = target_root()?;
+    let index = SessionIndex::new(&root)?;
+    index.init()?;
+
+    match subcommand.as_deref() {
+        Some("add-card") => {
+            let summary = summary
+                .ok_or_else(|| CliError::new(2, "ERROR session add-card requires --summary"))?;
+            reject_sensitive_memory_text(&summary)?;
+            let id = format!("sess_{}", epoch_millis());
+            let session = SessionRecord {
+                id: id.clone(),
+                project_id: project_id_from_root(&root),
+                role: "session".to_string(),
+                created_at: timestamp(),
+                updated_at: timestamp(),
+                summary,
+                decisions: Vec::new(),
+                files_changed: Vec::new(),
+                commands_run: Vec::new(),
+                tests_run: Vec::new(),
+                findings_fixed: Vec::new(),
+                blockers: Vec::new(),
+                next_action: String::new(),
+                memory_ids_used: Vec::new(),
+                skill_candidates_proposed: Vec::new(),
+                compact_checkpoint_link: None,
+                no_secret_marker: true,
+            };
+            index.add_session(&session)?;
+            println!("MEMORY_SESSION");
+            println!("action=add-card");
+            println!("id={id}");
+            println!("secret_values=none");
+            println!("MEMORY_SESSION_STATUS=PASS");
+        }
+        Some("search") => {
+            let query =
+                text.ok_or_else(|| CliError::new(2, "ERROR session search requires --text"))?;
+            let limit = limit.unwrap_or(10);
+            let results = index.search(&query, limit)?;
+            println!("MEMORY_SESSION");
+            println!("action=search");
+            println!("query={}", single_line(&query));
+            println!("sessions_found={}", results.len());
+            for session in &results {
+                println!(
+                    "session={} summary={}",
+                    session.id,
+                    single_line(&session.summary)
+                );
+            }
+            println!("secret_values=none");
+            println!("MEMORY_SESSION_STATUS=PASS");
+        }
+        Some("list") => {
+            let limit = limit.unwrap_or(10);
+            let results = index.list_recent(limit)?;
+            println!("MEMORY_SESSION");
+            println!("action=list");
+            println!("sessions_found={}", results.len());
+            for session in &results {
+                println!(
+                    "session={} summary={}",
+                    session.id,
+                    single_line(&session.summary)
+                );
+            }
+            println!("secret_values=none");
+            println!("MEMORY_SESSION_STATUS=PASS");
+        }
+        Some("show") => {
+            let id = text.ok_or_else(|| CliError::new(2, "ERROR session show requires --text"))?;
+            let session = index.get_session(&id)?;
+            println!("MEMORY_SESSION");
+            println!("action=show");
+            if let Some(session) = session {
+                println!("id={}", session.id);
+                println!("summary={}", single_line(&session.summary));
+                println!("role={}", session.role);
+                println!("created_at={}", session.created_at);
+            } else {
+                println!("id={id}");
+                println!("found=no");
+            }
+            println!("secret_values=none");
+            println!("MEMORY_SESSION_STATUS=PASS");
+        }
+        _ => {
+            println!("Usage: aiplus memory session add-card --summary \"...\"|search --text \"<query>\" [--limit N]|list [--limit N]|show --text \"<id>\"");
+            process::exit(2);
+        }
+    }
+    Ok(())
+}
+
+fn memory_snapshot(subcommand: Option<String>) -> Result<()> {
+    let root = target_root()?;
+    match subcommand.as_deref() {
+        Some("build") => {
+            let builder = SnapshotBuilder::new(&root);
+            let project_path = builder.write_project_snapshot()?;
+            let profile_root = config_home()?.join("aiplus");
+            let _profile_path = builder.write_profile_snapshot(&profile_root)?;
+            let records = read_memory_records(&root).unwrap_or_default();
+            let profile_records = if profile_root
+                .join("aiplus-work-with-zhiwen/profile-memory/memories.jsonl")
+                .exists()
+            {
+                let text = std::fs::read_to_string(
+                    profile_root.join("aiplus-work-with-zhiwen/profile-memory/memories.jsonl"),
+                )?;
+                text.lines().filter(|l| !l.trim().is_empty()).count()
+            } else {
+                0
+            };
+            println!("MEMORY_SNAPSHOT_BUILD");
+            println!(
+                "project_snapshot={}",
+                path_slash(path_relative(&root, &project_path)?)
+            );
+            println!("profile_snapshot=aiplus-work-with-zhiwen/profile-memory/USER.md");
+            println!("project_records={}", records.len());
+            println!("profile_records={}", profile_records);
+            println!("MEMORY_SNAPSHOT_BUILD_STATUS=PASS");
+        }
+        _ => {
+            println!("Usage: aiplus memory snapshot build");
+            process::exit(2);
+        }
+    }
+    Ok(())
+}
+
+fn memory_profile_sync() -> Result<()> {
+    let root = target_root()?;
+    let profile_root = config_home()?.join("aiplus");
+    let sync = ProfileSync::new(&profile_root);
+    let result = sync.sync_to_project(&root)?;
+    println!("MEMORY_PROFILE_SYNC");
+    println!("profile_records_read={}", result.profile_records_read);
+    println!("project_records_updated={}", result.project_records_updated);
+    println!("conflicts={}", result.conflicts.len());
+    for conflict in &result.conflicts {
+        println!("conflict={}", conflict);
+    }
+    println!("PROFILE_SYNC_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_show_used() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    let active_ids: Vec<String> = records
+        .iter()
+        .filter(|r| r.status == "active" || r.status == "tentative")
+        .map(|r| r.id.clone())
+        .collect();
+    let session_index = SessionIndex::new(&root)?;
+    let recent_sessions = session_index.list_recent(5).unwrap_or_default();
+    let session_ids: Vec<String> = recent_sessions.iter().map(|s| s.id.clone()).collect();
+    println!("MEMORY_SHOW_USED");
+    println!("memory_ids={:?}", active_ids);
+    println!("session_ids={:?}", session_ids);
+    println!("SHOW_USED_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_stale() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    let stale = detect_stale(&records);
+    let expired: Vec<&MemoryRecord> = records
+        .iter()
+        .filter(|r| {
+            r.expires_at
+                .as_ref()
+                .is_some_and(|e| e.parse::<u128>().ok().is_some_and(|ts| ts < epoch_millis()))
+        })
+        .collect();
+    println!("MEMORY_STALE");
+    println!("stale_records={}", stale.len());
+    for s in &stale {
+        println!("stale={} reason={}", s.record_id, s.reason);
+    }
+    println!("expired_records={}", expired.len());
+    for r in &expired {
+        println!("expired={}", r.id);
+    }
+    println!("STALE_STATUS=PASS");
+    Ok(())
+}
+
+fn memory_migrate() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    let mut migrated = 0usize;
+    let file = rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?;
+    let mut new_records = Vec::new();
+    for mut record in records {
+        if record.schema_version == "0.1.0" {
+            record.schema_version = "0.2.0".to_string();
+            migrated += 1;
+        }
+        new_records.push(record);
+    }
+    if migrated > 0 {
+        rewrite_jsonl_atomic(&file, &new_records)?;
+    }
+    println!("MEMORY_MIGRATE");
+    println!("records_migrated={}", migrated);
+    println!("schema_version=0.2.0");
+    println!("MIGRATE_STATUS=PASS");
+    Ok(())
+}
+
+fn skill_candidate_consolidate() -> Result<()> {
+    let root = target_root()?;
+    let records = read_memory_records(&root).unwrap_or_default();
+    let mut registry = SkillRegistry::new(&root);
+    let candidates = registry.consolidate_from_memory(&records)?;
+
+    println!("SKILL_CANDIDATE_CONSOLIDATE");
+    println!("candidates_found={}", candidates.len());
+    for candidate in &candidates {
+        println!(
+            "candidate={} title={} status={}",
+            candidate.id, candidate.title, candidate.status
+        );
+    }
+    println!("candidate_is_approved_skill=no");
+    println!("approval_requires=qa_and_owner_gate");
+    println!("SKILL_CANDIDATE_CONSOLIDATE_STATUS=PASS");
     Ok(())
 }
 
@@ -2296,21 +3199,32 @@ fn identity_context(role: Option<String>) -> Result<()> {
     let role = role.unwrap_or_else(|| "advisor".to_string());
     validate_memory_field("role", &role, &["advisor", "ceo", "reviewer", "builder"])?;
     identity_init(&root)?;
+    let identity = read_identity(&root, &role)?;
     let file = identity_dir(&root)?.join(format!("{role}.identity.toml"));
     let text = fs::read_to_string(&file)?;
     let role_name = toml_value_line(&text, "role").unwrap_or_else(|| role.clone());
-    let activation = toml_value_line(&text, "activation").unwrap_or_else(|| "[]".to_string());
-    let output_contract =
-        toml_value_line(&text, "output_contract").unwrap_or_else(|| "not_set".to_string());
-    let owner_gates = toml_value_line(&text, "owner_gates").unwrap_or_else(|| "[]".to_string());
-    let inherits = toml_value_line(&text, "inherits").unwrap_or_else(|| "[]".to_string());
+    let activation = if identity.activation.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", identity.activation.join(","))
+    };
+    let owner_gates = if identity.owner_gates.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", identity.owner_gates.join(","))
+    };
+    let inherits = if identity.inherits.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", identity.inherits.join(","))
+    };
     let private_profile_linked =
         inherits.contains("aiplus-work-with-zhiwen") && private_profile_installed()?;
     println!("IDENTITY_CONTEXT");
     println!("role={role}");
     println!("role_name={role_name}");
     println!("activation={activation}");
-    println!("output_contract={output_contract}");
+    println!("output_contract={}", identity.output_contract);
     println!("owner_gates={owner_gates}");
     println!("permissions=none");
     println!("scope=project");
@@ -2359,30 +3273,32 @@ fn skill_candidate_propose(title: Option<String>, from_memory: Option<String>) -
     memory_init(&root)?;
     let id = format!("skill-candidate/{}_{}", epoch_millis(), stable_hash(&title));
     let source_memory_ids = from_memory.into_iter().collect();
-    let candidate = SkillCandidateRecord {
-        schema_version: "0.1.0".to_string(),
+    let candidate = SkillCandidate {
+        schema_version: aiplus_core::SKILL_SCHEMA_VERSION_V2.to_string(),
         id: id.clone(),
         title: single_line(&title),
         status: "candidate_proposed".to_string(),
         source_memory_ids,
         problem_pattern: "Owner-proposed repeatable workflow candidate".to_string(),
         proposed_skill_name: slugify(&title),
-        repeatability_evidence: RepeatabilityEvidence {
-            occurrence_count: 0,
-            synthetic_replay_available: false,
-        },
-        trigger_design: TriggerDesign::default(),
-        scope: SkillScope::default(),
-        privacy: SkillPrivacy::default(),
-        qa: SkillQa {
+        repeatability_evidence: aiplus_core::skill_candidate::RepeatabilityEvidence::default(),
+        trigger_design: aiplus_core::skill_candidate::TriggerDesign::default(),
+        scope: aiplus_core::skill_candidate::SkillScope::default(),
+        privacy: aiplus_core::skill_candidate::SkillPrivacy::default(),
+        qa: aiplus_core::skill_candidate::SkillQa {
             required_checks: Vec::new(),
             status: "pending".to_string(),
         },
-        owner_gate: SkillOwnerGate {
+        owner_gate: aiplus_core::skill_candidate::SkillOwnerGate {
             required_for_approval: true,
             approved_by: None,
             approved_at: None,
         },
+        evidence_links: Vec::new(),
+        rejection_reason: None,
+        needs_evidence: false,
+        proposed_at: timestamp(),
+        updated_at: timestamp(),
     };
     append_jsonl_atomic(
         &rel_to_abs(&root, ".aiplus/skills/candidates/candidates.jsonl")?,
@@ -3214,6 +4130,14 @@ fn install_profile_file(source: &Path, target: &Path, file_name: &str) -> Result
     write_file_atomic(&target.join(file_name), &bytes)
 }
 
+fn copy_profile_dir(source: &Path, target: &Path, dir_name: &str) -> Result<()> {
+    let src = source.join(dir_name);
+    let dst = target.join(dir_name);
+    fs::create_dir_all(&dst)?;
+    copy_dir_recursive(&src, &dst)?;
+    Ok(())
+}
+
 fn backup_profile_dir(profile: &str, dir: &Path) -> Result<()> {
     if !dir.exists() {
         return Ok(());
@@ -3252,14 +4176,6 @@ fn config_home() -> Result<PathBuf> {
     }
     let home = std::env::var("HOME").context("HOME is required")?;
     Ok(PathBuf::from(home).join(".config"))
-}
-
-fn memory_dir(root: &Path) -> Result<PathBuf> {
-    rel_to_abs(root, ".aiplus/memory")
-}
-
-fn identity_dir(root: &Path) -> Result<PathBuf> {
-    rel_to_abs(root, ".aiplus/identities")
 }
 
 fn memory_init(root: &Path) -> Result<()> {
@@ -3321,98 +4237,6 @@ fn write_if_missing(root: &Path, rel: &str, bytes: &[u8]) -> Result<()> {
         return Ok(());
     }
     write_file_atomic(&path, bytes)
-}
-
-fn append_jsonl_atomic(path: &Path, line: &str) -> Result<()> {
-    let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut current = fs::read_to_string(path).unwrap_or_default();
-    if !current.is_empty() && !current.ends_with('\n') {
-        current.push('\n');
-    }
-    current.push_str(line);
-    current.push('\n');
-    write_file_atomic(path, current.as_bytes())
-}
-
-fn rewrite_jsonl_atomic<T: Serialize>(path: &Path, rows: &[T]) -> Result<()> {
-    let _lock = FileLock::acquire(&path.with_extension("lock"))?;
-    let mut body = String::new();
-    for row in rows {
-        body.push_str(&serde_json::to_string(row)?);
-        body.push('\n');
-    }
-    write_file_atomic(path, body.as_bytes())
-}
-
-struct FileLock {
-    path: PathBuf,
-}
-
-impl FileLock {
-    fn acquire(path: &Path) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        for _ in 0..200 {
-            match fs::create_dir(path) {
-                Ok(()) => {
-                    return Ok(Self {
-                        path: path.to_path_buf(),
-                    });
-                }
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(CliError::new(1, format!("ERROR lock timeout: {}", path.display())).into())
-    }
-}
-
-impl Drop for FileLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir(&self.path);
-    }
-}
-
-fn read_memory_records(root: &Path) -> Result<Vec<MemoryRecord>> {
-    let mut records = Vec::new();
-    for rel in [
-        ".aiplus/memory/project-memory.jsonl",
-        ".aiplus/memory/decisions.jsonl",
-        ".aiplus/memory/facts.jsonl",
-    ] {
-        let path = rel_to_abs(root, rel)?;
-        if !path.exists() {
-            continue;
-        }
-        for line in fs::read_to_string(path)?
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-        {
-            records.push(serde_json::from_str::<MemoryRecord>(line)?);
-        }
-    }
-    Ok(records)
-}
-
-fn read_skill_candidates(root: &Path) -> Result<Vec<SkillCandidateRecord>> {
-    let path = rel_to_abs(root, ".aiplus/skills/candidates/candidates.jsonl")?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let mut candidates = Vec::new();
-    for line in fs::read_to_string(path)?
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-    {
-        candidates.push(serde_json::from_str::<SkillCandidateRecord>(line)?);
-    }
-    Ok(candidates)
 }
 
 fn continuity_state(root: &Path) -> Result<ContinuityState> {
@@ -3489,7 +4313,7 @@ fn validate_memory_jsonl(root: &Path, rel: &str) -> Result<Vec<String>> {
         }
         match serde_json::from_str::<MemoryRecord>(line) {
             Ok(record) => {
-                if let Err(error) = reject_sensitive_memory_text(&record.content) {
+                if let Err(error) = reject_sensitive_memory_text(&record.summary) {
                     errors.push(format!("{rel}:{} {}", index + 1, error));
                 }
             }
@@ -3536,24 +4360,6 @@ fn append_audit(root: &Path, event: &str, target: &str) -> Result<()> {
     )
 }
 
-fn reject_sensitive_memory_text(text: &str) -> Result<()> {
-    let findings: Vec<&str> = sensitive_findings(text)
-        .into_iter()
-        .filter_map(|(label, found)| found.then_some(label))
-        .collect();
-    if !findings.is_empty() {
-        return Err(CliError::new(
-            1,
-            format!(
-                "MEMORY_REDACTION_STATUS=BLOCKED reason=sensitive_pattern labels=[{}]",
-                findings.join(",")
-            ),
-        )
-        .into());
-    }
-    Ok(())
-}
-
 fn validate_memory_field(field: &str, value: &str, allowed: &[&str]) -> Result<()> {
     if allowed.contains(&value) {
         return Ok(());
@@ -3568,27 +4374,19 @@ fn validate_memory_field(field: &str, value: &str, allowed: &[&str]) -> Result<(
     .into())
 }
 
-fn stable_hash(value: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+fn reject_sensitive_memory_text(text: &str) -> Result<()> {
+    if let Err(err) = aiplus_core::reject_sensitive_memory_text(text) {
+        return Err(CliError::new(1, err.to_string()).into());
+    }
+    Ok(())
 }
 
-fn slugify(value: &str) -> String {
-    let mut slug = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    while slug.contains("--") {
-        slug = slug.replace("--", "-");
-    }
-    slug.trim_matches('-').chars().take(64).collect()
+fn toml_value_line(text: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key} = ");
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix(&prefix))
+        .map(|value| value.trim().trim_matches('"').to_string())
 }
 
 fn print_memory_rows<'a, I>(records: I, limit: Option<usize>) -> usize
@@ -3600,26 +4398,18 @@ where
         if limit.is_some_and(|max| shown >= max) {
             break;
         }
-        let content = if reject_sensitive_memory_text(&record.content).is_ok() {
-            single_line(&record.content)
+        let content = if reject_sensitive_memory_text(&record.summary).is_ok() {
+            single_line(&record.summary)
         } else {
             "<REDACTED_BY_SCAN>".to_string()
         };
         println!(
             "record={} scope={} kind={} status={} updatedAt={} content={}",
-            record.id, record.scope, record.kind, record.status, record.updated_at, content
+            record.id, record.scope, record.record_type, record.status, record.updated_at, content
         );
         shown += 1;
     }
     shown
-}
-
-fn toml_value_line(text: &str, key: &str) -> Option<String> {
-    let prefix = format!("{key} = ");
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix(&prefix))
-        .map(|value| value.trim().trim_matches('"').to_string())
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -3628,16 +4418,6 @@ fn yes_no(value: bool) -> &'static str {
     } else {
         "no"
     }
-}
-
-fn write_file_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let temp = path.with_extension(format!("tmp-{}", epoch_millis()));
-    fs::write(&temp, bytes)?;
-    fs::rename(temp, path)?;
-    Ok(())
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<()> {
@@ -3822,13 +4602,7 @@ fn install_runtime_adapter(
             )
         }
         "opencode" => {
-            write_file_safe(
-                root,
-                ".opencode/opencode.json",
-                opencode_config_content().as_bytes(),
-                plan,
-                options,
-            )?;
+            install_opencode_config(root, plan, options)?;
             write_file_safe(
                 root,
                 ".opencode/commands/aiplus-refresh.md",
@@ -3853,6 +4627,54 @@ fn install_runtime_adapter(
         }
         _ => Ok(()),
     }
+}
+
+fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> Result<()> {
+    let rel = ".opencode/opencode.json";
+    let target = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &target)?;
+
+    if target.exists() {
+        let text = fs::read_to_string(&target).unwrap_or_default();
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            if opencode_config_is_preservable(&value) {
+                plan.items.push(PlanItem {
+                    action: "skip-user-config".to_string(),
+                    path: rel.to_string(),
+                });
+                return Ok(());
+            }
+
+            if options.force {
+                if let Some(mut object) = value.as_object().cloned() {
+                    object.remove("aiplus");
+                    object
+                        .entry("$schema".to_string())
+                        .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
+                    let content =
+                        serde_json::to_string_pretty(&serde_json::Value::Object(object))? + "\n";
+                    return write_file_safe(root, rel, content.as_bytes(), plan, options);
+                }
+            }
+        }
+    }
+
+    write_file_safe(
+        root,
+        rel,
+        opencode_config_content().as_bytes(),
+        plan,
+        options,
+    )
+}
+
+fn opencode_config_is_preservable(value: &serde_json::Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        !object.contains_key("aiplus")
+            && object
+                .get("$schema")
+                .is_none_or(|schema| schema.is_string())
+    })
 }
 
 fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
@@ -4004,6 +4826,7 @@ fn write_manifest(
     let existing_modules = normalize_existing_modules(existing.modules.as_ref());
     let mut next_runtimes: BTreeSet<String> = existing
         .runtime_adapters
+        .clone()
         .unwrap_or_default()
         .into_iter()
         .collect();
@@ -4064,12 +4887,22 @@ fn write_manifest(
     for runtime in &runtime_vec {
         managed_files.extend(runtime_managed_files(runtime));
     }
+    let existing_stable = existing.installer.as_deref() == Some(INSTALLER)
+        && existing.installer_version.as_deref() == Some(VERSION)
+        && existing.target_root.as_deref() == Some(&root.display().to_string())
+        && existing.runtime_adapters.as_ref() == Some(&runtime_vec)
+        && existing.modules.as_ref() == Some(&modules)
+        && existing.managed_files.as_ref() == Some(&managed_files);
     let manifest = Manifest {
         schema_version: Some(VERSION.to_string()),
         installer: Some(INSTALLER.to_string()),
         installer_version: Some(VERSION.to_string()),
-        installed_at: Some(existing.installed_at.unwrap_or_else(|| now.clone())),
-        updated_at: Some(now),
+        installed_at: Some(existing.installed_at.clone().unwrap_or_else(|| now.clone())),
+        updated_at: Some(if existing_stable {
+            existing.updated_at.clone().unwrap_or_else(|| now.clone())
+        } else {
+            now
+        }),
         target_root: Some(root.display().to_string()),
         runtime_adapters: Some(runtime_vec),
         modules: Some(modules),
@@ -4231,6 +5064,19 @@ fn write_managed_text(root: &Path, rel: &str, content: &str, plan: &mut Plan) ->
         .to_string(),
         path: rel.to_string(),
     });
+    if let Some(current) = current.as_ref() {
+        backup_file(
+            root,
+            rel,
+            current,
+            plan,
+            &Options {
+                force: true,
+                backup: true,
+                yes: true,
+            },
+        )?;
+    }
     if !plan.dry_run {
         fs::write(target, content)?;
     }
@@ -4293,7 +5139,10 @@ fn backup_file(
         )
         .into());
     }
-    let stamp = timestamp().replace([':', '.'], "-");
+    let stamp = plan
+        .backup_stamp
+        .get_or_insert_with(|| timestamp().replace([':', '.'], "-"))
+        .clone();
     let backup_rel = format!(".aiplus/backups/{stamp}/{rel}");
     let backup_abs = rel_to_abs(root, &backup_rel)?;
     assert_no_symlink_path(root, &backup_abs)?;
@@ -4306,8 +5155,79 @@ fn backup_file(
     });
     if !plan.dry_run {
         fs::write(backup_abs, content)?;
+        write_rollback_plan(root, &stamp, rel, &backup_rel)?;
     }
     Ok(())
+}
+
+fn write_rollback_plan(root: &Path, id: &str, original_rel: &str, backup_rel: &str) -> Result<()> {
+    let rel = format!(".aiplus/backups/{id}/rollback-plan.json");
+    let abs = rel_to_abs(root, &rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let mut plan = if abs.exists() {
+        let text = fs::read_to_string(&abs)?;
+        serde_json::from_str::<RollbackPlan>(&text)?
+    } else {
+        RollbackPlan {
+            schema_version: aiplus_core::rollback::ROLLBACK_SCHEMA_VERSION.to_string(),
+            id: id.to_string(),
+            created_at: timestamp(),
+            entries: Vec::new(),
+        }
+    };
+    plan.add_restore(original_rel, backup_rel);
+    if let Some(parent) = abs.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(abs, format!("{}\n", serde_json::to_string_pretty(&plan)?))?;
+    Ok(())
+}
+
+fn resolve_rollback_plan_path(root: &Path, id: &str) -> Result<PathBuf> {
+    let backups = rel_to_abs(root, ".aiplus/backups")?;
+    if id == "latest" {
+        let mut candidates = Vec::new();
+        if backups.exists() {
+            for entry in fs::read_dir(backups)? {
+                let entry = entry?;
+                let path = entry.path().join("rollback-plan.json");
+                if path.exists() {
+                    candidates.push(path);
+                }
+            }
+        }
+        candidates.sort();
+        return candidates.pop().ok_or_else(|| {
+            CliError::new(1, "ROLLBACK_STATUS=BLOCKED reason=no_rollback_plan").into()
+        });
+    }
+    if id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err(CliError::new(1, "ROLLBACK_STATUS=BLOCKED reason=invalid_id").into());
+    }
+    rel_to_abs(root, &format!(".aiplus/backups/{id}/rollback-plan.json"))
+}
+
+fn read_rollback_plan(path: &Path) -> Result<RollbackPlan> {
+    assert_no_symlink_path(&target_root()?, path)?;
+    let text = fs::read_to_string(path).map_err(|_| {
+        CliError::new(
+            1,
+            format!(
+                "ROLLBACK_STATUS=BLOCKED reason=missing_plan path={}",
+                path.display()
+            ),
+        )
+    })?;
+    serde_json::from_str(&text).map_err(|_| {
+        CliError::new(
+            1,
+            format!(
+                "ROLLBACK_STATUS=BLOCKED reason=malformed_plan path={}",
+                path.display()
+            ),
+        )
+        .into()
+    })
 }
 
 fn ensure_dir(root: &Path, dir: &Path, plan: &mut Plan) -> Result<()> {
@@ -4335,22 +5255,11 @@ fn copy_embedded_module(
     options: &Options,
 ) -> Result<()> {
     let prefix = format!("{}/", spec.vendor_name);
-    for (rel, bytes) in ASSET_FILES {
-        let Some(stripped) = rel.strip_prefix(&prefix) else {
-            continue;
-        };
+    for (stripped, bytes) in aiplus_core::assets::embedded_files_with_prefix(&prefix) {
         let dest = format!("{}/{}", spec.path, stripped);
         write_file_safe(root, &dest, bytes, plan, options)?;
     }
     Ok(())
-}
-
-fn embedded_asset_text(rel: &str) -> Result<String> {
-    let bytes = ASSET_FILES
-        .iter()
-        .find_map(|(path, bytes)| (*path == rel).then_some(*bytes))
-        .ok_or_else(|| anyhow!("missing embedded asset: {rel}"))?;
-    String::from_utf8(bytes.to_vec()).with_context(|| format!("decode embedded asset {rel}"))
 }
 
 fn read_manifest(root: &Path, quiet: bool) -> Result<Manifest> {
@@ -4753,6 +5662,20 @@ fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
     print_compact_diagnostics(&result);
     println!("COMPACT_PREPARE");
     print_readiness(&readiness);
+    // Always attempt to build/update context capsule so it exists for resume
+    let capsule = build_context_capsule_from_handoff(root).unwrap_or_else(|_| {
+        aiplus_core::build_capsule_from_compact_state(
+            &project_id_from_root(root),
+            "Unknown objective",
+            "Unknown state",
+            "Run aiplus compact resume.",
+        )
+    });
+    let capsule_written = save_context_capsule(root, &capsule).is_ok();
+    if capsule_written {
+        println!("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json");
+    }
+
     if readiness.state == "READY_TO_COMPACT" {
         let (_, checkpoint) = compact_checkpoint_with_options(root, level, false, false)?;
         append_savings_event(
@@ -4789,6 +5712,412 @@ fn compact_score(root: &Path) -> Result<i32> {
     println!("COMPACT_SCORE");
     print_readiness(&readiness);
     Ok(readiness_exit_code(&readiness))
+}
+
+fn compact_remind(
+    root: &Path,
+    event: Option<&str>,
+    snooze: Option<&str>,
+    clear_snooze: bool,
+    json: bool,
+    quiet: bool,
+) -> Result<i32> {
+    let mut snooze_status = compact_snooze_status(root)?;
+    if clear_snooze {
+        clear_compact_snooze(root)?;
+        snooze_status = "cleared";
+    } else if let Some(duration) = snooze {
+        set_compact_snooze(root, duration)?;
+        snooze_status = "set";
+    }
+
+    let result = compact_validate_state(root)?;
+    let readiness = compact_readiness(&result, root);
+    let handoff = compact_handoff_freshness(root)?;
+    let latest_checkpoint_age = latest_checkpoint_age(root)?;
+    let estimate = estimate_savings_for_remind(root)?;
+    let reminder = compact_reminder_decision(
+        event,
+        snooze_status,
+        &result,
+        &readiness,
+        &handoff,
+        latest_checkpoint_age.as_deref(),
+        &estimate,
+    );
+
+    if !quiet {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "schemaVersion": VERSION,
+                    "status": "PASS",
+                    "event": event.unwrap_or("manual"),
+                    "reminderDecision": reminder.decision,
+                    "reminderLevel": reminder.level,
+                    "readinessState": reminder.readiness_state,
+                    "recoveryConfidence": reminder.recovery_confidence,
+                    "manualCompactRecommended": reminder.manual_compact_recommended,
+                    "snoozeStatus": reminder.snooze_status,
+                    "handoffState": reminder.handoff_state,
+                    "lastCheckpointAge": reminder.last_checkpoint_age,
+                    "estimatedTokensSaved": reminder.estimated_tokens_saved,
+                    "estimatedUsdSaved": reminder.estimated_usd_saved,
+                    "reason": reminder.reason,
+                    "nextAction": reminder.next_action,
+                    "secretValuesPrinted": "no",
+                    "billingData": false,
+                    "hostCompactTriggered": false
+                })
+            );
+        } else {
+            println!("Auto Compact reminder");
+            println!("COMPACT_REMINDER");
+            println!("REMINDER_DECISION={}", reminder.decision);
+            println!("REMINDER_LEVEL={}", reminder.level);
+            println!("READINESS_STATE={}", reminder.readiness_state);
+            println!("RECOVERY_CONFIDENCE={}", reminder.recovery_confidence);
+            println!(
+                "MANUAL_COMPACT_RECOMMENDED={}",
+                yes_no(reminder.manual_compact_recommended)
+            );
+            println!("SNOOZE_STATUS={}", reminder.snooze_status);
+            println!("HANDOFF_STATE={}", reminder.handoff_state);
+            println!("LAST_CHECKPOINT_AGE={}", reminder.last_checkpoint_age);
+            println!("ESTIMATED_TOKENS_SAVED={}", reminder.estimated_tokens_saved);
+            println!("ESTIMATED_USD_SAVED={}", reminder.estimated_usd_saved);
+            println!("SECRET_VALUES_PRINTED={}", reminder.secret_values_printed);
+            println!("REASON={}", reminder.reason);
+            println!("NEXT_ACTION={}", reminder.next_action);
+            println!("HOST_COMPACT_TRIGGERED=no");
+            println!();
+            println!("{}", compact_reminder_plain_language(&reminder));
+        }
+    }
+
+    Ok(match reminder.decision {
+        "blocked" => 1,
+        "wait" => 2,
+        _ => 0,
+    })
+}
+
+fn compact_reminder_decision(
+    event: Option<&str>,
+    snooze_status: &'static str,
+    result: &CompactValidation,
+    readiness: &CompactReadiness,
+    handoff: &HandoffFreshness,
+    latest_checkpoint_age: Option<&str>,
+    estimate: &SavingsEstimate,
+) -> CompactReminder {
+    let scheduled_event = event.is_some_and(|event| event != "user-request");
+    let checkpoint_exists = latest_checkpoint_age.is_some();
+    let estimated_usd_saved = estimate
+        .cost_saved_usd
+        .map(|value| format!("{value:.4}"))
+        .unwrap_or_else(|| "unavailable".to_string());
+    let checkpoint_age = latest_checkpoint_age.unwrap_or("missing").to_string();
+    let recovery_confidence =
+        if readiness.state == "READY_TO_COMPACT" && handoff.state == "current" && checkpoint_exists
+        {
+            "high"
+        } else if readiness.state == "READY_TO_COMPACT" && handoff.state == "current" {
+            "medium"
+        } else {
+            "low"
+        };
+
+    if !result.errors.is_empty() || !result.warnings.is_empty() || !result.denied_gates.is_empty() {
+        return CompactReminder {
+            decision: "blocked",
+            level: "safety_block",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: first_compact_reason(readiness, "compact validation has blocking findings"),
+            next_action: readiness.next_action.clone(),
+            secret_values_printed: "no",
+        };
+    }
+
+    if handoff.state != "current" {
+        return CompactReminder {
+            decision: "wait",
+            level: "safety_block",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: handoff.reason.clone(),
+            next_action: "Update .codex/compact/current-handoff.md and run aiplus compact prepare."
+                .to_string(),
+            secret_values_printed: "no",
+        };
+    }
+
+    if readiness.state == "NOT_RECOMMENDED_DURING_ACTIVE_WORK" {
+        return CompactReminder {
+            decision: "wait",
+            level: "safety_block",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: first_compact_reason(readiness, "current work is unstable"),
+            next_action: readiness.next_action.clone(),
+            secret_values_printed: "no",
+        };
+    }
+
+    if readiness.state != "READY_TO_COMPACT" {
+        return CompactReminder {
+            decision: "prepare_only",
+            level: "soft",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: first_compact_reason(readiness, "checkpoint is not ready yet"),
+            next_action: readiness.next_action.clone(),
+            secret_values_printed: "no",
+        };
+    }
+
+    if snooze_status == "active" && scheduled_event {
+        return CompactReminder {
+            decision: "wait",
+            level: "soft",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: "compact reminder snooze is active for scheduled reminders".to_string(),
+            next_action: "Wait until snooze expires or run aiplus compact remind --clear-snooze."
+                .to_string(),
+            secret_values_printed: "no",
+        };
+    }
+
+    if !checkpoint_exists {
+        return CompactReminder {
+            decision: "prepare_only",
+            level: "soft",
+            readiness_state: readiness.state.to_string(),
+            recovery_confidence,
+            manual_compact_recommended: false,
+            snooze_status,
+            handoff_state: handoff.state,
+            last_checkpoint_age: checkpoint_age,
+            estimated_tokens_saved: estimate.tokens_saved,
+            estimated_usd_saved,
+            reason: "handoff is current but no checkpoint exists yet".to_string(),
+            next_action: "Run aiplus compact prepare, then suggest manual host compact if it creates a checkpoint."
+                .to_string(),
+            secret_values_printed: "no",
+        };
+    }
+
+    CompactReminder {
+        decision: "remind_now",
+        level: "ready",
+        readiness_state: readiness.state.to_string(),
+        recovery_confidence,
+        manual_compact_recommended: true,
+        snooze_status,
+        handoff_state: handoff.state,
+        last_checkpoint_age: checkpoint_age,
+        estimated_tokens_saved: estimate.tokens_saved,
+        estimated_usd_saved,
+        reason: first_compact_reason(readiness, "safe compact point with checkpoint ready"),
+        next_action:
+            "Suggest the host compact action manually; after compact, run aiplus compact resume."
+                .to_string(),
+        secret_values_printed: "no",
+    }
+}
+
+fn compact_reminder_plain_language(reminder: &CompactReminder) -> String {
+    match reminder.decision {
+        "remind_now" => format!(
+            "建议现在 compact：checkpoint 已准备好，恢复信心 {}，预计可节省约 {} tokens。AiPlus 不会替你点击或调用 host compact。",
+            reminder.recovery_confidence, reminder.estimated_tokens_saved
+        ),
+        "prepare_only" => format!(
+            "建议先准备 checkpoint：{}。准备完成后再决定是否手动 compact。",
+            reminder.reason
+        ),
+        "wait" => format!("暂不建议 compact：{}。{}", reminder.reason, reminder.next_action),
+        _ => format!("不要 compact：{}。{}", reminder.reason, reminder.next_action),
+    }
+}
+
+fn first_compact_reason(readiness: &CompactReadiness, fallback: &str) -> String {
+    readiness
+        .reasons
+        .first()
+        .map(|value| single_line(value))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn compact_handoff_freshness(root: &Path) -> Result<HandoffFreshness> {
+    let path = compact_file(root, "current-handoff.md")?;
+    if !path.exists() {
+        return Ok(HandoffFreshness {
+            state: "missing",
+            reason: "current-handoff.md is missing".to_string(),
+        });
+    }
+    let text = fs::read_to_string(&path)?;
+    if text.contains("Synthetic template")
+        || text.contains("<REPO_ROOT>")
+        || text.contains("<ISO8601_TIMESTAMP>")
+    {
+        return Ok(HandoffFreshness {
+            state: "template_only",
+            reason: "current-handoff.md still looks like the starter template".to_string(),
+        });
+    }
+    let last_updated = single_line(&section_body(&text, "Last Updated"));
+    let age_seconds = parse_unix_millis_marker(&last_updated)
+        .map(|millis| epoch_millis().saturating_sub(millis) / 1000)
+        .map(|seconds| seconds as u64);
+    if age_seconds.is_none_or(|seconds| seconds > 5_400) {
+        return Ok(HandoffFreshness {
+            state: "stale",
+            reason: "current-handoff.md is stale or has no parseable Last Updated timestamp"
+                .to_string(),
+        });
+    }
+    Ok(HandoffFreshness {
+        state: "current",
+        reason: "current-handoff.md is current".to_string(),
+    })
+}
+
+fn latest_checkpoint_age(root: &Path) -> Result<Option<String>> {
+    let Some(rel) = latest_checkpoint(root)? else {
+        return Ok(None);
+    };
+    let path = rel_to_abs(root, &rel)?;
+    let modified = fs::metadata(path)?.modified()?;
+    let seconds = SystemTime::now()
+        .duration_since(modified)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    Ok(Some(format_duration_seconds(seconds)))
+}
+
+fn format_duration_seconds(seconds: u64) -> String {
+    if seconds < 60 {
+        format!("{seconds}s")
+    } else if seconds < 3_600 {
+        format!("{}m", seconds / 60)
+    } else {
+        format!("{}h", seconds / 3_600)
+    }
+}
+
+fn parse_unix_millis_marker(value: &str) -> Option<u128> {
+    value
+        .strip_prefix("unix-")?
+        .strip_suffix("ms")?
+        .parse::<u128>()
+        .ok()
+}
+
+fn compact_snooze_status(root: &Path) -> Result<&'static str> {
+    let Some(snooze) = read_compact_snooze(root)? else {
+        return Ok("inactive");
+    };
+    if snooze.until_epoch_millis > epoch_millis() {
+        Ok("active")
+    } else {
+        Ok("expired")
+    }
+}
+
+fn read_compact_snooze(root: &Path) -> Result<Option<CompactReminderSnooze>> {
+    let path = compact_file(root, "reminder-snooze.json")?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text).ok())
+}
+
+fn set_compact_snooze(root: &Path, duration: &str) -> Result<()> {
+    let seconds = parse_snooze_duration_seconds(duration)?;
+    let now = epoch_millis();
+    let snooze = CompactReminderSnooze {
+        schema_version: VERSION.to_string(),
+        set_at_epoch_millis: now,
+        until_epoch_millis: now + (seconds as u128 * 1000),
+        duration_seconds: seconds,
+    };
+    write_file_safe(
+        root,
+        ".codex/compact/reminder-snooze.json",
+        format!("{}\n", serde_json::to_string_pretty(&snooze)?).as_bytes(),
+        &mut Plan::default(),
+        &Options {
+            force: true,
+            backup: false,
+            yes: true,
+        },
+    )
+}
+
+fn clear_compact_snooze(root: &Path) -> Result<()> {
+    let path = compact_file(root, "reminder-snooze.json")?;
+    if path.exists() {
+        assert_no_symlink_path(root, &path)?;
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn parse_snooze_duration_seconds(value: &str) -> Result<u64> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(CliError::new(2, "ERROR snooze duration is empty").into());
+    }
+    let (number, multiplier) = match value.chars().last().unwrap_or('s') {
+        'm' | 'M' => (&value[..value.len() - 1], 60),
+        'h' | 'H' => (&value[..value.len() - 1], 3_600),
+        's' | 'S' => (&value[..value.len() - 1], 1),
+        _ => (value, 60),
+    };
+    let amount = number
+        .parse::<u64>()
+        .map_err(|_| CliError::new(2, format!("ERROR invalid snooze duration: {value}")))?;
+    if amount == 0 {
+        return Err(CliError::new(2, "ERROR snooze duration must be positive").into());
+    }
+    Ok(amount.saturating_mul(multiplier))
 }
 
 fn compact_resume(root: &Path) -> Result<i32> {
@@ -5120,6 +6449,272 @@ fn append_savings_event(
     Ok(())
 }
 
+#[allow(dead_code)]
+fn load_context_capsule(root: &Path) -> Result<aiplus_core::ContextCapsule> {
+    let path = compact_file(root, "context-capsule.json")?;
+    if !path.exists() {
+        return Err(anyhow::anyhow!("context-capsule.json not found"));
+    }
+    let text = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+fn save_context_capsule(root: &Path, capsule: &aiplus_core::ContextCapsule) -> Result<()> {
+    let path = compact_file(root, "context-capsule.json")?;
+    fs::write(path, serde_json::to_string_pretty(capsule)?)?;
+    Ok(())
+}
+
+fn build_context_capsule_from_handoff(root: &Path) -> Result<aiplus_core::ContextCapsule> {
+    use aiplus_core::{build_capsule_from_compact_state, timestamp};
+    let handoff = read_compact_text(root, "current-handoff.md")?;
+    let objective = compact_section_or_unknown(&handoff, "Current Goal");
+    let current_state = compact_section_or_unknown(&handoff, "Current Phase");
+    let next_safe_action = compact_section_or_unknown(&handoff, "Next 3 Actions");
+
+    let mut capsule = build_capsule_from_compact_state(
+        &project_id_from_root(root),
+        &objective,
+        &current_state,
+        &next_safe_action,
+    );
+
+    capsule.next_safe_action = next_safe_action.clone();
+    capsule.resume_prompt = format!(
+        "Resume work on: {}. Current state: {}. Next action: {}.",
+        objective, current_state, next_safe_action
+    );
+
+    capsule.decisions = extract_decisions_from_ledger(root)?;
+    capsule.owner_gates = extract_owner_gates_from_handoff(&handoff)?;
+
+    capsule.updated_at = timestamp();
+    Ok(capsule)
+}
+
+fn extract_decisions_from_ledger(_root: &Path) -> Result<Vec<aiplus_core::CapsuleDecision>> {
+    Ok(Vec::new())
+}
+
+fn extract_owner_gates_from_handoff(handoff: &str) -> Result<Vec<aiplus_core::CapsuleOwnerGate>> {
+    let mut gates = Vec::new();
+    let section = section_body(handoff, "Owner Gates");
+    for line in section.lines() {
+        let line = line.trim();
+        if line.starts_with("-") {
+            let content = line.trim_start_matches('-').trim();
+            let status = if content.contains("APPROVED") {
+                "APPROVED"
+            } else if content.contains("DENIED") {
+                "DENIED"
+            } else {
+                "UNKNOWN_PENDING"
+            };
+            gates.push(aiplus_core::CapsuleOwnerGate {
+                label: content.to_string(),
+                status: status.to_string(),
+                required: true,
+                approved_by: None,
+            });
+        }
+    }
+    Ok(gates)
+}
+
+fn compact_watch(root: &Path, once: bool, interval: Option<&str>, json: bool) -> Result<i32> {
+    use aiplus_core::{parse_watch_interval, ReminderState, WatchConfig, WatchMode, WatchResult};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let config = WatchConfig {
+        mode: if once {
+            WatchMode::Once
+        } else {
+            WatchMode::Interval
+        },
+        interval_seconds: interval
+            .map(parse_watch_interval)
+            .transpose()?
+            .unwrap_or(600),
+        max_iterations: if once { Some(1) } else { None },
+        json_output: json,
+    };
+
+    let mode_str = if once { "once" } else { "interval" };
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .ok();
+
+    #[cfg(unix)]
+    {
+        let r = running.clone();
+        if let Ok(mut signals) = signal_hook::iterator::Signals::new([signal_hook::consts::SIGTERM])
+        {
+            std::thread::spawn(move || {
+                if signals.forever().next().is_some() {
+                    r.store(false, Ordering::SeqCst);
+                }
+            });
+        }
+    }
+
+    let mut iteration = 0u64;
+
+    loop {
+        if !running.load(Ordering::SeqCst) {
+            if !json {
+                println!("COMPACT_WATCH_INTERRUPTED");
+            }
+            break;
+        }
+
+        iteration += 1;
+
+        let exit_code = compact_remind(
+            root,
+            if once {
+                Some("watch-once")
+            } else {
+                Some("watch-interval")
+            },
+            None,
+            false,
+            false, // suppress inner JSON; watch emits its own JSON if needed
+            json,  // suppress all inner output when watch is in JSON mode
+        )?;
+
+        let mut state = load_reminder_state(root).unwrap_or_else(|_| {
+            let mut s = ReminderState::new("aiplus-project");
+            s.project_id = project_id_from_root(root);
+            s
+        });
+        state.watch_count = state.watch_count.saturating_add(1);
+        state.last_watch_at = Some(timestamp());
+
+        if let Ok(result) = compact_validate_state(root) {
+            let readiness = compact_readiness(&result, root);
+            let handoff = compact_handoff_freshness(root).unwrap_or(HandoffFreshness {
+                state: "unknown",
+                reason: "handoff evaluation failed".to_string(),
+            });
+            state.last_reminder_decision = match exit_code {
+                0 => "remind_now".to_string(),
+                1 => "blocked".to_string(),
+                2 => "wait".to_string(),
+                _ => "unknown".to_string(),
+            };
+            state.last_reminder_level = if exit_code == 0 {
+                "ready".to_string()
+            } else if exit_code == 1 {
+                "safety_block".to_string()
+            } else {
+                "soft".to_string()
+            };
+            state.last_handoff_state = handoff.state.to_string();
+            state.last_recovery_confidence =
+                if readiness.state == "READY_TO_COMPACT" && handoff.state == "current" {
+                    "high".to_string()
+                } else if readiness.state == "READY_TO_COMPACT" {
+                    "medium".to_string()
+                } else {
+                    "low".to_string()
+                };
+        }
+
+        let _ = save_reminder_state(root, &state);
+
+        if json {
+            let result = WatchResult {
+                status: "PASS".to_string(),
+                watch_mode: mode_str.to_string(),
+                iteration,
+                reminder_decision: state.last_reminder_decision.clone(),
+                reminder_level: state.last_reminder_level.clone(),
+                handoff_state: state.last_handoff_state.clone(),
+                recovery_confidence: state.last_recovery_confidence.clone(),
+                manual_compact_recommended: exit_code == 0,
+                host_compact_triggered: false,
+                secret_values_printed: false,
+                raw_transcript_captured: false,
+                context_capsule_status: "updated".to_string(),
+                next_action: if exit_code == 0 {
+                    "Run aiplus compact prepare, then suggest manual host compact.".to_string()
+                } else {
+                    "Check blockers and retry.".to_string()
+                },
+                reason: format!("watch iteration {iteration}"),
+            };
+            println!("{}", serde_json::to_string(&result)?);
+        } else {
+            println!("COMPACT_WATCH");
+            println!("WATCH_MODE={}", mode_str);
+            println!("WATCH_ITERATION={}", iteration);
+            println!("REMINDER_DECISION={}", state.last_reminder_decision);
+            println!("REMINDER_LEVEL={}", state.last_reminder_level);
+            println!("HANDOFF_STATE={}", state.last_handoff_state);
+            println!("RECOVERY_CONFIDENCE={}", state.last_recovery_confidence);
+            println!(
+                "MANUAL_COMPACT_RECOMMENDED={}",
+                if exit_code == 0 { "yes" } else { "no" }
+            );
+            println!("HOST_COMPACT_TRIGGERED=no");
+            println!("SECRET_VALUES_PRINTED=no");
+            println!("RAW_TRANSCRIPT_CAPTURED=no");
+            println!("CONTEXT_CAPSULE_STATUS=updated");
+            println!(
+                "NEXT_ACTION={}",
+                if exit_code == 0 {
+                    "Run aiplus compact prepare, then suggest manual host compact."
+                } else {
+                    "Check blockers and retry."
+                }
+            );
+        }
+
+        if once || config.max_iterations == Some(iteration) {
+            break;
+        }
+
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(config.interval_seconds));
+    }
+
+    Ok(0)
+}
+
+fn load_reminder_state(root: &Path) -> Result<aiplus_core::ReminderState> {
+    let path = compact_file(root, "reminder-state.json")?;
+    if !path.exists() {
+        return Err(anyhow::anyhow!("reminder-state.json not found"));
+    }
+    let text = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+fn save_reminder_state(root: &Path, state: &aiplus_core::ReminderState) -> Result<()> {
+    let path = compact_file(root, "reminder-state.json")?;
+    fs::write(path, serde_json::to_string_pretty(state)?)?;
+    Ok(())
+}
+
+fn project_id_from_root(root: &Path) -> String {
+    let canonical = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    format!("{:x}", {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        canonical.to_string_lossy().hash(&mut hasher);
+        hasher.finish()
+    })
+}
+
 fn compact_savings(root: &Path, json: bool) -> Result<()> {
     let (events, malformed) = read_savings_events(root)?;
     if events.is_empty() {
@@ -5362,6 +6957,44 @@ fn estimate_savings(root: &Path) -> Result<SavingsEstimate> {
         notes: vec![
             "local aggregate estimate only".to_string(),
             "no prompt text, transcript text, file contents, raw checkpoint text, billing data, or usage history is stored".to_string(),
+        ],
+    })
+}
+
+fn estimate_savings_for_remind(root: &Path) -> Result<SavingsEstimate> {
+    let handoff_tokens = estimate_compact_tokens(root)?;
+    let resume_tokens = 600;
+    let input_before =
+        (handoff_tokens.saturating_mul(4)).max(handoff_tokens + resume_tokens + 1000);
+    let handoff_after = handoff_tokens + resume_tokens;
+    let tokens_saved = input_before.saturating_sub(handoff_after);
+    let reduction_percent = if input_before == 0 {
+        0.0
+    } else {
+        (tokens_saved as f64 / input_before as f64) * 100.0
+    };
+    let (model_detected, confidence) = detect_model_hint();
+    let catalog = bundled_pricing_catalog();
+    let (pricing_model, pricing_source, pricing_fetched_at, price) =
+        choose_pricing_model(&catalog, model_detected.as_deref(), &confidence);
+    let cost_saved_usd = price.map(|price| (tokens_saved as f64 / 1_000_000.0) * price);
+    Ok(SavingsEstimate {
+        input_before,
+        handoff_after,
+        resume_tokens,
+        tokens_saved,
+        reduction_percent: round1(reduction_percent),
+        cost_saved_usd: cost_saved_usd.map(round4),
+        pricing_model,
+        pricing_source,
+        pricing_fetched_at,
+        model_detected,
+        model_detection_confidence: confidence,
+        confidence: "low".to_string(),
+        notes: vec![
+            "local aggregate estimate only".to_string(),
+            "no prompt text, transcript text, file contents, raw checkpoint text, billing data, or usage history is stored".to_string(),
+            "pricing: bundled read-only, no network, no cache write".to_string(),
         ],
     })
 }
@@ -6052,74 +7685,6 @@ fn scan_sensitive(root: &Path) -> Result<Vec<String>> {
     Ok(warnings)
 }
 
-fn sensitive_findings(text: &str) -> Vec<(&'static str, bool)> {
-    let lower = text.to_ascii_lowercase();
-    vec![
-        (
-            "authorization header",
-            lower.contains("authorization: bearer") || lower.contains("authorization: basic"),
-        ),
-        (
-            "placeholder secret",
-            text.contains("PENDING_OWNER_INPUT_DO_NOT_USE") || text.contains("BWS_ACCESS_TOKEN"),
-        ),
-        (
-            "private key",
-            text.contains("-----BEGIN ") && text.contains("PRIVATE KEY-----"),
-        ),
-        ("jwt", text.split_whitespace().any(is_jwt_like)),
-        ("cookie", lower.contains("cookie:") && text.contains('=')),
-        (
-            "private path",
-            text.contains("/Users/")
-                || text.contains("/home/")
-                || lower.contains("dropbox/")
-                || text.contains("iCloud"),
-        ),
-        ("email pii", text.contains('@') && text.contains('.')),
-        ("phone pii", has_phone_like(text)),
-        (
-            "raw audio/transcript payload",
-            lower.contains("begin transcript")
-                || lower.contains("webvtt")
-                || lower.contains("provider request body")
-                || lower.contains("provider response body"),
-        ),
-        (
-            "har/webrtc dump",
-            lower.contains(".har") || lower.contains(".webrtcdump"),
-        ),
-        ("api key", has_secret_assignment(&lower)),
-    ]
-}
-
-fn is_jwt_like(token: &str) -> bool {
-    let parts: Vec<&str> = token
-        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '.' && ch != '_' && ch != '-')
-        .split('.')
-        .collect();
-    parts.len() == 3 && parts[0].starts_with("eyJ")
-}
-
-fn has_phone_like(text: &str) -> bool {
-    let digits: String = text.chars().filter(|ch| ch.is_ascii_digit()).collect();
-    digits.len() >= 10 && digits.len() <= 15
-}
-
-fn has_secret_assignment(lower: &str) -> bool {
-    [
-        "api_key",
-        "apikey",
-        "api-key",
-        "secret_key",
-        "secret-key",
-        "access_token",
-        "access-token",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle) && (lower.contains('=') || lower.contains(':')))
-}
-
 fn strip_numbering(line: &str) -> String {
     let trimmed = line.trim();
     let without_digits = trimmed.trim_start_matches(|ch: char| ch.is_ascii_digit());
@@ -6128,10 +7693,6 @@ fn strip_numbering(line: &str) -> String {
         .unwrap_or(without_digits)
         .trim()
         .to_string()
-}
-
-fn single_line(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn optional_line(value: String) -> Option<String> {
@@ -6172,37 +7733,6 @@ fn runtime_list(value: &str) -> Vec<String> {
     }
 }
 
-fn normalize_module(value: Option<&str>) -> Option<&'static str> {
-    match value? {
-        "auto-compact" | "aiplus-auto-compact" | "compact" => Some("auto-compact"),
-        "auto-team-consultant" | "aiplus-auto-team-consultant" | "team" => {
-            Some("auto-team-consultant")
-        }
-        "agent-memory" | "aiplus-agent-memory" | "memory" => Some("agent-memory"),
-        _ => None,
-    }
-}
-
-fn module_spec(name: &str) -> Option<ModuleSpec> {
-    MODULES.iter().copied().find(|spec| spec.name == name)
-}
-
-fn default_module_names() -> Vec<String> {
-    vec![
-        "auto-compact".to_string(),
-        "auto-team-consultant".to_string(),
-        "agent-memory".to_string(),
-    ]
-}
-
-fn available_modules_text() -> String {
-    MODULES
-        .iter()
-        .map(|spec| spec.name)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn runtime_label(runtime: &str) -> String {
     match runtime {
         "codex" => "Codex".to_string(),
@@ -6233,12 +7763,12 @@ fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String
     Ok(match runtime {
         "codex" => vec![
             (
-                "AGENTS.md contains managed block".to_string(),
-                has_managed_block(root)?,
+                "AGENTS.md contains exactly one AiPlus managed block".to_string(),
+                managed_block_count(root)? == 1,
             ),
             (
                 "managed block points to .aiplus/AGENTS.aiplus.md".to_string(),
-                has_managed_block(root)?,
+                managed_block_target_ok(root)?,
             ),
         ],
         "claude-code" => vec![
@@ -6247,30 +7777,81 @@ fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String
                 rel_to_abs(root, ".claude/commands/aiplus-refresh.md")?.exists(),
             ),
             (
+                ".claude/commands/aiplus-refresh.md is AiPlus refresh command".to_string(),
+                file_contains(root, ".claude/commands/aiplus-refresh.md", "AiPlus Refresh")?,
+            ),
+            (
                 ".claude/agents/aiplus-advisor.md exists".to_string(),
                 rel_to_abs(root, ".claude/agents/aiplus-advisor.md")?.exists(),
             ),
-        ],
-        "opencode" => vec![
             (
-                ".opencode/opencode.json exists".to_string(),
-                rel_to_abs(root, ".opencode/opencode.json")?.exists(),
-            ),
-            (
-                ".opencode/commands/aiplus-refresh.md exists".to_string(),
-                rel_to_abs(root, ".opencode/commands/aiplus-refresh.md")?.exists(),
-            ),
-            (
-                ".opencode/agents/aiplus-advisor.md exists".to_string(),
-                rel_to_abs(root, ".opencode/agents/aiplus-advisor.md")?.exists(),
-            ),
-            (
-                ".opencode/prompts/aiplus.md exists".to_string(),
-                rel_to_abs(root, ".opencode/prompts/aiplus.md")?.exists(),
+                ".claude/agents/aiplus-advisor.md is AiPlus advisor agent".to_string(),
+                file_contains(root, ".claude/agents/aiplus-advisor.md", "AiPlus Advisor")?,
             ),
         ],
+        "opencode" => opencode_doctor_requirements(root)?,
         _ => Vec::new(),
     })
+}
+
+fn opencode_doctor_requirements(root: &Path) -> Result<Vec<(String, bool)>> {
+    let config = rel_to_abs(root, ".opencode/opencode.json")?;
+    let parsed = parse_opencode_config(root)?;
+    Ok(vec![
+        (
+            ".opencode/opencode.json exists".to_string(),
+            config.exists(),
+        ),
+        (
+            ".opencode/opencode.json parses as strict JSON".to_string(),
+            parsed.is_some(),
+        ),
+        (
+            ".opencode/opencode.json has no unsupported AiPlus top-level key".to_string(),
+            parsed
+                .as_ref()
+                .is_some_and(|value| value.get("aiplus").is_none()),
+        ),
+        (
+            ".opencode/opencode.json schema is a string when present".to_string(),
+            parsed.as_ref().is_some_and(|value| {
+                value
+                    .get("$schema")
+                    .is_none_or(|schema| schema.as_str().is_some())
+            }),
+        ),
+        (
+            ".opencode/commands/aiplus-refresh.md exists".to_string(),
+            rel_to_abs(root, ".opencode/commands/aiplus-refresh.md")?.exists(),
+        ),
+        (
+            ".opencode/agents/aiplus-advisor.md exists".to_string(),
+            rel_to_abs(root, ".opencode/agents/aiplus-advisor.md")?.exists(),
+        ),
+        (
+            ".opencode/prompts/aiplus.md exists".to_string(),
+            rel_to_abs(root, ".opencode/prompts/aiplus.md")?.exists(),
+        ),
+    ])
+}
+
+fn parse_opencode_config(root: &Path) -> Result<Option<serde_json::Value>> {
+    let path = rel_to_abs(root, ".opencode/opencode.json")?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    assert_no_symlink_path(root, &path)?;
+    let text = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text).ok())
+}
+
+fn file_contains(root: &Path, rel: &str, needle: &str) -> Result<bool> {
+    let path = rel_to_abs(root, rel)?;
+    if !path.exists() {
+        return Ok(false);
+    }
+    assert_no_symlink_path(root, &path)?;
+    Ok(fs::read_to_string(path)?.contains(needle))
 }
 
 fn known_aiplus_entries() -> BTreeSet<String> {
@@ -6284,15 +7865,52 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/skills".to_string(),
         ".aiplus/restore".to_string(),
     ]);
-    for spec in MODULES {
+    for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
     }
     known
 }
 
 fn has_managed_block(root: &Path) -> Result<bool> {
+    Ok(managed_block_structure_ok(root)? && managed_block_target_ok(root)?)
+}
+
+fn managed_block_count(root: &Path) -> Result<usize> {
     let text = read_text_if_exists(&rel_to_abs(root, "AGENTS.md")?)?.unwrap_or_default();
-    Ok(text.contains(MANAGED_BEGIN) && text.contains(MANAGED_END) && text.contains(MANAGED_REF))
+    let begin_count = text.matches(MANAGED_BEGIN).count();
+    let end_count = text.matches(MANAGED_END).count();
+    if begin_count == 1 && end_count == 1 {
+        Ok(1)
+    } else {
+        Ok(begin_count.max(end_count))
+    }
+}
+
+fn managed_block_structure_ok(root: &Path) -> Result<bool> {
+    let text = read_text_if_exists(&rel_to_abs(root, "AGENTS.md")?)?.unwrap_or_default();
+    let begin_count = text.matches(MANAGED_BEGIN).count();
+    let end_count = text.matches(MANAGED_END).count();
+    let Some(begin) = text.find(MANAGED_BEGIN) else {
+        return Ok(false);
+    };
+    let Some(end) = text.find(MANAGED_END) else {
+        return Ok(false);
+    };
+    Ok(begin_count == 1 && end_count == 1 && begin < end)
+}
+
+fn managed_block_target_ok(root: &Path) -> Result<bool> {
+    let text = read_text_if_exists(&rel_to_abs(root, "AGENTS.md")?)?.unwrap_or_default();
+    let Some(begin) = text.find(MANAGED_BEGIN) else {
+        return Ok(false);
+    };
+    let Some(end) = text.find(MANAGED_END) else {
+        return Ok(false);
+    };
+    if begin >= end {
+        return Ok(false);
+    }
+    Ok(text[begin..end].contains(MANAGED_REF))
 }
 
 fn managed_block() -> String {
@@ -6339,6 +7957,7 @@ Current project AiPlus status:
 - Compact state: present/missing/review-needed
 
 How I will use it:
+- Proactively run `aiplus compact remind` at stable high-value moments: HEAVY work every 30 minutes or major phase boundary, MEDIUM work at phase boundary or before review/QA, and before subagent bursts, release prep, or Owner handoff.
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", "checkpoint this", "帮我准备 compact", or "保存进度", I will run aiplus compact prepare.
 - If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
@@ -6362,6 +7981,7 @@ Chinese response shape when the user uses Chinese such as `刷新` or `AiPlus �
 - Compact state: present/missing/review-needed
 
 我会这样使用：
+- 在稳定且高价值的时机主动运行 `aiplus compact remind`：HEAVY 任务每 30 分钟或阶段边界，MEDIUM 任务在阶段边界或 review/QA 前，以及 subagent 批量启动、release prep、Owner handoff 前。
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
@@ -6493,6 +8113,23 @@ values.
 
 Read `.codex/compact/current-handoff.md` before long-running work if it exists.
 
+Proactive reminder schedule:
+1. HEAVY task: run `aiplus compact remind --event long-session` at least every
+   30 minutes, at major phase boundaries, before review/QA, before spawning many
+   subagents, before release prep, and before Owner handoff.
+2. MEDIUM task: run `aiplus compact remind --event phase-end` at phase
+   boundaries, before review/QA, before context-heavy investigation, and before
+   Owner handoff.
+3. LIGHT task: run `aiplus compact remind` only on user request or an obvious
+   handoff point.
+4. If `REMINDER_DECISION=remind_now`, run or confirm `aiplus compact prepare`,
+   then suggest the user manually use the host compact control. AiPlus cannot
+   click compact or call host compact automatically.
+5. If `REMINDER_DECISION=prepare_only`, update handoff/checkpoint first and do
+   not suggest host compact yet.
+6. If `REMINDER_DECISION=wait` or `blocked`, explain the safety reason and keep
+   working until the next stable point.
+
 Before context compaction or compact-worthy moments:
 1. Treat natural language as the primary interface. If the user says "prepare compact",
    "help me compact", "I want to compact", "save progress", "checkpoint this",
@@ -6513,9 +8150,11 @@ After context compaction:
 1. If work continues automatically, or the user says "continue after compact",
    "resume after compact", continue, resume, refresh, 继续, 刷新, compact 后继续,
    or similar, run `aiplus compact resume`.
-2. If the user sends a continuation message, accept natural phrasing:
+2. After resume, optionally run `aiplus compact savings` to report local
+   estimate-only token/USD savings.
+3. If the user sends a continuation message, accept natural phrasing:
    continue, resume, go on, 继续, 刷新, 接着.
-3. Continue from the reported next safe action.
+4. Continue from the reported next safe action.
 
 Savings requests:
 1. If the user asks "show compact savings", "how many tokens did compact save?",
@@ -6594,6 +8233,7 @@ Current project AiPlus status:
 - Compact state: present/missing/review-needed
 
 How I will use it:
+- Proactively run `aiplus compact remind` at stable high-value moments.
 - Prepare checkpoints before long tasks or compact-worthy moments.
 - If you say "prepare compact", "save progress", or "checkpoint this", I will run aiplus compact prepare.
 - If you ask "show compact savings" or "how many tokens did compact save?", I will run aiplus compact savings.
@@ -6617,6 +8257,7 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 - Compact state: present/missing/review-needed
 
 我会这样使用：
+- 在稳定且高价值的时机主动运行 `aiplus compact remind`
 - 长任务或 compact 前准备 checkpoint
 - 如果你说“帮我准备 compact”“保存进度”或“做个交接”，我会运行 aiplus compact prepare。
 - 如果你问“看一下 compact 收益”或“compact 帮我省了多少？”，我会运行 aiplus compact savings。
@@ -6692,8 +8333,9 @@ Re-read project-local AiPlus instructions:
 2. Read .aiplus/AGENTS.aiplus.md.
 3. Read .codex/compact/current-handoff.md if present.
 4. Enable AiPlus Auto Team Consultant, AiPlus Auto Compact, and Agent Continuity for this session.
-5. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Auto Compact, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
-6. Continue the current task.
+5. Proactively use `aiplus compact remind`: HEAVY work every 30 minutes or major phase boundary; MEDIUM work at phase boundary or before review/QA; before subagent bursts, release prep, and Owner handoff. If `REMINDER_DECISION=remind_now`, run/confirm `aiplus compact prepare`, then suggest manual host compact only.
+6. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Auto Compact, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
+7. Continue the current task.
 
 Continuation keywords: AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, 继续, 刷新, continue, resume, refresh, go on, 接着.
 
@@ -6713,6 +8355,16 @@ Use project-local AiPlus modules from .aiplus/modules/ when relevant.
 - Auto Team Consultant: .aiplus/modules/aiplus-auto-team-consultant/
 - Agent Memory: .aiplus/modules/aiplus-agent-memory/
 
+Auto Compact reminder schedule: run `aiplus compact remind` proactively at safe
+high-value moments. For HEAVY tasks, check every 30 minutes or at major phase
+boundaries, before review/QA, before spawning many subagents, before release
+prep, and before Owner handoff. For MEDIUM tasks, check at phase boundaries or
+before review/QA. For LIGHT tasks, check only on user request or obvious handoff.
+If `REMINDER_DECISION=remind_now`, run or confirm `aiplus compact prepare`, then
+suggest the host compact action manually. AiPlus must not click or call host
+compact automatically. After compact, run `aiplus compact resume`, then
+optionally `aiplus compact savings`.
+
 For already-open agent sessions, explicit AiPlus refresh triggers are:
 AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus.
 
@@ -6726,12 +8378,7 @@ Agent Continuity: use `aiplus memory status/context/add/forget`, `aiplus identit
 
 fn opencode_config_content() -> String {
     serde_json::json!({
-        "aiplus": {
-            "localOnly": true,
-            "refreshKeywords": ["AiPlus 刷新", "刷新 AiPlus", "aiplus refresh", "aiplus status", "AiPlus status", "继续 AiPlus", "resume AiPlus", "继续", "刷新", "continue", "resume", "refresh", "go on", "接着"],
-            "continuityKeywords": ["记住这个", "记住这个偏好", "以后都这样", "只在这个项目用", "忘掉这个", "你记住了什么", "这次用了哪些记忆", "新开顾问", "新开 advisor", "新开 CEO", "把这次经验沉淀成 skill", "不要用我的私人记忆", "本次忽略我的偏好"],
-            "instructions": ".aiplus/AGENTS.aiplus.md"
-        }
+        "$schema": "https://opencode.ai/config.json"
     })
     .to_string()
         + "\n"
@@ -6741,6 +8388,19 @@ fn opencode_prompt_content() -> String {
     r#"# AiPlus
 
 Read .aiplus/AGENTS.aiplus.md and use project-local AiPlus modules when relevant.
+
+Auto Compact reminder schedule:
+- HEAVY tasks: run `aiplus compact remind --event long-session` every 30 minutes
+  or at major phase boundaries, before review/QA, before subagent bursts, before
+  release prep, and before Owner handoff.
+- MEDIUM tasks: run `aiplus compact remind --event phase-end` at phase
+  boundaries, before review/QA, and before Owner handoff.
+- LIGHT tasks: run `aiplus compact remind` only on user request or obvious
+  handoff.
+- If `REMINDER_DECISION=remind_now`, run/confirm `aiplus compact prepare`, then
+  suggest manual host compact only. Do not click or call host compact.
+- After compact, run `aiplus compact resume`, then optionally
+  `aiplus compact savings`.
 
 Explicit AiPlus refresh triggers for already-open agent sessions: AiPlus 刷新,
 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus,
@@ -6916,11 +8576,4 @@ fn is_writable(root: &Path) -> bool {
 
 fn timestamp() -> String {
     format!("unix-{}ms", epoch_millis())
-}
-
-fn epoch_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
 }

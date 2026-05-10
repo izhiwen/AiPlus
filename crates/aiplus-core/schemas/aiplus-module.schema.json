@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/izhiwen/aiplus/schemas/aiplus-module.schema.json",
+  "title": "AiPlus Module Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "name",
+    "displayName",
+    "version",
+    "source",
+    "license",
+    "requiredFiles",
+    "managedFiles",
+    "runtimeAdapters",
+    "installHints",
+    "doctorChecks",
+    "publicPrivateBoundary",
+    "secretBoundary"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "displayName": { "type": "string" },
+    "version": { "type": "string" },
+    "source": { "type": "string", "enum": ["bundled", "local", "external"] },
+    "license": { "type": "string" },
+    "requiredFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "managedFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "runtimeAdapters": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["codex", "claude-code", "opencode"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "installHints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "doctorChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": ["string", "null"] },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "publicPrivateBoundary": { "$ref": "#/$defs/boundary" },
+    "secretBoundary": { "$ref": "#/$defs/boundary" },
+    "legacyStatus": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["status", "notes"],
+      "properties": {
+        "status": { "type": "string" },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "notes"],
+      "properties": {
+        "status": { "type": "string", "enum": ["public", "private", "metadata-only", "forbidden"] },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

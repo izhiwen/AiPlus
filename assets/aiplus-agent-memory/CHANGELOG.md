@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added `aiplus-module.json` for AiPlus Rust module-system manifest validation.
+
 ## 0.5.0
 
 - Introduces the public `aiplus-agent-memory` Agent Continuity foundation.

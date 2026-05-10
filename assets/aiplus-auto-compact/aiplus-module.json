@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "auto-compact",
+  "displayName": "AiPlus Auto Compact",
+  "version": "0.4.6",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "requiredFiles": [
+    "LICENSE",
+    "core/templates/current-handoff.md",
+    "core/templates/compact-policy.json"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-auto-compact",
+    ".codex/compact/current-handoff.md",
+    ".codex/compact/compact-policy.json",
+    ".codex/compact/decision-log.md",
+    ".codex/compact/agent-state-ledger.md",
+    ".codex/compact/evidence-ledger.md"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "Install project-local compact workflow assets.",
+    "Preserve existing .codex/compact state during upgrades."
+  ],
+  "doctorChecks": [
+    {
+      "id": "compact-policy-template",
+      "path": "core/templates/compact-policy.json",
+      "description": "Compact policy template is present."
+    },
+    {
+      "id": "handoff-template",
+      "path": "core/templates/current-handoff.md",
+      "description": "Compact handoff template is present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Public module assets must use synthetic or redacted examples only.",
+      "Project compact state remains local under .codex/compact."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "Secret values, provider payloads, raw transcripts, and private profile content must not be stored in compact state or public assets."
+    ]
+  },
+  "legacyStatus": {
+    "status": "successor-to-codex-compact-protocol",
+    "notes": [
+      "compactctl.mjs is archived history and not an active runtime path."
+    ]
+  }
+}

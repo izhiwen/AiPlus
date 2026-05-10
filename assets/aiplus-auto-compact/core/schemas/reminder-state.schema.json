@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AiPlus Reminder State",
+  "description": "Project-local Auto Compact reminder watch state. No secrets, no raw transcript, no global config.",
+  "type": "object",
+  "required": ["schemaVersion", "projectId", "manualCompactOnly", "hostCompactTriggered"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version for forward compatibility"
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Stable project identifier"
+    },
+    "lastWatchAt": {
+      "type": "string",
+      "description": "ISO timestamp of last watch run"
+    },
+    "lastReminderDecision": {
+      "type": "string",
+      "enum": ["unknown", "remind_now", "prepare_only", "wait", "blocked"],
+      "description": "Last compact reminder decision"
+    },
+    "lastReminderLevel": {
+      "type": "string",
+      "enum": ["unknown", "soft", "ready", "safety_block"],
+      "description": "Last reminder urgency level"
+    },
+    "lastHandoffState": {
+      "type": "string",
+      "enum": ["unknown", "missing", "template_only", "stale", "current"],
+      "description": "Last evaluated handoff freshness"
+    },
+    "lastRecoveryConfidence": {
+      "type": "string",
+      "enum": ["unknown", "high", "medium", "low"],
+      "description": "Confidence in recovery after compact"
+    },
+    "snoozeUntil": {
+      "type": ["string", "null"],
+      "description": "Unix millis timestamp until snooze expires"
+    },
+    "manualCompactOnly": {
+      "type": "boolean",
+      "const": true,
+      "description": "AiPlus never triggers host compact automatically"
+    },
+    "hostCompactTriggered": {
+      "type": "boolean",
+      "const": false,
+      "description": "AiPlus does not trigger host compact"
+    },
+    "watchCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total watch iterations"
+    },
+    "remindCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total remind invocations"
+    }
+  },
+  "additionalProperties": false
+}

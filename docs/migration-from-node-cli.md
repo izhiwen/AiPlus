@@ -11,7 +11,7 @@ package.
 Old archived reference invocation:
 
 ```bash
-node <PRIVATE_AIPLUS_WORKSPACE>/aiplus-cli/bin/aiplus.mjs install codex
+node <PRIVATE_AIPLUS_WORKSPACE>/legacy/aiplus-cli/bin/aiplus.mjs install codex
 ```
 
 Rust mainline invocation:

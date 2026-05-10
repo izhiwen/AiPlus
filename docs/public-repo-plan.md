@@ -13,7 +13,7 @@ Reasons:
 
 - It matches the user command: `aiplus`.
 - It matches the product/module family name.
-- It avoids confusing the archived Node directory `aiplus-cli` with the Rust
+- It avoids confusing the archived Node directory `legacy/aiplus-cli` with the Rust
   mainline.
 - It leaves room for future module and runtime adapters without making the repo
   name language-specific.

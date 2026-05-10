@@ -4,6 +4,10 @@ All notable public documentation changes for AiPlus Auto Compact are recorded he
 
 ## Unreleased
 
+- Added `aiplus compact remind` guidance for proactive compact reminders,
+  reminder levels, snooze, handoff freshness, recovery confidence, and local
+  token/USD savings preview.
+- Added `aiplus-module.json` for AiPlus Rust module-system manifest validation.
 - Synced AiPlus v0.4.3 secret-broker guidance with the expanded alias inventory
   for common AI, search, image, and developer providers.
 - Clarified that `aiplus secret-broker list` owns the current alias table and

@@ -12,7 +12,7 @@
 - Stale adapter-heavy scan was run. Remaining matches are advanced/reference layout terms or false positives such as "manually".
 - Private path / secret scan was run. No real private project names, private paths, tokens, API keys, passwords, or private keys were found.
 - Junk artifact scan was run. No `.DS_Store`, logs, archives, screenshots, temp files, `.env`, or backup files were found.
-- Rust CLI command examples were checked against the current `aiplus-rust` command surface: `aiplus install codex`, `aiplus install claude-code`, `aiplus install opencode`, `aiplus install all`, and `刷新` / `refresh`.
+- Rust CLI command examples were checked against the current `aiplus-public` command surface: `aiplus install codex`, `aiplus install claude-code`, `aiplus install opencode`, `aiplus install all`, and `刷新` / `refresh`.
 - GitHub contents check found no live `install.sh` in `izhiwen/aiplus` at review time, so README labels the one-command installer path as available when the AiPlus release installer is live.
 
 ## Previous Docs Polish Addendum

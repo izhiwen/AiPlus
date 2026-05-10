@@ -125,6 +125,11 @@ runtime secrets without putting private content into public repos.
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --dry-run
 aiplus profile install <private-profile-name> --user --source /path/to/private-profile --yes
 aiplus profile status
+aiplus profile status <private-profile-name>
+aiplus profile doctor
+aiplus profile doctor <private-profile-name>
+aiplus profile context <private-profile-name>
+aiplus user context --profile <private-profile-name>
 aiplus profile cleanup --user --dry-run
 aiplus profile cleanup --user --yes
 aiplus profile migrate <legacy-profile> <canonical-profile> --user --yes
@@ -137,6 +142,22 @@ Private profiles live under `~/.config/aiplus/profiles/<private-profile-name>/`.
 They store working preferences and collaboration rules only. They must not
 contain API keys, Bitwarden tokens, passwords, prompt transcripts, project files,
 or compact checkpoints.
+
+### Profile Supplemental Bundle
+
+AiPlus supports an optional **supplemental bundle** inside a private profile source.
+When present, `aiplus profile install` copies these files safely into the installed
+profile directory:
+
+- `USER.md` — Owner snapshot and stable preferences
+- `MEMORY.md` — Profile-level memory snapshot
+- `preferences/` — Preference taxonomy files
+- `identities/` — Role identity definitions
+- `sync/` — Sync policy and project mapping files
+
+These files are never copied into public release assets. Context commands
+(`aiplus profile context`, `aiplus user context`) read from the installed
+profile and redact lines that look like secrets or API keys.
 
 `aiplus profile status` lists active canonical profiles in `profiles=[...]`.
 Legacy compatibility profiles may appear separately in `legacy_profiles=[...]`;
@@ -298,14 +319,22 @@ AiPlus writes only project-local files:
 
 Bundled modules:
 
-- **AiPlus Auto Compact** (`auto-compact`): compact, checkpoint, validate, and
-  resume workflow assets.
+- **AiPlus Auto Compact** (`auto-compact`): proactive compact reminder,
+  checkpoint, handoff, savings preview, validate, and resume workflow assets.
 - **AiPlus Auto Team Consultant** (`auto-team-consultant`): Advisor, CEO,
   Reviewer, and Builder routing assets.
+- **AiPlus Agent Memory** (`agent-memory`): project-local Memory Context, Role
+  Identity, Skill Candidate, and restore-policy foundation.
 
 ## Compact And Resume
 
 You do not need to remember compact commands.
+
+AiPlus Auto Compact does not replace the host compact button or `/compact`.
+Its main value is proactive reminder timing: the agent can call
+`aiplus compact remind` at stable high-value moments, prepare a checkpoint
+first, estimate token/USD savings, and then decide whether to wait, prepare
+only, or recommend manual host compact.
 
 In your agent session, say:
 
@@ -349,12 +378,21 @@ wake the agent if the host requires user input.
 Advanced users and maintainers can run the backend commands directly:
 
 ```bash
+aiplus compact remind
+aiplus compact remind --event phase-end
+aiplus compact remind --event long-session
 aiplus compact prepare
 aiplus compact score
 aiplus compact checkpoint --level standard
 aiplus compact resume
 aiplus compact savings
 ```
+
+Reminder output includes `REMINDER_DECISION`, `REMINDER_LEVEL`,
+`HANDOFF_STATE`, `RECOVERY_CONFIDENCE`, token/USD savings estimates, and
+`SECRET_VALUES_PRINTED=no`. `remind_now` means the agent can suggest manual host
+compact after prepare/checkpoint; `prepare_only`, `wait`, and `blocked` mean it
+should not suggest compact yet.
 
 If `aiplus` is not found, install AiPlus or fix PATH instead of falling back to
 Node:

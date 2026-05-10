@@ -78,13 +78,53 @@ They are designed for a Plan/Build style workflow:
 When shell validation is needed, use the AiPlus CLI (`aiplus`):
 
 ```bash
+aiplus compact remind
+aiplus compact remind --event phase-end
 aiplus compact prepare
 aiplus compact validate
 aiplus compact checkpoint
 aiplus compact resume
 ```
 
-Before compact, run validate and checkpoint. If checkpoint state is ready, the
+Auto Compact's primary behavior is proactive reminder timing. For HEAVY tasks,
+run `aiplus compact remind --event long-session` at least every 30 minutes and
+at major phase boundaries, before review/QA, before many subagents, before
+release prep, and before Owner handoff. For MEDIUM tasks, run it at phase
+boundaries and before review/QA. For LIGHT tasks, run it only on user request or
+an obvious handoff point.
+
+### Watch Mode
+
+For daemon-lite monitoring during long sessions:
+
+```bash
+aiplus compact watch --once
+aiplus compact watch --interval 10m
+aiplus compact watch --once --json
+```
+
+Watch evaluates the same conservative decision logic as `remind` and records
+the result to `.codex/compact/reminder-state.json`. It is safe to interrupt
+with Ctrl+C. Watch never triggers host compact automatically.
+
+### Context Capsule
+
+`aiplus compact prepare` creates `.codex/compact/context-capsule.json` with
+hierarchical hot/warm/cold tiers, importance scoring, Owner gates, decisions,
+and recovery metadata. The capsule is redacted (no secrets, no raw transcript)
+and includes checksums. Use it to resume objective, current state, and next safe
+action after compact.
+
+### Safety Boundaries
+
+- AiPlus never triggers host compact automatically.
+- AiPlus never captures raw transcript or secret values.
+- All state files are project-local (`.codex/compact/`).
+- No global agent config edits, no telemetry, no network calls from watch/remind.
+
+Before compact, run validate and checkpoint. If `REMINDER_DECISION=prepare_only`,
+update handoff/checkpoint first. If `REMINDER_DECISION=wait` or `blocked`,
+explain the safety reason and keep working. If checkpoint state is ready, the
 agent can recommend manual compact and explain best-effort resume: after compact,
 run `aiplus compact resume`; if the agent does not reply, explicit AiPlus
 messages such as `AiPlus 刷新`, `刷新 AiPlus`, `aiplus refresh`,

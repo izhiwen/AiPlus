@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "auto-team-consultant",
+  "displayName": "AiPlus Auto Team Consultant",
+  "version": "0.4.6",
+  "source": "bundled",
+  "license": "MIT",
+  "requiredFiles": [
+    "LICENSE",
+    "adapters/codex/skills/auto-team-consultant/SKILL.md",
+    "core/templates/TEMPLATE_INDEX.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-auto-team-consultant"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "Install Advisor, CEO, Reviewer, and Builder routing assets.",
+    "Keep consultation output session-local unless the Owner requests local docs updates."
+  ],
+  "doctorChecks": [
+    {
+      "id": "codex-skill",
+      "path": "adapters/codex/skills/auto-team-consultant/SKILL.md",
+      "description": "Codex skill instructions are present."
+    },
+    {
+      "id": "template-index",
+      "path": "core/templates/TEMPLATE_INDEX.md",
+      "description": "Template index is present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Public routing templates must not include private profile content.",
+      "Simulated pressure tests are not real user research."
+    ]
+  },
+  "secretBoundary": {
+    "status": "metadata-only",
+    "notes": [
+      "Owner gate and secret-broker references may describe metadata-only status, never secret values."
+    ]
+  },
+  "legacyStatus": {
+    "status": "migration-docs-present",
+    "notes": [
+      "Older auto-team-consultant workflow migration docs remain informational."
+    ]
+  }
+}

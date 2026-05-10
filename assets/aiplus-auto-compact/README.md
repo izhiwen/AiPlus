@@ -99,6 +99,12 @@ or:
 save progress
 ```
 
+Agents should proactively run `aiplus compact remind` at safe, high-value
+moments: HEAVY work every 30 minutes or major phase boundary, MEDIUM work at
+phase boundaries or before review/QA, and before subagent bursts, release prep,
+or Owner handoff. Auto Compact does not trigger host compact automatically; it
+decides whether to wait, prepare only, or suggest manual host compact.
+
 The agent should use `aiplus compact prepare` as an internal backend tool. If
 `prepare` is not available, it may fall back to the closest supported sequence:
 `aiplus compact validate` followed by `aiplus compact checkpoint`. If the

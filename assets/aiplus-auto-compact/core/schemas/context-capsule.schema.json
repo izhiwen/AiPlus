@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AiPlus Context Capsule",
+  "description": "Hierarchical compact recovery capsule with hot/warm/cold tiers. No secrets, no raw transcript.",
+  "type": "object",
+  "required": ["schemaVersion", "projectId", "createdAt", "updatedAt", "objective", "currentState", "hot", "warm", "cold", "redaction", "checksums"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version for forward compatibility"
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Stable project identifier"
+    },
+    "createdAt": {
+      "type": "string",
+      "description": "ISO timestamp of capsule creation"
+    },
+    "updatedAt": {
+      "type": "string",
+      "description": "ISO timestamp of last update"
+    },
+    "objective": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Current work objective summary"
+    },
+    "currentState": {
+      "type": "string",
+      "maxLength": 5000,
+      "description": "Current work state summary"
+    },
+    "hot": {
+      "$ref": "#/definitions/tier",
+      "description": "Hot context: immediate recovery needs"
+    },
+    "warm": {
+      "$ref": "#/definitions/tier",
+      "description": "Warm context: recent but not immediate"
+    },
+    "cold": {
+      "$ref": "#/definitions/tier",
+      "description": "Cold context: background/reference"
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "status", "decidedAt", "verified"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string", "maxLength": 1000 },
+          "status": { "type": "string" },
+          "decidedAt": { "type": "string" },
+          "verified": { "type": "boolean" }
+        }
+      }
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files changed since last capsule"
+    },
+    "ownerGates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "status", "required"],
+        "properties": {
+          "label": { "type": "string" },
+          "status": { "type": "string" },
+          "required": { "type": "boolean" },
+          "approvedBy": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "severity", "mitigation", "accepted"],
+        "properties": {
+          "label": { "type": "string" },
+          "severity": { "type": "string" },
+          "mitigation": { "type": "string" },
+          "accepted": { "type": "boolean" }
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "status"],
+        "properties": {
+          "label": { "type": "string" },
+          "status": { "type": "string" },
+          "verifiedAt": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "nextSafeAction": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Next safe action after resume"
+    },
+    "resumePrompt": {
+      "type": "string",
+      "maxLength": 3000,
+      "description": "Prompt for agent to resume work"
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["secretValuesPrinted", "rawTranscriptCaptured", "privatePathsIncluded", "redactionCount"],
+      "properties": {
+        "secretValuesPrinted": {
+          "type": "boolean",
+          "const": false,
+          "description": "Capsule never contains secret values"
+        },
+        "rawTranscriptCaptured": {
+          "type": "boolean",
+          "const": false,
+          "description": "Capsule never contains raw transcript"
+        },
+        "privatePathsIncluded": {
+          "type": "boolean",
+          "description": "Whether private paths were redacted"
+        },
+        "redactionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of redaction operations applied"
+        }
+      }
+    },
+    "checksums": {
+      "type": "object",
+      "description": "Integrity checksums for capsule components",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "definitions": {
+    "tier": {
+      "type": "object",
+      "required": ["tier", "items", "maxItems"],
+      "properties": {
+        "tier": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "content", "importance", "source", "createdAt"],
+            "properties": {
+              "id": { "type": "string" },
+              "content": { "type": "string", "maxLength": 2000 },
+              "importance": { "type": "integer", "minimum": 0, "maximum": 100 },
+              "source": { "type": "string" },
+              "createdAt": { "type": "string" },
+              "expiresAt": { "type": ["string", "null"] },
+              "checksum": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "maxItems": { "type": "integer", "minimum": 1 },
+        "truncationReason": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "additionalProperties": false
+}
