@@ -1,3 +1,4 @@
+use crate::auto_write::RiskLevel;
 use crate::capsule::timestamp;
 use crate::memory::{epoch_millis, single_line, slugify, stable_hash, MemoryRecord};
 use crate::redaction::reject_sensitive_memory_text;
@@ -12,15 +13,8 @@ use std::time::Duration;
 
 pub const SKILL_SCHEMA_VERSION_V2: &str = "0.2.0";
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-}
-
 #[derive(Debug, Clone, Default)]
-pub struct SessionRecord {
+pub struct SkillSessionRecord {
     pub id: String,
     pub commands_run: Vec<String>,
     pub files_changed: Vec<String>,
@@ -49,7 +43,7 @@ impl ConsolidationEngine {
     pub fn find_consolidation_candidates(
         &self,
         records: &[MemoryRecord],
-        sessions: &[SessionRecord],
+        sessions: &[SkillSessionRecord],
     ) -> Vec<ConsolidationCandidate> {
         let mut grouped: HashMap<String, Vec<&MemoryRecord>> = HashMap::new();
 
@@ -241,9 +235,9 @@ impl ConsolidationEngine {
     fn find_session_patterns(
         &self,
         records: &[MemoryRecord],
-        sessions: &[SessionRecord],
+        sessions: &[SkillSessionRecord],
     ) -> Vec<ConsolidationCandidate> {
-        let mut command_groups: HashMap<String, Vec<&SessionRecord>> = HashMap::new();
+        let mut command_groups: HashMap<String, Vec<&SkillSessionRecord>> = HashMap::new();
 
         for session in sessions {
             let key = session.commands_run.join(";");
@@ -858,13 +852,13 @@ mod tests {
         ];
 
         let sessions = vec![
-            SessionRecord {
+            SkillSessionRecord {
                 id: "sess_1".to_string(),
                 commands_run: vec!["cargo build".to_string(), "cargo test".to_string()],
                 files_changed: vec!["src/lib.rs".to_string()],
                 summary: "Build and test workflow".to_string(),
             },
-            SessionRecord {
+            SkillSessionRecord {
                 id: "sess_2".to_string(),
                 commands_run: vec!["cargo build".to_string(), "cargo test".to_string()],
                 files_changed: vec!["src/main.rs".to_string()],

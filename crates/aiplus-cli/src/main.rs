@@ -1,32 +1,52 @@
 use aiplus_core::memory::MEMORY_SCHEMA_VERSION_V2;
 use aiplus_core::{
     append_jsonl_atomic,
+    append_velocity_jsonl,
+    apply_velocity_retention,
     available_modules_text,
+    classify_rare_case,
+    compute_ai_native_estimate,
     default_module_names,
+    detect_bias,
     detect_conflicts,
     detect_stale,
     embedded_asset_text,
     epoch_millis,
     find_by_query,
+    generate_estimate_id,
+    generate_run_id,
     identity_dir,
+    init_velocity,
+    is_rare_case,
     memory_dir,
     module_spec,
     normalize_module,
+    parse_duration,
+    purge_velocity,
     read_active,
+    read_all_including_rejected,
     read_identity,
     read_memory_records,
     read_skill_candidates,
+    reject_sensitive_velocity_text,
     rewrite_jsonl_atomic,
     select_records,
     sensitive_findings,
     single_line,
     slugify,
     stable_hash,
+    update_aggregates,
+    update_multipliers,
+    validate_run_record,
+    // velocity module
+    velocity_dir,
+    velocity_doctor,
     write_file_atomic,
     // v2 core modules
     AutoWriteConfig,
     AutoWriteResult,
     AutoWriter,
+    EstimateRecord,
     MemoryRecord,
     ModuleSpec,
     ProfileSync,
@@ -34,11 +54,13 @@ use aiplus_core::{
     ProjectManifestModule as ManifestModule,
     RiskLevel,
     RollbackPlan,
+    RunRecord,
     SessionIndex,
     SessionRecord,
     SkillCandidate,
     SkillRegistry,
     SnapshotBuilder,
+    VELOCITY_SCHEMA_VERSION,
 };
 use anyhow::{anyhow, Context, Result};
 use clap::{ArgAction, Parser, Subcommand};
@@ -236,6 +258,27 @@ enum Commands {
         subcommand: Option<String>,
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        yes: bool,
+    },
+    Velocity {
+        subcommand: Option<String>,
+        #[arg(long)]
+        task_type: Option<String>,
+        #[arg(long)]
+        human_estimate: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        workflow: Option<String>,
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        actual: Option<String>,
+        #[arg(long)]
+        outcome: Option<String>,
+        #[arg(long)]
+        task: Option<String>,
         #[arg(long, action = ArgAction::SetTrue)]
         yes: bool,
     },
@@ -684,12 +727,35 @@ fn run(command: Commands) -> Result<()> {
             dry_run,
             yes,
         } => command_self(subcommand, dry_run, yes),
+        Commands::Velocity {
+            subcommand,
+            task_type,
+            human_estimate,
+            model,
+            workflow,
+            task_id,
+            actual,
+            outcome,
+            task,
+            yes,
+        } => command_velocity(
+            subcommand,
+            task_type,
+            human_estimate,
+            model,
+            workflow,
+            task_id,
+            actual,
+            outcome,
+            task,
+            yes,
+        ),
     }
 }
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|auto-compact|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add auto-compact|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -9046,11 +9112,25 @@ Start from:
 
 `.aiplus/modules/aiplus-auto-team-consultant/core/templates/TEMPLATE_INDEX.md`
 
+Before CEO/review/QA/product/design/release/AI-integration work:
+1. Read `.aiplus/consultant-team.toml` if it exists.
+2. Use the configured Consultant Team Decision System with L0-L5 Router + Specialist Lenses.
+3. If config is missing or malformed, use the safe AI-native default and report NEEDS_FIX.
+
 Default:
 - Advisor session: Advisor mode, LIGHT by default, no file edits unless explicitly approved.
 - CEO session: CEO mode, set goal, decompose tasks, use agents only when useful, require Result Packets, run review/fix/QA.
 - Reviewer session: findings first, PASS/REVISE/BLOCKED.
 - Builder session: changed files, verification, risks, review request.
+
+Consultant Team Decision System:
+- 1 Core Product Council + 5 Specialist Expert Teams + Project-Specific User Evidence Layer.
+- AI Integration / LLM Experience is enabled by default for AI-native products.
+- Use the smallest useful set of lenses. Do not trigger Full Council for small tasks.
+- L0 Direct -> L1 Self-Check -> L2 Single Specialist -> L3 Pair Review -> L4 Mini Council -> L5 Full Council / Owner Gate.
+- Autonomous trigger is allowed for local planning/review/QA/docs. Dangerous actions still require Owner approval.
+- If no real sub-agent ran, label work as `simulated specialist lens`.
+- Do not claim independent review if no independent agent ran.
 
 ## Owner Gates
 
@@ -9434,4 +9514,388 @@ fn is_writable(root: &Path) -> bool {
 
 fn timestamp() -> String {
     format!("unix-{}ms", epoch_millis())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn command_velocity(
+    subcommand: Option<String>,
+    task_type: Option<String>,
+    human_estimate: Option<String>,
+    model: Option<String>,
+    workflow: Option<String>,
+    task_id: Option<String>,
+    actual: Option<String>,
+    outcome: Option<String>,
+    task: Option<String>,
+    yes: bool,
+) -> Result<()> {
+    let subcommand = subcommand.unwrap_or_else(|| {
+        println!("Usage: aiplus velocity init|estimate|complete|bias|report|doctor|purge");
+        process::exit(2);
+    });
+
+    let root = std::env::current_dir()?;
+
+    match subcommand.as_str() {
+        "init" => {
+            init_velocity(&root)?;
+            println!("VELOCITY_INIT_STATUS=PASS");
+            println!("velocity_dir={}", velocity_dir(&root).display());
+        }
+        "estimate" => {
+            let task_type = task_type.ok_or_else(|| anyhow!("--task-type required"))?;
+            let human_estimate =
+                human_estimate.ok_or_else(|| anyhow!("--human-estimate required"))?;
+            let model = model.unwrap_or_else(|| "unknown".to_string());
+            let workflow = workflow.unwrap_or_else(|| "MEDIUM".to_string());
+
+            let human_estimate_minutes = parse_duration(&human_estimate)?;
+
+            let result = compute_ai_native_estimate(
+                &root,
+                &task_type,
+                &model,
+                &workflow,
+                human_estimate_minutes,
+            )?;
+
+            let estimate_id = generate_estimate_id();
+            let record = EstimateRecord {
+                schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
+                id: estimate_id.clone(),
+                task_id: task_id
+                    .clone()
+                    .unwrap_or_else(|| generate_estimate_id().replace("est_", "task_")),
+                created_at: now_iso(),
+                project_id: "aiplus".to_string(),
+                task_type: task_type.clone(),
+                repo_area: "aiplus-public".to_string(),
+                agent_role: "ceo".to_string(),
+                runtime: "opencode".to_string(),
+                model: model.clone(),
+                workflow_level: workflow.clone(),
+                estimate_basis: "human_engineer_time".to_string(),
+                human_baseline_minutes: human_estimate_minutes,
+                human_baseline_source: "agent_initial_estimate".to_string(),
+                human_estimate_minutes,
+                ai_native_estimate_p50_minutes: result.ai_native_estimate_p50_minutes,
+                ai_native_estimate_p90_minutes: result.ai_native_estimate_p90_minutes,
+                confidence: result.confidence.clone(),
+                matched_records: result.matched_records,
+                human_anchor_signals: if result.human_anchor_detected {
+                    vec![
+                        "multi_hour_language".to_string(),
+                        "similar_ai_tasks_finished_fast".to_string(),
+                    ]
+                } else {
+                    vec![]
+                },
+                stop_when_done: result.stop_when_done,
+            };
+
+            reject_sensitive_velocity_text(&serde_json::to_string(&record)?)?;
+            append_velocity_jsonl(&root, "estimates.jsonl", &record)?;
+            apply_velocity_retention(&root)?;
+
+            println!("VELOCITY_ESTIMATE_STATUS=PASS");
+            println!("ESTIMATE_ID={estimate_id}");
+            println!(
+                "HUMAN_ANCHOR_DETECTED={}",
+                if result.human_anchor_detected {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+            println!("HUMAN_ESTIMATE_MINUTES={human_estimate_minutes}");
+            println!(
+                "AI_NATIVE_ESTIMATE_P50_MINUTES={}",
+                result.ai_native_estimate_p50_minutes
+            );
+            println!(
+                "AI_NATIVE_ESTIMATE_P90_MINUTES={}",
+                result.ai_native_estimate_p90_minutes
+            );
+            println!("EXPECTED_SPEEDUP={}", result.expected_speedup_range);
+            println!("MATCHED_RECORDS={}", result.matched_records);
+            println!("CONFIDENCE={}", result.confidence);
+            println!("STOP_WHEN_DONE=yes");
+        }
+        "complete" => {
+            let task_id = task_id.ok_or_else(|| anyhow!("--task-id required"))?;
+            let actual = actual.ok_or_else(|| anyhow!("--actual required"))?;
+            let outcome = outcome.unwrap_or_else(|| "pass".to_string());
+
+            let actual_minutes = parse_duration(&actual)?;
+
+            let estimates: Vec<EstimateRecord> = read_velocity_jsonl(&root, "estimates.jsonl")?;
+            let estimate = estimates.iter().find(|e| e.task_id == task_id);
+            let (original_estimate, _ai_native_p50, human_baseline) = match estimate {
+                Some(e) => (
+                    e.human_estimate_minutes,
+                    e.ai_native_estimate_p50_minutes,
+                    e.human_baseline_minutes,
+                ),
+                None => (actual_minutes * 2, actual_minutes, actual_minutes * 2),
+            };
+
+            let overestimate_ratio = if actual_minutes > 0 {
+                original_estimate as f64 / actual_minutes as f64
+            } else {
+                0.0
+            };
+
+            let run_id = generate_run_id();
+            let run = RunRecord {
+                schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
+                id: run_id,
+                estimate_id: estimate.map(|e| e.id.clone()).unwrap_or_default(),
+                task_id: task_id.clone(),
+                created_at: now_iso(),
+                project_id: "aiplus".to_string(),
+                task_type: task_type.clone().unwrap_or_default(),
+                repo_area: "aiplus-public".to_string(),
+                agent_role: "ceo".to_string(),
+                runtime: "opencode".to_string(),
+                model: model.clone().unwrap_or_else(|| "unknown".to_string()),
+                workflow_level: workflow.clone().unwrap_or_else(|| "MEDIUM".to_string()),
+                original_estimate_minutes: original_estimate,
+                human_baseline_minutes: human_baseline,
+                actual_active_minutes: actual_minutes,
+                actual_time_source: "manual".to_string(),
+                wall_clock_minutes: actual_minutes,
+                tool_wait_minutes: 0,
+                blocked_minutes: 0,
+                outcome: outcome.clone(),
+                verification_depth: "targeted".to_string(),
+                quality_verdict: outcome.clone(),
+                rework_count: 0,
+                owner_gate_hit: false,
+                overestimate_ratio,
+                human_time_bias: false,
+                slow_reason: "none".to_string(),
+                redaction_status: "pass".to_string(),
+                raw_content_stored: false,
+                secret_values_stored: false,
+                memory_integration: "disabled".to_string(),
+            };
+
+            validate_run_record(&run)?;
+            reject_sensitive_velocity_text(&serde_json::to_string(&run)?)?;
+            append_velocity_jsonl(&root, "runs.jsonl", &run)?;
+
+            if is_rare_case(&run) {
+                if let Some(rare) = classify_rare_case(&run) {
+                    append_velocity_jsonl(&root, "rare-cases.jsonl", &rare)?;
+                }
+            }
+
+            update_multipliers(&root)?;
+            update_aggregates(&root)?;
+            apply_velocity_retention(&root)?;
+
+            println!("VELOCITY_COMPLETE_STATUS=PASS");
+            println!("ACTUAL_ACTIVE_MINUTES={actual_minutes}");
+            println!("OVERESTIMATE_RATIO={overestimate_ratio:.1}");
+            if overestimate_ratio >= 2.0 {
+                println!("HUMAN_TIME_BIAS=detected");
+            } else {
+                println!("HUMAN_TIME_BIAS=not_detected");
+            }
+            println!("RETENTION_STATUS=applied");
+        }
+        "bias" => {
+            let task_id = task.ok_or_else(|| anyhow!("--task required"))?;
+
+            let estimates: Vec<EstimateRecord> = read_velocity_jsonl(&root, "estimates.jsonl")?;
+            let runs: Vec<RunRecord> = read_velocity_jsonl(&root, "runs.jsonl")?;
+
+            let estimate = estimates.iter().find(|e| e.task_id == task_id);
+            let run = runs.iter().find(|r| r.task_id == task_id);
+
+            match (estimate, run) {
+                (Some(est), Some(run)) => {
+                    let bias = detect_bias(est, run);
+                    println!("VELOCITY_BIAS_STATUS=PASS");
+                    println!("BIAS_TYPE={}", bias.bias_type);
+                    println!("OVERESTIMATE_RATIO={:.1}", bias.overestimate_ratio);
+                    println!(
+                        "HUMAN_TIME_BIAS_FOUND={}",
+                        if bias.human_time_bias_found {
+                            "yes"
+                        } else {
+                            "no"
+                        }
+                    );
+                    println!(
+                        "HUMAN_TIME_BIAS_CONFIDENCE={}",
+                        bias.human_time_bias_confidence
+                    );
+                    println!("HUMAN_BASELINE_STATUS={}", bias.human_baseline_status);
+                    println!("NEXT_ESTIMATE_ADJUSTMENT={}", bias.next_estimate_adjustment);
+                    if let Some(ff) = bias.fast_finish_calibration {
+                        println!("FAST_FINISH_CALIBRATION");
+                        println!("ORIGINAL_ESTIMATE={}", ff.original_estimate_minutes);
+                        println!("ACTUAL_TIME={}", ff.actual_time_minutes);
+                        println!("ACCEPTANCE_STATUS={}", ff.acceptance_status);
+                        println!("ERROR_RATIO={:.1}", ff.error_ratio);
+                        println!("CAUSE={}", ff.cause);
+                        println!("NEXT_ESTIMATE_ADJUSTMENT={}", ff.next_estimate_adjustment);
+                    }
+                }
+                _ => {
+                    println!("VELOCITY_BIAS_STATUS=NEEDS_FIX");
+                    println!("reason=estimate_or_run_not_found");
+                }
+            }
+        }
+        "report" => {
+            let aggregates: aiplus_core::Aggregates =
+                read_velocity_json(&root, "aggregates.json").unwrap_or_default();
+            println!("VELOCITY_REPORT_STATUS=PASS");
+            println!("CALIBRATION_WINDOW=latest_200");
+            println!("TOTAL_ESTIMATES={}", aggregates.total_estimates);
+            println!("TOTAL_RUNS={}", aggregates.total_runs);
+            println!("TOTAL_RARE_CASES={}", aggregates.total_rare_cases);
+            println!(
+                "MEDIAN_OVERESTIMATE_RATIO={:.1}",
+                aggregates.median_overestimate_ratio
+            );
+            println!(
+                "HUMAN_TIME_BIAS_RATE={:.2}",
+                aggregates.human_time_bias_rate
+            );
+        }
+        "doctor" => {
+            let report = velocity_doctor(&root)?;
+            println!("VELOCITY_DOCTOR_STATUS={}", report.status);
+            println!("records_count={}", report.records_count);
+            println!(
+                "rotation_needed={}",
+                if report.rotation_needed { "yes" } else { "no" }
+            );
+            println!("bad_jsonl_lines={}", report.bad_jsonl_lines);
+            println!("secret_values={}", report.secret_values);
+            println!("raw_content_found={}", report.raw_content_found);
+            println!(
+                "global_agent_config_edits={}",
+                report.global_agent_config_edits
+            );
+            println!("duplicate_ids={}", report.duplicate_ids);
+            println!("missing_required_fields={}", report.missing_required_fields);
+            println!("negative_time_records={}", report.negative_time_records);
+            println!(
+                "actual_exceeds_wallclock={}",
+                report.actual_exceeds_wallclock
+            );
+            println!("nan_multipliers={}", report.nan_multipliers);
+            println!(
+                "sqlite_found={}",
+                if report.sqlite_found { "yes" } else { "no" }
+            );
+            if !report.over_threshold_files.is_empty() {
+                println!(
+                    "over_threshold_files={}",
+                    report.over_threshold_files.join(",")
+                );
+            }
+        }
+        "purge" => {
+            if !yes {
+                println!("Usage: aiplus velocity purge --yes");
+                return Err(CliError::new(1, "ERROR purge requires --yes").into());
+            }
+            purge_velocity(&root)?;
+            println!("VELOCITY_PURGE_STATUS=PASS");
+        }
+        _ => {
+            println!("Usage: aiplus velocity init|estimate|complete|bias|report|doctor|purge");
+            process::exit(2);
+        }
+    }
+
+    Ok(())
+}
+
+fn now_iso() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    let nanos = duration.subsec_nanos();
+    let millis = nanos / 1_000_000;
+    let dt = simple_time_from_epoch(secs);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, millis
+    )
+}
+
+struct SimpleDateTime {
+    year: i32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+}
+
+fn simple_time_from_epoch(mut secs: u64) -> SimpleDateTime {
+    const DAYS_IN_MONTH: [u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut year = 1970i32;
+    loop {
+        let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let secs_in_year = if is_leap { 31_622_400 } else { 31_536_000 };
+        if secs >= secs_in_year as u64 {
+            secs -= secs_in_year as u64;
+            year += 1;
+        } else {
+            break;
+        }
+    }
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let mut month = 0usize;
+    loop {
+        let days = if month == 1 && is_leap {
+            29
+        } else {
+            DAYS_IN_MONTH[month] as u64
+        };
+        let secs_in_month = days * 86_400;
+        if secs >= secs_in_month {
+            secs -= secs_in_month;
+            month += 1;
+        } else {
+            break;
+        }
+    }
+    let day = (secs / 86_400) + 1;
+    secs %= 86_400;
+    let hour = secs / 3600;
+    secs %= 3600;
+    let minute = secs / 60;
+    let second = secs % 60;
+    SimpleDateTime {
+        year,
+        month: (month + 1) as u8,
+        day: day as u8,
+        hour: hour as u8,
+        minute: minute as u8,
+        second: second as u8,
+    }
+}
+
+fn read_velocity_jsonl<T: for<'de> serde::Deserialize<'de>>(
+    root: &Path,
+    filename: &str,
+) -> Result<Vec<T>> {
+    aiplus_core::read_velocity_jsonl(root, filename)
+}
+
+fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
+    root: &Path,
+    filename: &str,
+) -> Result<T> {
+    aiplus_core::read_velocity_json(root, filename)
 }

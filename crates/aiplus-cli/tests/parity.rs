@@ -2961,3 +2961,175 @@ fn savings_event_fixture(baseline: u64, saved: u64, reduction: f64, cost: Option
     })
     .to_string()
 }
+
+#[test]
+fn velocity_cli_human_time_bias_end_to_end() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    fs::create_dir(target.join("fake-home")).unwrap();
+    fs::create_dir(target.join("fake-codex-home")).unwrap();
+    fs::create_dir(target.join("fake-xdg")).unwrap();
+
+    let init = run(target, &["velocity", "init"], 0);
+    let init_out = stdout(&init);
+    assert!(init_out.contains("VELOCITY_INIT_STATUS=PASS"));
+    assert!(init_out.contains(".aiplus/velocity"));
+
+    let velocity_dir = target.join(".aiplus/velocity");
+    assert!(velocity_dir.is_dir(), "velocity dir missing");
+    for f in [
+        "config.json",
+        "estimates.jsonl",
+        "runs.jsonl",
+        "rare-cases.jsonl",
+        "anchor-signals.jsonl",
+        "multipliers.json",
+        "aggregates.json",
+        "rotation-state.json",
+    ] {
+        assert!(velocity_dir.join(f).exists(), "missing velocity file: {f}");
+    }
+
+    let config_text = fs::read_to_string(velocity_dir.join("config.json")).unwrap();
+    let config: serde_json::Value = serde_json::from_str(&config_text).unwrap();
+    assert_eq!(config["maxRecords"], 200);
+    assert_eq!(config["rareCaseMaxRecords"], 20);
+    assert_eq!(config["rawContentAllowed"], false);
+    assert_eq!(config["memoryIntegration"], "disabled");
+
+    let est = run(
+        target,
+        &[
+            "velocity",
+            "estimate",
+            "--task-type",
+            "bug_fix",
+            "--human-estimate",
+            "5h",
+            "--task-id",
+            "task_e2e_1",
+            "--model",
+            "claude-opus",
+            "--workflow",
+            "MEDIUM",
+        ],
+        0,
+    );
+    let est_out = stdout(&est);
+    assert!(est_out.contains("VELOCITY_ESTIMATE_STATUS=PASS"));
+    assert!(est_out.contains("HUMAN_ANCHOR_DETECTED=yes"));
+    assert!(est_out.contains("HUMAN_ESTIMATE_MINUTES=300"));
+    assert!(est_out.contains("STOP_WHEN_DONE=yes"));
+
+    let estimates_jsonl = fs::read_to_string(velocity_dir.join("estimates.jsonl")).unwrap();
+    assert!(estimates_jsonl.contains("\"taskId\":\"task_e2e_1\""));
+    assert!(estimates_jsonl.contains("\"humanEstimateMinutes\":300"));
+
+    let comp = run(
+        target,
+        &[
+            "velocity",
+            "complete",
+            "--task-id",
+            "task_e2e_1",
+            "--actual",
+            "20m",
+            "--outcome",
+            "pass",
+            "--task-type",
+            "bug_fix",
+            "--model",
+            "claude-opus",
+            "--workflow",
+            "MEDIUM",
+        ],
+        0,
+    );
+    let comp_out = stdout(&comp);
+    assert!(comp_out.contains("VELOCITY_COMPLETE_STATUS=PASS"));
+    assert!(comp_out.contains("ACTUAL_ACTIVE_MINUTES=20"));
+    assert!(comp_out.contains("OVERESTIMATE_RATIO=15.0"));
+    assert!(comp_out.contains("HUMAN_TIME_BIAS=detected"));
+    assert!(comp_out.contains("RETENTION_STATUS=applied"));
+
+    let runs_jsonl = fs::read_to_string(velocity_dir.join("runs.jsonl")).unwrap();
+    assert!(runs_jsonl.contains("\"taskId\":\"task_e2e_1\""));
+    assert!(runs_jsonl.contains("\"actualActiveMinutes\":20"));
+    let rare_jsonl = fs::read_to_string(velocity_dir.join("rare-cases.jsonl")).unwrap();
+    assert!(
+        rare_jsonl.contains("\"taskId\":\"task_e2e_1\""),
+        "expected rare case entry, rare-cases.jsonl: {rare_jsonl}"
+    );
+
+    let bias = run(target, &["velocity", "bias", "--task", "task_e2e_1"], 0);
+    let bias_out = stdout(&bias);
+    assert!(bias_out.contains("VELOCITY_BIAS_STATUS=PASS"));
+    assert!(bias_out.contains("OVERESTIMATE_RATIO=15.0"));
+    assert!(bias_out.contains("HUMAN_TIME_BIAS_FOUND=yes"));
+
+    let rep = run(target, &["velocity", "report"], 0);
+    let rep_out = stdout(&rep);
+    assert!(rep_out.contains("VELOCITY_REPORT_STATUS=PASS"));
+    assert!(rep_out.contains("CALIBRATION_WINDOW=latest_200"));
+    assert!(rep_out.contains("TOTAL_ESTIMATES=1"));
+    assert!(rep_out.contains("TOTAL_RUNS=1"));
+
+    let doc = run(target, &["velocity", "doctor"], 0);
+    let doc_out = stdout(&doc);
+    assert!(doc_out.contains("VELOCITY_DOCTOR_STATUS=PASS"));
+    assert!(doc_out.contains("sqlite_found=no"));
+    assert!(doc_out.contains("raw_content_found=no"));
+    assert!(doc_out.contains("secret_values=none"));
+    assert!(doc_out.contains("global_agent_config_edits=none"));
+
+    assert!(!velocity_dir.join("velocity.sqlite").exists());
+    assert!(!velocity_dir.join("velocity.db").exists());
+    assert!(!velocity_dir.join("velocity.sqlite3").exists());
+
+    let scan_files = [
+        "config.json",
+        "estimates.jsonl",
+        "runs.jsonl",
+        "rare-cases.jsonl",
+        "anchor-signals.jsonl",
+        "multipliers.json",
+        "aggregates.json",
+        "rotation-state.json",
+    ];
+    let forbidden = [
+        "raw transcript",
+        "raw prompt",
+        "provider payload",
+        "Authorization:",
+        "Bearer ",
+        "BEGIN PRIVATE KEY",
+    ];
+    for f in scan_files {
+        let p = velocity_dir.join(f);
+        if !p.exists() {
+            continue;
+        }
+        let text = fs::read_to_string(&p).unwrap();
+        for needle in forbidden {
+            assert!(
+                !text.contains(needle),
+                "{f} unexpectedly contains forbidden marker: {needle}"
+            );
+        }
+        assert!(
+            !text.to_lowercase().contains("telemetry"),
+            "{f} unexpectedly contains telemetry field"
+        );
+    }
+
+    for dir in ["fake-home", "fake-xdg", "fake-codex-home"] {
+        let entries: Vec<_> = fs::read_dir(target.join(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "{dir} unexpectedly received files: {entries:?}"
+        );
+    }
+}
