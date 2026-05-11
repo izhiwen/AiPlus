@@ -73,6 +73,8 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::time::SystemTime;
 
+mod agent;
+
 const VERSION: &str = "0.5.1";
 const RELEASE_TAG: &str = "v0.5.1";
 const INSTALLER: &str = "aiplus";
@@ -300,6 +302,8 @@ enum Commands {
         #[arg(long, action = ArgAction::SetTrue)]
         yes: bool,
     },
+    #[command(name = "agent")]
+    Agent(agent::AgentArgs),
 }
 
 struct CliError {
@@ -818,6 +822,7 @@ fn run(command: Commands) -> Result<()> {
             task,
             yes,
         ),
+        Commands::Agent(args) => agent::dispatch(args),
     }
 }
 

@@ -173,7 +173,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
     assert!(status.contains(
-        "modules=[agent-memory@0.5.1, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
+        "modules=[agent-memory@0.5.1, agent-team@0.1.0, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
     ));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("agentMemory="));
@@ -3133,4 +3133,124 @@ fn velocity_cli_human_time_bias_end_to_end() {
             "{dir} unexpectedly received files: {entries:?}"
         );
     }
+}
+
+#[test]
+fn agent_team_list_shows_six_functional_experts() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let agents_dir = target.join(".aiplus/agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+    for (role, name) in [
+        ("ai-integration", "AI Integration"),
+        ("security-reviewer", "Security Reviewer"),
+        ("tech-writer", "Technical Writer"),
+        ("devops", "DevOps"),
+        ("ui-designer", "UI Designer"),
+        ("researcher", "Researcher"),
+    ] {
+        fs::write(
+            agents_dir.join(format!("{role}.toml")),
+            format!(
+                "schema_version = \"1.0\"\n\n[agent]\nrole = \"{role}\"\ndisplay_name = \"{name}\"\ntier = \"expert\"\n\n[workspace]\nneeds_worktree = false\n"
+            ),
+        )
+        .unwrap();
+    }
+    let experts_dir = agents_dir.join("experts");
+    fs::create_dir_all(&experts_dir).unwrap();
+    for role in [
+        "data-analyst",
+        "customer-researcher",
+        "performance-engineer",
+        "accessibility",
+        "compliance-reviewer",
+    ] {
+        fs::write(
+            experts_dir.join(format!("{role}.toml")),
+            format!(
+                "schema_version = \"1.0\"\n\n[agent]\nrole = \"{role}\"\ndisplay_name = \"{role}\"\ntier = \"expert\"\nstatus = \"stub_v0_2\"\n\n[workspace]\nneeds_worktree = false\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    let list = stdout(&run(target, &["agent", "list", "--functional"], 0));
+    assert!(list.contains("Functional experts (v0.1):"));
+    let count = list.lines().filter(|l| l.starts_with("  - ")).count();
+    assert_eq!(
+        count, 6,
+        "expected exactly 6 functional experts, got:\n{list}"
+    );
+}
+
+#[test]
+fn agent_team_invite_stub_errors_with_stub_not_invitable() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let err = run(target, &["agent", "invite", "data-analyst"], 3);
+    let err_str = stderr(&err);
+    assert!(err_str.contains("STUB_NOT_INVITABLE"));
+    assert!(err_str.contains("expert is v0.2 stub, not yet functional"));
+}
+
+#[test]
+fn agent_team_status_shows_roster() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let status = stdout(&run(target, &["agent", "status"], 0));
+    assert!(status.contains("AiPlus Agent Team v0.1"));
+    assert!(status.contains("Team Roster:"));
+    assert!(status.contains("Active roles:"));
+    assert!(status.contains("Total agents:"));
+}
+
+#[test]
+fn agent_team_chinese_aliases_resolve() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let status = stdout(&run(target, &["agent", "团队"], 0));
+    assert!(status.contains("AiPlus Agent Team v0.1"));
+    assert!(status.contains("Team Roster:"));
+}
+
+#[test]
+fn agent_team_doctor_validates_configs() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    let agents_dir = target.join(".aiplus/agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+    fs::write(
+        agents_dir.join("ai-integration.toml"),
+        "schema_version = \"1.0\"\n\n[agent]\nrole = \"ai-integration\"\ndisplay_name = \"AI Integration\"\nstatus = \"active\"\n\n[workspace]\nneeds_worktree = false\n",
+    )
+    .unwrap();
+    fs::write(
+        agents_dir.join("devops.toml"),
+        "schema_version = \"1.0\"\n\n[agent]\nrole = \"devops\"\ndisplay_name = \"DevOps\"\nstatus = \"active\"\n\n[workspace]\nneeds_worktree = true\nworktree_path = \".aiplus/agents/devops-wt\"\n",
+    )
+    .unwrap();
+
+    let doctor = stdout(&run(target, &["agent", "doctor"], 0));
+    assert!(doctor.contains("Running agent team doctor..."));
+    assert!(doctor.contains("Found 2 agent config(s)"));
+    assert!(doctor.contains("ai-integration (AI Integration) [ACTIVE]"));
+    assert!(doctor.contains("devops (DevOps) [ACTIVE]"));
+    assert!(doctor.contains("WARNING: worktree .aiplus/agents/devops-wt does not exist"));
+    assert!(doctor.contains("Doctor check complete."));
 }

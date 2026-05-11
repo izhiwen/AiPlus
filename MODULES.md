@@ -15,6 +15,7 @@ reports module health.
 | `assets/aiplus-compact-reminder` | Bundled snapshot | Apache-2.0 | Proactive compact reminder, checkpoint, handoff, savings preview, validate, score, and resume workflow assets |
 | `assets/aiplus-auto-team-consultant` | Bundled snapshot | MIT, preserved | Advisor/CEO/Reviewer/Builder routing assets |
 | `assets/aiplus-agent-memory` | Bundled snapshot | Apache-2.0 | Agent Continuity foundation for local Memory Context, Role Identity, and Skill Candidate governance |
+| `assets/aiplus-agent-team` | Bundled snapshot | Apache-2.0 | Multi-agent coordination, role routing, invite/dismiss, and worktree governance |
 
 ## Independent Public Module Records
 
@@ -23,6 +24,7 @@ reports module health.
 | `aiplus-compact-reminder` | `https://github.com/izhiwen/aiplus-compact-reminder` | Independent public module record |
 | `aiplus-auto-team-consultant` | `https://github.com/izhiwen/aiplus-auto-team-consultant` | Independent public module record |
 | `aiplus-agent-memory` | public/general AiPlus subproduct | Introduced in v0.5.0 |
+| `aiplus-agent-team` | `https://github.com/izhiwen/aiplus-agent-team` | Introduced in v0.1.0 |
 | `codex-compact-protocol` | `https://github.com/izhiwen/codex-compact-protocol` | Legacy Codex-first public record |
 
 ## Not Included

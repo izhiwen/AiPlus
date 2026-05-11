@@ -20,8 +20,11 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    ease, security and privacy, real execution pitfalls, AI integration
    considerations. You only find out at release week, or worse, from a user
    complaint.
+6. **One agent wears every hat.** CEO, reviewer, builder, advisor — all crammed
+   into the same context window. Roles drift, quality drops, and no one is
+   accountable for the handoff.
 
-AiPlus is four small modules that, together, fix all five.
+AiPlus is five small modules that, together, fix all six.
 
 ## What you get
 
@@ -45,6 +48,11 @@ review team without paying the cost on every commit.
 and actual completion time is logged as local JSONL. Human-time bias is
 detected automatically. Future estimates use AI-native p50 and p90 numbers
 calibrated from your own history.
+
+**Agent Team** — The agent stops being a one-person band. Define roles, invite
+them when needed, and dismiss them when done. A coordinator routes work to the
+right role, keeps transcripts, and prunes stale worktrees so your project stays
+clean.
 
 Everything stays inside `.aiplus/` in your project. Nothing uploads. Nothing
 syncs to a cloud. Nothing edits your global agent config.
@@ -102,6 +110,16 @@ aiplus compact savings               # token + cost savings
 aiplus velocity estimate --task-type feature --human-estimate 5h
 aiplus velocity report
 
+# Agent Team
+aiplus agent status
+aiplus agent route --role reviewer
+aiplus agent talk <role>
+aiplus agent invite <role>
+aiplus agent dismiss <role>
+aiplus agent integrate <role>
+aiplus agent transcript <role>
+aiplus agent prune-worktrees
+
 # Updates
 aiplus update all
 ```
@@ -113,6 +131,8 @@ MyProject/
 ├── .aiplus/
 │   ├── memory/                  # JSONL memory records
 │   ├── identities/              # Role identity definitions
+│   ├── agents/                  # Agent team role definitions and state
+│   ├── agent-memory/            # Agent continuity and context records
 │   ├── consultant-team.toml     # Team routing config
 │   └── velocity/                # Estimate and run records
 ├── .codex/compact/              # Compact handoffs and capsules
@@ -121,7 +141,7 @@ MyProject/
 └── AGENTS.md                    # Codex managed block (if installed)
 ```
 
-## The four standalone modules
+## The five standalone modules
 
 Each module also ships as its own GitHub repo if you want to inspect or
 adopt one piece at a time:
@@ -130,6 +150,7 @@ adopt one piece at a time:
 - [aiplus-compact-reminder](https://github.com/izhiwen/aiplus-compact-reminder)
 - [aiplus-auto-team-consultant](https://github.com/izhiwen/aiplus-auto-team-consultant)
 - [aiplus-agent-velocity](https://github.com/izhiwen/aiplus-agent-velocity)
+- [aiplus-agent-team](https://github.com/izhiwen/aiplus-agent-team)
 
 ## Safety boundaries
 

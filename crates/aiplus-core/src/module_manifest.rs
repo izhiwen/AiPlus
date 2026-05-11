@@ -49,6 +49,18 @@ pub const MODULES: &[ModuleSpec] = &[
             "adapters/codex/skills/agent-memory/SKILL.md",
         ],
     },
+    ModuleSpec {
+        name: "agent-team",
+        vendor_name: "aiplus-agent-team",
+        version: "0.1.0",
+        path: ".aiplus/modules/aiplus-agent-team",
+        required_files: &[
+            "core/templates/advisor.toml",
+            "core/templates/ceo.toml",
+            "core/templates/agent-team.toml",
+            "core/templates/personas/advisor.md",
+        ],
+    },
 ];
 
 pub const MODULE_SLUG_COMPACT_REMINDER: &str = "compact-reminder";
@@ -115,6 +127,7 @@ pub fn normalize_module(value: Option<&str>) -> Option<&'static str> {
             Some("auto-team-consultant")
         }
         "agent-memory" | "aiplus-agent-memory" | "memory" => Some("agent-memory"),
+        "agent-team" | "aiplus-agent-team" => Some("agent-team"),
         _ => None,
     }
 }
@@ -307,6 +320,28 @@ mod tests {
         assert!(manifests
             .iter()
             .any(|manifest| manifest.name == "agent-memory"));
+        assert!(manifests
+            .iter()
+            .any(|manifest| manifest.name == "agent-team"));
+    }
+
+    #[test]
+    fn agent_team_slug_is_unique() {
+        let slugs: Vec<&str> = MODULES.iter().map(|m| m.name).collect();
+        assert_eq!(
+            slugs.iter().filter(|s| s.contains("agent-team")).count(),
+            1,
+            "agent-team slug must be unique"
+        );
+        // Verify no prefix collision with agent-memory or auto-team-consultant
+        assert!(
+            !"agent-team".starts_with("agent-memory"),
+            "agent-team must not prefix-match agent-memory"
+        );
+        assert!(
+            !"agent-team".starts_with("auto-team"),
+            "agent-team must not prefix-match auto-team-consultant"
+        );
     }
 
     #[test]
@@ -326,6 +361,11 @@ mod tests {
         );
         assert_eq!(normalize_module(Some("team")), Some("auto-team-consultant"));
         assert_eq!(normalize_module(Some("memory")), Some("agent-memory"));
+        assert_eq!(normalize_module(Some("agent-team")), Some("agent-team"));
+        assert_eq!(
+            normalize_module(Some("aiplus-agent-team")),
+            Some("agent-team")
+        );
         assert_eq!(normalize_module(Some("unknown")), None);
     }
 
