@@ -1,6 +1,8 @@
+pub mod cache;
 pub mod commands;
 pub mod core;
 pub mod handlers;
+pub mod worktree;
 
 pub use commands::{AgentArgs, AgentSub};
 pub use handlers::*;
@@ -9,11 +11,15 @@ use anyhow::Result;
 
 pub fn dispatch(args: AgentArgs) -> Result<()> {
     match args.subcommand {
-        AgentSub::Status => handle_status(),
+        AgentSub::Status { verbose: _ } => handle_status(),
         AgentSub::Doctor => handle_doctor(),
         AgentSub::List { functional } => handle_list(functional),
         AgentSub::Talk { role } => handle_talk(&role),
-        AgentSub::Route { role, task } => handle_route(role.as_deref(), &task.join(" ")),
+        AgentSub::Route {
+            role,
+            task,
+            role_opt: _,
+        } => handle_route(role.as_deref(), &task.join(" ")),
         AgentSub::Reset => handle_reset(),
         AgentSub::Invite { role } => handle_invite(&role),
         AgentSub::Dismiss { role } => handle_dismiss(&role),

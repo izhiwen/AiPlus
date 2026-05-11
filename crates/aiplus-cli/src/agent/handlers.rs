@@ -1,4 +1,5 @@
 use crate::agent::core::{get_role_config, is_stub, list_roles, load_team_config};
+use crate::agent::worktree;
 use anyhow::Result;
 
 pub fn handle_status() -> Result<()> {
@@ -124,10 +125,25 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
             println!("Routing task to {}: {}", r, task);
             let config = get_role_config(r)?;
             if config.needs_worktree {
-                println!(
-                    "  Worktree required for {} (v0.1 stub: creation deferred)",
-                    r
-                );
+                let project_root = std::env::current_dir()?;
+                match worktree::worktree_exists_for_role(&project_root, r)? {
+                    Some(path) => {
+                        println!("  Using existing worktree: {}", path.display());
+                    }
+                    None => {
+                        println!("  Creating worktree for {}...", r);
+                        let template = config.worktree_path.as_deref();
+                        match worktree::create_worktree(&project_root, r, template) {
+                            Ok(path) => {
+                                println!("  Worktree created: {}", path.display());
+                            }
+                            Err(e) => {
+                                eprintln!("  ERROR: Failed to create worktree: {}", e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
             }
         }
         None => {
@@ -169,8 +185,8 @@ pub fn handle_enable(role: &str) -> Result<()> {
 }
 
 pub fn handle_integrate(role: &str) -> Result<()> {
-    println!("Integrating {} worktree into main...", role);
-    Ok(())
+    let project_root = std::env::current_dir()?;
+    worktree::merge_agent_branch(&project_root, role)
 }
 
 pub fn handle_transcript() -> Result<()> {
@@ -180,14 +196,8 @@ pub fn handle_transcript() -> Result<()> {
 
 pub fn handle_prune_worktrees(yes: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
-    let state = load_team_config(&project_root)?;
 
-    let mut stale_worktrees = Vec::new();
-    for (role, path) in &state.worktree_paths {
-        if !path.exists() {
-            stale_worktrees.push((role.clone(), path.clone()));
-        }
-    }
+    let stale_worktrees = worktree::get_stale_worktrees(&project_root)?;
 
     if stale_worktrees.is_empty() {
         println!("No stale worktrees found.");
@@ -205,8 +215,10 @@ pub fn handle_prune_worktrees(yes: bool) -> Result<()> {
     }
 
     println!("Pruning {} stale worktree(s)...", stale_worktrees.len());
-    for (role, _path) in &stale_worktrees {
-        println!("  Removed worktree for {}", role);
+    for (_role, path) in &stale_worktrees {
+        if let Err(e) = worktree::remove_worktree(&project_root, path) {
+            eprintln!("  ERROR: Failed to remove {}: {}", path.display(), e);
+        }
     }
 
     Ok(())

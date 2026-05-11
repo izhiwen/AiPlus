@@ -624,6 +624,32 @@ fn translate_chinese_subcommand(args: Vec<String>) -> Vec<String> {
             translated[1] = "update".to_string();
             translated.insert(2, "--all-projects".to_string());
         }
+        // Handle agent-team Chinese aliases
+        let agent_aliases = [
+            ("团队", "status"),
+            ("团队状态", "status"),
+            ("派单", "route"),
+            ("分配任务", "route"),
+            ("跟", "talk"),
+            ("找", "talk"),
+            ("召唤", "invite"),
+            ("请", "invite"),
+            ("让走", "dismiss"),
+            ("解散", "dismiss"),
+            ("合并", "integrate"),
+            ("集成", "integrate"),
+            ("看活", "transcript"),
+            ("记录", "transcript"),
+            ("清理", "prune-worktrees"),
+            ("清理团队工作区", "prune-worktrees"),
+        ];
+        for (zh, en) in agent_aliases {
+            if translated[1] == zh {
+                translated[1] = "agent".to_string();
+                translated.insert(2, en.to_string());
+                break;
+            }
+        }
     }
     translated
 }
@@ -647,6 +673,11 @@ fn main() {
         if let Some(cli_error) = error.downcast_ref::<CliError>() {
             eprintln!("{}", cli_error.message);
             process::exit(cli_error.code);
+        }
+        let msg = error.to_string();
+        if msg.starts_with("STUB_NOT_INVITABLE") {
+            eprintln!("{}", msg);
+            process::exit(2);
         }
         eprintln!("INTERNAL_ERROR {error:?}");
         process::exit(3);
@@ -3663,6 +3694,12 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
         &serde_json::to_string(&record)?,
     )?;
     append_audit(&root, "memory.add", &id)?;
+
+    // Invalidate warm-bench cache: memory add/forget → invalidate all
+    if let Ok(mut cache) = crate::agent::cache::global_cache().lock() {
+        cache.invalidate_all();
+    }
+
     println!("MEMORY_ADD");
     println!("id={id}");
     println!("scope={}", record.scope);
@@ -3712,6 +3749,12 @@ fn memory_forget(id: Option<String>) -> Result<()> {
     }
     rewrite_jsonl_atomic(&file, &records)?;
     append_audit(&root, "memory.forget", &id)?;
+
+    // Invalidate warm-bench cache: memory add/forget → invalidate all
+    if let Ok(mut cache) = crate::agent::cache::global_cache().lock() {
+        cache.invalidate_all();
+    }
+
     println!("MEMORY_FORGET");
     println!("id={id}");
     println!("status=rejected");
@@ -5704,6 +5747,73 @@ fn install_base(
     {
         install_consultant_team_config(root, plan, options)?;
     }
+    if module_names.iter().any(|name| name == "agent-team") && !plan.dry_run {
+        agent_team_init(root)?;
+    }
+    Ok(())
+}
+
+fn agent_team_init(root: &Path) -> Result<()> {
+    let agents_dir = root.join(".aiplus").join("agents");
+    std::fs::create_dir_all(&agents_dir)?;
+    std::fs::create_dir_all(agents_dir.join("personas"))?;
+    std::fs::create_dir_all(agents_dir.join("personas").join("_stubs"))?;
+    std::fs::create_dir_all(agents_dir.join("experts"))?;
+
+    // Copy core role configs
+    for role in [
+        "advisor", "ceo", "architect", "pm",
+        "engineer-a", "engineer-b", "reviewer", "qa",
+    ] {
+        let asset = format!("aiplus-agent-team/core/templates/{role}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join(format!("{role}.toml")), content.as_bytes())?;
+    }
+
+    // Copy team config
+    let team_content = embedded_asset_text("aiplus-agent-team/core/templates/agent-team.toml")?;
+    write_file_atomic(&agents_dir.join("agent-team.toml"), team_content.as_bytes())?;
+
+    // Copy core personas
+    for role in [
+        "advisor", "ceo", "architect", "pm",
+        "engineer-a", "engineer-b", "reviewer", "qa",
+    ] {
+        let asset = format!("aiplus-agent-team/core/templates/personas/{role}.md");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join("personas").join(format!("{role}.md")), content.as_bytes())?;
+    }
+
+    // Copy functional expert configs
+    for expert in [
+        "ai-integration", "security-reviewer", "tech-writer",
+        "devops", "ui-designer", "researcher",
+    ] {
+        let asset = format!("aiplus-agent-team/core/templates/experts/{expert}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join("experts").join(format!("{expert}.toml")), content.as_bytes())?;
+    }
+
+    // Copy stub expert configs
+    for expert in [
+        "data-analyst", "customer-researcher", "performance-engineer",
+        "accessibility", "compliance-reviewer",
+    ] {
+        let asset = format!("aiplus-agent-team/core/templates/experts/{expert}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join("experts").join(format!("{expert}.toml")), content.as_bytes())?;
+    }
+
+    // Copy stub personas
+    for expert in [
+        "data-analyst", "customer-researcher", "performance-engineer",
+        "accessibility", "compliance-reviewer",
+    ] {
+        let asset = format!("aiplus-agent-team/core/templates/personas/_stubs/{expert}.md");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join("personas").join("_stubs").join(format!("{expert}.md")), content.as_bytes())?;
+    }
+
     Ok(())
 }
 

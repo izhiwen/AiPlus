@@ -9,7 +9,10 @@ pub struct AgentArgs {
 #[derive(Subcommand)]
 pub enum AgentSub {
     #[command(visible_aliases = ["团队", "团"])]
-    Status,
+    Status {
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        verbose: bool,
+    },
 
     #[command(visible_aliases = ["健康", "诊断"])]
     Doctor,
@@ -26,6 +29,8 @@ pub enum AgentSub {
     #[command(visible_aliases = ["派单", "分"])]
     Route {
         role: Option<String>,
+        #[arg(long)]
+        role_opt: Option<String>,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         task: Vec<String>,
     },

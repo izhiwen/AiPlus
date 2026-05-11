@@ -3194,7 +3194,7 @@ fn agent_team_invite_stub_errors_with_stub_not_invitable() {
     setup_fake_env(target);
     run(target, &["install", "codex"], 0);
 
-    let err = run(target, &["agent", "invite", "data-analyst"], 3);
+    let err = run(target, &["agent", "invite", "data-analyst"], 2);
     let err_str = stderr(&err);
     assert!(err_str.contains("STUB_NOT_INVITABLE"));
     assert!(err_str.contains("expert is v0.2 stub, not yet functional"));
