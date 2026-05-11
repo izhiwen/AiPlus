@@ -4,7 +4,7 @@
 
 ## 为什么存在
 
-你一定经历过这些。周一早上打开新 session，第三次解释项目规范。到周三 agent 已经忘了命名规则。Codex 长任务跑到一半，context window 满了，agent 丢了半条上下文。compact 之后它像失忆了一样，问你早已回答过的问题。多个 agent 协作时互相踩脚，因为没人定义谁来主导、谁来 review、谁来实现。而 agent 说"这件事要五小时"，你凭经验知道通常二十分钟就做完了，但没人把这条记下来，所以下次估时还是一样离谱。
+你的 agent 在漂移。周一早上打开新 session，这周第三次解释项目规范。到周三 agent 已经忘了命名规则。Codex 长任务跑到一半，context window 满了，agent 丢了半条上下文。compact 之后它像失忆了一样，问你早已回答过的问题。多个 agent 协作时互相踩脚，因为没人定义谁来主导、谁来 review、谁来实现。而 agent 说"这件事要五小时"，你凭经验知道通常二十分钟就做完了，但没人把这条记下来，所以下次估时还是一样离谱。
 
 AiPlus 用四个集成模块解决这些问题，全部在本地运行。
 
@@ -25,7 +25,8 @@ AiPlus 用四个集成模块解决这些问题，全部在本地运行。
 安装 `aiplus` 命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh \
+  | bash
 ```
 
 把 AiPlus 安装到当前项目：

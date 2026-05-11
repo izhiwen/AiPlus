@@ -4,7 +4,7 @@
 
 ## Why This Exists
 
-You have been here before. Monday morning, you open a new agent session and start explaining project conventions for the third time. By Wednesday, the agent has forgotten the naming rules. Halfway through a long Codex task, the context window fills up and the agent loses half the thread. After compact, it comes back asking questions you already answered. When multiple agents collaborate, they step on each other because nobody defined who leads, who reviews, and who builds. And when the agent estimates five hours for a task that typically takes twenty minutes, nobody writes that down, so the next estimate is equally wrong.
+Your agent drifts. Monday morning, you open a new session and start explaining project conventions for the third time this week. By Wednesday, the agent has forgotten the naming rules. Halfway through a long Codex task, the context window fills up and the agent loses half the thread. After compact, it comes back asking questions you already answered. When multiple agents collaborate, they step on each other because nobody defined who leads, who reviews, and who builds. And when the agent estimates five hours for a task that typically takes twenty minutes, nobody writes that down, so the next estimate is equally wrong.
 
 AiPlus fixes these problems with four integrated modules that run entirely on your machine.
 
@@ -25,7 +25,8 @@ Everything stays in `.aiplus/` inside your project. Nothing uploads. Nothing lea
 Install the `aiplus` command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh \
+  | bash
 ```
 
 Install AiPlus into your project:
