@@ -3233,7 +3233,9 @@ fn agent_team_doctor_validates_configs() {
     setup_fake_env(target);
     run(target, &["install", "codex"], 0);
 
+    // Clear auto-provisioned agents and create test-specific configs
     let agents_dir = target.join(".aiplus/agents");
+    fs::remove_dir_all(&agents_dir).unwrap();
     fs::create_dir_all(&agents_dir).unwrap();
     fs::write(
         agents_dir.join("ai-integration.toml"),

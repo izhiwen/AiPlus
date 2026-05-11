@@ -5762,8 +5762,14 @@ fn agent_team_init(root: &Path) -> Result<()> {
 
     // Copy core role configs
     for role in [
-        "advisor", "ceo", "architect", "pm",
-        "engineer-a", "engineer-b", "reviewer", "qa",
+        "advisor",
+        "ceo",
+        "architect",
+        "pm",
+        "engineer-a",
+        "engineer-b",
+        "reviewer",
+        "qa",
     ] {
         let asset = format!("aiplus-agent-team/core/templates/{role}.toml");
         let content = embedded_asset_text(&asset)?;
@@ -5776,42 +5782,73 @@ fn agent_team_init(root: &Path) -> Result<()> {
 
     // Copy core personas
     for role in [
-        "advisor", "ceo", "architect", "pm",
-        "engineer-a", "engineer-b", "reviewer", "qa",
+        "advisor",
+        "ceo",
+        "architect",
+        "pm",
+        "engineer-a",
+        "engineer-b",
+        "reviewer",
+        "qa",
     ] {
         let asset = format!("aiplus-agent-team/core/templates/personas/{role}.md");
         let content = embedded_asset_text(&asset)?;
-        write_file_atomic(&agents_dir.join("personas").join(format!("{role}.md")), content.as_bytes())?;
+        write_file_atomic(
+            &agents_dir.join("personas").join(format!("{role}.md")),
+            content.as_bytes(),
+        )?;
     }
 
     // Copy functional expert configs
     for expert in [
-        "ai-integration", "security-reviewer", "tech-writer",
-        "devops", "ui-designer", "researcher",
+        "ai-integration",
+        "security-reviewer",
+        "tech-writer",
+        "devops",
+        "ui-designer",
+        "researcher",
     ] {
         let asset = format!("aiplus-agent-team/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
-        write_file_atomic(&agents_dir.join("experts").join(format!("{expert}.toml")), content.as_bytes())?;
+        write_file_atomic(
+            &agents_dir.join("experts").join(format!("{expert}.toml")),
+            content.as_bytes(),
+        )?;
     }
 
     // Copy stub expert configs
     for expert in [
-        "data-analyst", "customer-researcher", "performance-engineer",
-        "accessibility", "compliance-reviewer",
+        "data-analyst",
+        "customer-researcher",
+        "performance-engineer",
+        "accessibility",
+        "compliance-reviewer",
     ] {
         let asset = format!("aiplus-agent-team/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
-        write_file_atomic(&agents_dir.join("experts").join(format!("{expert}.toml")), content.as_bytes())?;
+        write_file_atomic(
+            &agents_dir.join("experts").join(format!("{expert}.toml")),
+            content.as_bytes(),
+        )?;
     }
 
     // Copy stub personas
     for expert in [
-        "data-analyst", "customer-researcher", "performance-engineer",
-        "accessibility", "compliance-reviewer",
+        "data-analyst",
+        "customer-researcher",
+        "performance-engineer",
+        "accessibility",
+        "compliance-reviewer",
     ] {
         let asset = format!("aiplus-agent-team/core/templates/personas/_stubs/{expert}.md");
         let content = embedded_asset_text(&asset)?;
-        write_file_atomic(&agents_dir.join("personas").join("_stubs").join(format!("{expert}.md")), content.as_bytes())?;
+        write_file_atomic(
+            &agents_dir
+                .join("personas")
+                .join("_stubs")
+                .join(format!("{expert}.md")),
+            content.as_bytes(),
+        )?;
     }
 
     Ok(())
@@ -9308,6 +9345,7 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/skills".to_string(),
         ".aiplus/restore".to_string(),
         ".aiplus/consultant-team.toml".to_string(),
+        ".aiplus/agents".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
