@@ -127,6 +127,8 @@ enum Commands {
         dry_run: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         verbose: bool,
+        #[arg(long = "all-projects", action = ArgAction::SetTrue)]
+        all_projects: bool,
     },
     Add {
         module: Option<String>,
@@ -152,6 +154,14 @@ enum Commands {
         yes: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
+    },
+    ListProjects {
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+    PruneProjects {
+        #[arg(long, action = ArgAction::SetTrue)]
+        yes: bool,
     },
     Rollback {
         #[arg(long, default_value = "latest")]
@@ -589,6 +599,8 @@ fn translate_chinese_subcommand(args: Vec<String>) -> Vec<String> {
             ("卸载", "uninstall"),
             ("回滚", "rollback"),
             ("健康", "doctor"),
+            ("项目清单", "list-projects"),
+            ("清理失效项目", "prune-projects"),
         ];
         for (zh, en) in mapping {
             if translated[1] == zh {
@@ -602,6 +614,11 @@ fn translate_chinese_subcommand(args: Vec<String>) -> Vec<String> {
             && (translated[2] == "升级" || translated[2] == "upgrade")
         {
             translated[2] = "upgrade".to_string();
+        }
+        // Handle "aiplus 全局更新" -> update --all-projects
+        if translated[1] == "全局更新" || translated[1] == "升级所有项目" {
+            translated[1] = "update".to_string();
+            translated.insert(2, "--all-projects".to_string());
         }
     }
     translated
@@ -655,7 +672,14 @@ fn run(command: Commands) -> Result<()> {
             module,
             dry_run,
             verbose,
-        } => command_update(module, dry_run, verbose),
+            all_projects,
+        } => {
+            if all_projects {
+                command_update_all_projects(dry_run, verbose)
+            } else {
+                command_update(module, dry_run, verbose)
+            }
+        }
         Commands::Add {
             module,
             dry_run,
@@ -669,6 +693,8 @@ fn run(command: Commands) -> Result<()> {
             yes,
             force,
         } => command_uninstall(dry_run, yes, force),
+        Commands::ListProjects { json } => command_list_projects(json),
+        Commands::PruneProjects { yes } => command_prune_projects(yes),
         Commands::Rollback { id, dry_run, yes } => command_rollback(id, dry_run, yes),
         Commands::Compact {
             subcommand,
@@ -865,6 +891,11 @@ fn command_install(
             "NOT_NEEDED"
         }
     );
+    // Upsert registry entry
+    let runtimes: Vec<String> = adapters.iter().map(|a| a.to_string()).collect();
+    if let Err(e) = upsert_registry_entry(&root, &runtimes) {
+        eprintln!("WARN registry update failed: {}", e);
+    }
     Ok(())
 }
 
@@ -992,6 +1023,125 @@ fn command_update_all(dry_run: bool, verbose: bool) -> Result<()> {
     }
     println!("Run `aiplus doctor` from the project to verify local module state.");
     println!("UPDATE_ALL_STATUS=PASS");
+    Ok(())
+}
+
+fn command_list_projects(json: bool) -> Result<()> {
+    let registry = read_registry()?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&registry)?);
+        return Ok(());
+    }
+    println!("LIST_PROJECTS");
+    println!("schema_version={}", registry.schema_version);
+    println!("total={}", registry.installed_projects.len());
+    for entry in &registry.installed_projects {
+        println!(
+            "project={} first_installed={} last_updated={} runtimes=[{}]",
+            entry.path.display(),
+            entry.first_installed,
+            entry.last_updated,
+            entry.runtimes.join(",")
+        );
+    }
+    println!("LIST_PROJECTS_STATUS=PASS");
+    Ok(())
+}
+
+fn command_prune_projects(yes: bool) -> Result<()> {
+    let registry = read_registry()?;
+    let mut stale: Vec<PathBuf> = Vec::new();
+    let mut kept: Vec<PathBuf> = Vec::new();
+    for entry in &registry.installed_projects {
+        let has_aiplus = entry.path.join(".aiplus").is_dir();
+        let exists = entry.path.exists();
+        if !exists || !has_aiplus {
+            stale.push(entry.path.clone());
+        } else {
+            kept.push(entry.path.clone());
+        }
+    }
+    if !yes {
+        println!("PRUNE_PROJECTS_DRY_RUN");
+        println!("would_remove={}", stale.len());
+        println!("would_keep={}", kept.len());
+        for path in &stale {
+            println!("would_remove={}", path.display());
+        }
+        println!("PRUNE_PROJECTS_STATUS=DRY_RUN");
+        return Ok(());
+    }
+    if stale.is_empty() {
+        println!("PRUNE_PROJECTS_STATUS=PASS removed=0 kept={}", kept.len());
+        return Ok(());
+    }
+    let mut new_registry = registry;
+    new_registry
+        .installed_projects
+        .retain(|e| !stale.contains(&e.path));
+    write_registry(&new_registry)?;
+    println!(
+        "PRUNE_PROJECTS_STATUS=PASS removed={} kept={}",
+        stale.len(),
+        kept.len()
+    );
+    Ok(())
+}
+
+fn command_update_all_projects(dry_run: bool, verbose: bool) -> Result<()> {
+    let registry = read_registry()?;
+    if registry.installed_projects.is_empty() {
+        println!("UPDATE_ALL_PROJECTS_STATUS=PASS updated=0 reason=registry_empty");
+        return Ok(());
+    }
+    println!("UPDATE_ALL_PROJECTS");
+    println!("total={}", registry.installed_projects.len());
+    let mut updated = 0usize;
+    let mut skipped_missing = 0usize;
+    let mut skipped_orphan = 0usize;
+    let mut failed = 0usize;
+    for entry in &registry.installed_projects {
+        let path = &entry.path;
+        if !path.exists() {
+            println!("SKIP_MISSING path={}", path.display());
+            skipped_missing += 1;
+            continue;
+        }
+        if !path.join(".aiplus").is_dir() {
+            println!("SKIP_ORPHAN path={}", path.display());
+            skipped_orphan += 1;
+            continue;
+        }
+        println!("UPDATE path={}", path.display());
+        let result = std::env::set_current_dir(path)
+            .map_err(anyhow::Error::new)
+            .and_then(|_| match read_manifest(path, true) {
+                Ok(manifest) if manifest.installer.as_deref() == Some(INSTALLER) => {
+                    command_update(None, dry_run, verbose)
+                }
+                _ => {
+                    println!("SKIP_NOT_AIPLUS path={}", path.display());
+                    Ok(())
+                }
+            });
+        if let Err(e) = result {
+            println!("FAIL path={} error={}", path.display(), e);
+            failed += 1;
+        } else {
+            updated += 1;
+        }
+    }
+    println!(
+        "UPDATE_ALL_PROJECTS_STATUS={} updated={} skipped_missing={} skipped_orphan={} failed={}",
+        if failed == 0 { "PASS" } else { "FAIL" },
+        updated,
+        skipped_missing,
+        skipped_orphan,
+        failed
+    );
+    if failed > 0 {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
@@ -1602,6 +1752,50 @@ fn command_doctor() -> Result<()> {
         true,
         None,
     );
+    // Registry health checks
+    let registry_path = registry_file().ok();
+    let registry_exists = registry_path.as_ref().map(|p| p.exists()).unwrap_or(false);
+    push_check(
+        &mut checks,
+        "registry exists at ~/.config/aiplus/installed-projects.json".to_string(),
+        registry_exists,
+        None,
+    );
+    let registry_parse_ok = registry_path
+        .as_ref()
+        .filter(|p| p.exists())
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|text| serde_json::from_str::<Registry>(&text).ok())
+        .is_some();
+    push_check(
+        &mut checks,
+        "registry parses as JSON with schema_version=1.0".to_string(),
+        registry_exists && registry_parse_ok,
+        None,
+    );
+    let stale_count = if let Some(ref path) = registry_path {
+        if path.exists() {
+            if let Ok(registry) = read_registry() {
+                registry
+                    .installed_projects
+                    .iter()
+                    .filter(|e| !e.path.exists() || !e.path.join(".aiplus").is_dir())
+                    .count()
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    push_check(
+        &mut checks,
+        format!("registry has {stale_count} stale entries"),
+        stale_count == 0,
+        Some("run aiplus prune-projects --yes".to_string()),
+    );
     let pass = checks.iter().all(|item| item.ok);
     println!("AIPLUS_DOCTOR");
     println!("status={}", if pass { "PASS" } else { "NEEDS_FIX" });
@@ -1704,6 +1898,9 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     }
     plan_printer(&plan);
     if !dry_run {
+        if let Err(e) = remove_registry_entry(&root) {
+            eprintln!("WARN registry removal failed: {}", e);
+        }
         safe_remove_aiplus(&root)?;
     }
     println!(
@@ -4980,6 +5177,103 @@ fn config_home() -> Result<PathBuf> {
     }
     let home = std::env::var("HOME").context("HOME is required")?;
     Ok(PathBuf::from(home).join(".config"))
+}
+
+// ------------------------------------------------------------------
+// Cross-project registry (~/.config/aiplus/installed-projects.json)
+// ------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Registry {
+    schema_version: String,
+    #[serde(default)]
+    installed_projects: Vec<RegistryEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RegistryEntry {
+    path: PathBuf,
+    first_installed: String,
+    last_updated: String,
+    #[serde(default)]
+    runtimes: Vec<String>,
+}
+
+fn registry_file() -> Result<PathBuf> {
+    let config = config_home()?;
+    Ok(config.join("aiplus/installed-projects.json"))
+}
+
+fn read_registry() -> Result<Registry> {
+    let path = registry_file()?;
+    if !path.exists() {
+        return Ok(Registry {
+            schema_version: "1.0".to_string(),
+            installed_projects: Vec::new(),
+        });
+    }
+    let text = fs::read_to_string(&path).context("read registry")?;
+    let registry: Registry = serde_json::from_str(&text).context("parse registry")?;
+    Ok(registry)
+}
+
+fn write_registry(registry: &Registry) -> Result<()> {
+    let path = registry_file()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).context("create registry dir")?;
+    }
+    let tmp = path.with_extension("tmp");
+    let mut file = fs::File::create(&tmp).context("create registry tmp")?;
+    file.write_all(serde_json::to_string_pretty(registry)?.as_bytes())
+        .context("write registry tmp")?;
+    file.sync_all().context("fsync registry tmp")?;
+    drop(file);
+    fs::rename(&tmp, &path).context("rename registry tmp")?;
+    Ok(())
+}
+
+fn now_rfc3339() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    let dt = simple_time_from_epoch(secs);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
+    )
+}
+
+fn upsert_registry_entry(path: &Path, runtimes: &[String]) -> Result<()> {
+    let mut registry = read_registry()?;
+    let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let now = now_rfc3339();
+    if let Some(entry) = registry
+        .installed_projects
+        .iter_mut()
+        .find(|e| e.path == canon)
+    {
+        entry.last_updated = now;
+        if !runtimes.is_empty() {
+            entry.runtimes = runtimes.to_vec();
+        }
+    } else {
+        registry.installed_projects.push(RegistryEntry {
+            path: canon,
+            first_installed: now.clone(),
+            last_updated: now,
+            runtimes: runtimes.to_vec(),
+        });
+    }
+    write_registry(&registry)
+}
+
+fn remove_registry_entry(path: &Path) -> Result<()> {
+    let mut registry = read_registry()?;
+    let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    registry.installed_projects.retain(|e| e.path != canon);
+    write_registry(&registry)
 }
 
 fn memory_init(root: &Path) -> Result<()> {
@@ -8966,6 +9260,9 @@ fn agents_aiplus_content() -> String {
 | 卸载 | uninstall |
 | 回滚 | rollback |
 | 健康 | doctor |
+| 全局更新 / 升级所有项目 / update all | aiplus update --all-projects |
+| 项目清单 / 哪些项目装了 aiplus / list projects | aiplus list-projects |
+| 清理失效项目 / prune aiplus projects | aiplus prune-projects --yes (after dry-run) |
 
 ## Hard Rules
 
@@ -8974,6 +9271,7 @@ fn agents_aiplus_content() -> String {
 - AiPlus cannot click compact for you.
 - AiPlus does not upload data.
 - AiPlus does not change global agent config.
+6. When the user requests prune-projects, the agent MUST first run `aiplus prune-projects` (without --yes) to show the planned removals, get the user's confirmation, then run `aiplus prune-projects --yes`. Never auto---yes a prune.
 
 # AiPlus Project Instructions
 
@@ -10036,6 +10334,13 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static REGISTRY_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn registry_lock() -> &'static Mutex<()> {
+        REGISTRY_TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_translate_chinese_refresh() {
@@ -10120,5 +10425,82 @@ mod tests {
         let args = vec!["aiplus".to_string()];
         let result = translate_chinese_subcommand(args);
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_registry_upsert_and_remove() {
+        let _guard = registry_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let config_home = tmp.path().join("config");
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        // Upsert
+        upsert_registry_entry(&project, &["codex".to_string(), "opencode".to_string()]).unwrap();
+        let registry = read_registry().unwrap();
+        assert_eq!(registry.installed_projects.len(), 1);
+        assert_eq!(registry.schema_version, "1.0");
+        assert_eq!(
+            registry.installed_projects[0].runtimes,
+            vec!["codex", "opencode"]
+        );
+        // Re-upsert updates timestamp
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        upsert_registry_entry(&project, &["opencode".to_string()]).unwrap();
+        let registry2 = read_registry().unwrap();
+        assert_eq!(registry2.installed_projects.len(), 1);
+        assert_eq!(registry2.installed_projects[0].runtimes, vec!["opencode"]);
+        // Remove
+        remove_registry_entry(&project).unwrap();
+        let registry3 = read_registry().unwrap();
+        assert!(registry3.installed_projects.is_empty());
+    }
+
+    #[test]
+    fn test_list_projects_empty() {
+        let _guard = registry_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+        let registry = read_registry().unwrap();
+        assert_eq!(registry.installed_projects.len(), 0);
+    }
+
+    #[test]
+    fn test_prune_projects_dry_run() {
+        let _guard = registry_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let config_home = tmp.path().join("config");
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        upsert_registry_entry(&project, &["codex".to_string()]).unwrap();
+        // Delete project directory so entry becomes stale
+        std::fs::remove_dir_all(&project).unwrap();
+        let registry = read_registry().unwrap();
+        assert_eq!(registry.installed_projects.len(), 1);
+        // Not stale because directory gone
+        let stale = registry
+            .installed_projects
+            .iter()
+            .filter(|e| !e.path.exists())
+            .count();
+        assert_eq!(stale, 1);
+    }
+
+    #[test]
+    fn test_update_all_projects_registry_empty() {
+        let _guard = registry_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+        let registry = read_registry().unwrap();
+        assert!(registry.installed_projects.is_empty());
+    }
+
+    #[test]
+    fn test_translate_chinese_update_all_projects() {
+        let args = vec!["aiplus".to_string(), "全局更新".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "update");
+        assert_eq!(result[2], "--all-projects");
     }
 }
