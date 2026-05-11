@@ -2,7 +2,16 @@
 set -eu
 
 REPO="izhiwen/aiplus"
-VERSION="${AIPLUS_VERSION:-v0.5.1}"
+if [ -z "${AIPLUS_VERSION:-}" ]; then
+  if command -v gh >/dev/null 2>&1; then
+    VERSION=$(gh api repos/izhiwen/aiplus/releases/latest --jq .tag_name 2>/dev/null || echo "")
+  fi
+  if [ -z "$VERSION" ]; then
+    VERSION=$(curl -fsSL https://api.github.com/repos/izhiwen/aiplus/releases/latest \
+      | grep -m1 '"tag_name"' | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/')
+  fi
+  VERSION="${VERSION:-v0.5.1}"  # fallback if both fail
+fi
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
 
@@ -14,7 +23,7 @@ Usage:
   sh install.sh [--dry-run]
 
 Environment:
-  AIPLUS_VERSION      Release version to install, default v0.5.1
+  AIPLUS_VERSION      Release version to install, default latest GitHub release
   AIPLUS_INSTALL_DIR  Install directory, default $HOME/.local/bin
 
 The installer downloads a GitHub Release asset, verifies checksums.txt, and
@@ -22,7 +31,7 @@ installs only the aiplus binary. It does not edit shell profiles, require sudo,
 install project modules, upload data, collect telemetry, or modify global
 Codex/Claude Code/OpenCode config.
 
-AiPlus v0.5.1 publishes a verified macOS Apple Silicon asset first. Other
+AiPlus publishes a verified macOS Apple Silicon asset first. Other
 platforms should use the Developer Build instructions until their assets are
 published and verified.
 USAGE

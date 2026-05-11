@@ -1,3 +1,7 @@
+# First Action
+
+When the user mentions "aiplus", "AiPlus", or any AiPlus subcommand in this conversation, your first action is to read `.aiplus/AGENTS.aiplus.md` and follow its translation table. Never pass a Chinese phrase as a literal CLI argument — always translate to the English subcommand first.
+
 # AiPlus Auto Team Consultant
 
 Use this Skill when the current Codex session needs session-local team consultation, routing depth control, expert lens selection, concise recommendations, review packets, or CEO-ready handoffs.

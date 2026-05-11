@@ -1,3 +1,7 @@
+# First Action
+
+When the user mentions "aiplus", "AiPlus", or any AiPlus subcommand in this conversation, your first action is to read `.aiplus/AGENTS.aiplus.md` and follow its translation table. Never pass a Chinese phrase as a literal CLI argument — always translate to the English subcommand first.
+
 ---
 name: compact-protocol
 description: Use when coordinating long Codex CLI tasks that need compact handoffs, resumable workflows, multi-agent continuity, decision logs, evidence ledgers, Owner gates, checkpoint validation, or safe resume after context compaction.

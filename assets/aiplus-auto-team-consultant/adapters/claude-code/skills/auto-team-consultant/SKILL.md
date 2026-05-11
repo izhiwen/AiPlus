@@ -1,3 +1,7 @@
+# First Action
+
+When the user mentions "aiplus", "AiPlus", or any AiPlus subcommand in this conversation, your first action is to read `.aiplus/AGENTS.aiplus.md` and follow its translation table. Never pass a Chinese phrase as a literal CLI argument — always translate to the English subcommand first.
+
 # AiPlus Auto Team Consultant For Claude Code
 
 Use this project-local skill when a Claude Code session needs session-local team routing, expert lens selection, Advisor handoff, CEO routing, review findings, Builder review request, or simulated pressure-test output.

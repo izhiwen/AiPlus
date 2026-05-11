@@ -136,9 +136,14 @@ enum Commands {
         verbose: bool,
     },
     Doctor,
-    Status,
+    Status {
+        #[arg(long, action = ArgAction::SetTrue)]
+        terse: bool,
+    },
     Refresh {
         trigger: Vec<String>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        terse: bool,
     },
     Uninstall {
         #[arg(long, action = ArgAction::SetTrue)]
@@ -261,6 +266,8 @@ enum Commands {
         dry_run: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         yes: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        auto: bool,
     },
     Velocity {
         subcommand: Option<String>,
@@ -569,8 +576,41 @@ const TASK_STATUSES: &[&str] = &[
     "BLOCKED_UNCLEAR_GOAL",
 ];
 
+fn translate_chinese_subcommand(args: Vec<String>) -> Vec<String> {
+    let mut translated = args.clone();
+    if translated.len() >= 2 {
+        let mapping = [
+            ("刷新", "refresh"),
+            ("状态", "status"),
+            ("安装", "install"),
+            ("升级", "update"),
+            ("更新", "update"),
+            ("自升级", "self"),
+            ("卸载", "uninstall"),
+            ("回滚", "rollback"),
+            ("健康", "doctor"),
+        ];
+        for (zh, en) in mapping {
+            if translated[1] == zh {
+                translated[1] = en.to_string();
+                break;
+            }
+        }
+        // Handle "aiplus self upgrade" (two-word alias)
+        if translated.len() >= 3
+            && translated[1] == "self"
+            && (translated[2] == "升级" || translated[2] == "upgrade")
+        {
+            translated[2] = "upgrade".to_string();
+        }
+    }
+    translated
+}
+
 fn main() {
-    let cli = Cli::parse();
+    let args: Vec<String> = std::env::args().collect();
+    let translated = translate_chinese_subcommand(args);
+    let cli = Cli::parse_from(translated);
     if cli.version {
         println!("{VERSION}");
         return;
@@ -622,8 +662,8 @@ fn run(command: Commands) -> Result<()> {
             verbose,
         } => command_add(module, dry_run, verbose),
         Commands::Doctor => command_doctor(),
-        Commands::Status => command_status(),
-        Commands::Refresh { trigger } => command_refresh(trigger),
+        Commands::Status { terse } => command_status(terse),
+        Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
             dry_run,
             yes,
@@ -727,7 +767,8 @@ fn run(command: Commands) -> Result<()> {
             subcommand,
             dry_run,
             yes,
-        } => command_self(subcommand, dry_run, yes),
+            auto,
+        } => command_self(subcommand, dry_run, yes, auto),
         Commands::Velocity {
             subcommand,
             task_type,
@@ -938,7 +979,7 @@ fn command_update_all(dry_run: bool, verbose: bool) -> Result<()> {
     println!("scope=cli_and_project");
     println!("global_agent_config_edits=none");
     println!("uploads=none");
-    command_self_update(dry_run, true)?;
+    command_self_update(dry_run, true, false)?;
     match read_manifest(&target_root()?, true) {
         Ok(manifest) if manifest.installer.as_deref() == Some(INSTALLER) => {
             command_update(None, dry_run, verbose)?;
@@ -1034,8 +1075,39 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
     Ok(())
 }
 
-fn command_status() -> Result<()> {
+fn print_binary_freshness() {
+    let target = self_update_target().unwrap_or_else(|_| PathBuf::from("unknown"));
+    let binary_version = binary_version(&target).unwrap_or_else(|| VERSION.to_string());
+    let binary_age_days = if target.exists() {
+        fs::metadata(&target)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|modified| {
+                SystemTime::now()
+                    .duration_since(modified)
+                    .ok()
+                    .map(|d| d.as_secs() / 86400)
+            })
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let latest_release_version = RELEASE_TAG.trim_start_matches('v');
+    let is_stale = binary_version != latest_release_version;
+    println!("binary_version={binary_version}");
+    println!("binary_path={}", target.display());
+    println!("binary_age_days={binary_age_days}");
+    println!("latest_release_version={latest_release_version}");
+    println!("WARN_BINARY_STALE={}", if is_stale { "yes" } else { "no" });
+    if is_stale {
+        println!("hint=run aiplus self upgrade --auto to update");
+    }
+}
+
+fn command_status(terse: bool) -> Result<()> {
     let root = target_root()?;
+    println!("scope={}", root.display());
+    print_binary_freshness();
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let continuity = continuity_state(&root)?;
     println!(
@@ -1121,12 +1193,43 @@ fn command_status() -> Result<()> {
     } else {
         println!("next=run install codex");
     }
+    if terse {
+        println!("STATUS=PASS");
+        return Ok(());
+    }
     println!("STATUS=PASS");
     Ok(())
 }
 
-fn command_refresh(trigger: Vec<String>) -> Result<()> {
+fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
     let root = target_root()?;
+    println!("scope={}", root.display());
+    print_binary_freshness();
+    if terse {
+        let manifest = read_manifest(&root, true).unwrap_or_default();
+        let modules = normalize_existing_modules(manifest.modules.as_ref());
+        let continuity = continuity_state(&root)?;
+        let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
+            "present"
+        } else {
+            "missing"
+        };
+        let auto_compact = module_refresh_status_en(&modules, MODULE_SLUG_COMPACT_REMINDER);
+        let auto_team = module_refresh_status_en(&modules, "auto-team-consultant");
+        let agent_memory = module_refresh_status_en(&modules, "agent-memory");
+        println!("AiPlus refreshed.");
+        println!("- Compact Reminder: {auto_compact}");
+        println!("- Auto Team Consultant: {auto_team}");
+        println!("- Agent Continuity: {agent_memory}");
+        println!("- Compact state: {compact_state}");
+        println!("- Agent Memory: {}", continuity.agent_memory);
+        println!(
+            "- Memory records: {} active",
+            continuity.memory_records_active
+        );
+        println!("AIPLUS_REFRESH_STATUS=PASS");
+        return Ok(());
+    }
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let modules = normalize_existing_modules(manifest.modules.as_ref());
     let continuity = continuity_state(&root)?;
@@ -5136,17 +5239,17 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn command_self(subcommand: Option<String>, dry_run: bool, yes: bool) -> Result<()> {
+fn command_self(subcommand: Option<String>, dry_run: bool, yes: bool, auto: bool) -> Result<()> {
     match subcommand.as_deref() {
-        Some("update") => command_self_update(dry_run, yes),
+        Some("update") | Some("upgrade") => command_self_update(dry_run, yes || auto, auto),
         _ => {
-            println!("Usage: aiplus self update [--dry-run] [--yes]");
+            println!("Usage: aiplus self update [--dry-run] [--yes] [--auto]");
             process::exit(2);
         }
     }
 }
 
-fn command_self_update(dry_run: bool, yes: bool) -> Result<()> {
+fn command_self_update(dry_run: bool, yes: bool, auto: bool) -> Result<()> {
     let target = self_update_target()?;
     let old_version = binary_version(&target).unwrap_or_else(|| VERSION.to_string());
     let new_version =
@@ -5164,6 +5267,9 @@ fn command_self_update(dry_run: bool, yes: bool) -> Result<()> {
     println!("global_agent_config_edits=none");
     println!("telemetry=none");
     println!("uploads=none");
+    if auto {
+        println!("auto=yes");
+    }
     if dry_run {
         println!("DRY_RUN=YES");
         println!("CHECKSUM_STATUS=NOT_RUN");
@@ -8847,7 +8953,29 @@ fn managed_block() -> String {
 }
 
 fn agents_aiplus_content() -> String {
-    r#"# AiPlus Project Instructions
+    r#"# AiPlus CLI Subcommand Translation Table
+
+| Chinese Alias | English Subcommand |
+|---------------|-------------------|
+| 刷新 | refresh |
+| 状态 | status |
+| 安装 | install |
+| 升级 | update |
+| 更新 | update |
+| 自升级 | self |
+| 卸载 | uninstall |
+| 回滚 | rollback |
+| 健康 | doctor |
+
+## Hard Rules
+
+- If the user explicitly mentions AiPlus or `aiplus`, always do AiPlus refresh first. Report AiPlus status before any unrelated project refresh or project status.
+- Never bury AiPlus status behind unrelated project refresh when the user asks for AiPlus.
+- AiPlus cannot click compact for you.
+- AiPlus does not upload data.
+- AiPlus does not change global agent config.
+
+# AiPlus Project Instructions
 
 Use AiPlus Compact Reminder and AiPlus Auto Team Consultant when relevant.
 
@@ -9903,4 +10031,94 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
     filename: &str,
 ) -> Result<T> {
     aiplus_core::read_velocity_json(root, filename)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_translate_chinese_refresh() {
+        let args = vec!["aiplus".to_string(), "刷新".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "refresh");
+    }
+
+    #[test]
+    fn test_translate_chinese_status() {
+        let args = vec!["aiplus".to_string(), "状态".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "status");
+    }
+
+    #[test]
+    fn test_translate_chinese_install() {
+        let args = vec!["aiplus".to_string(), "安装".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "install");
+    }
+
+    #[test]
+    fn test_translate_chinese_update() {
+        let args = vec!["aiplus".to_string(), "升级".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "update");
+    }
+
+    #[test]
+    fn test_translate_chinese_update_alt() {
+        let args = vec!["aiplus".to_string(), "更新".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "update");
+    }
+
+    #[test]
+    fn test_translate_chinese_self() {
+        let args = vec!["aiplus".to_string(), "自升级".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "self");
+    }
+
+    #[test]
+    fn test_translate_chinese_uninstall() {
+        let args = vec!["aiplus".to_string(), "卸载".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "uninstall");
+    }
+
+    #[test]
+    fn test_translate_chinese_rollback() {
+        let args = vec!["aiplus".to_string(), "回滚".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "rollback");
+    }
+
+    #[test]
+    fn test_translate_chinese_doctor() {
+        let args = vec!["aiplus".to_string(), "健康".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "doctor");
+    }
+
+    #[test]
+    fn test_translate_chinese_self_upgrade() {
+        let args = vec!["aiplus".to_string(), "self".to_string(), "升级".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "self");
+        assert_eq!(result[2], "upgrade");
+    }
+
+    #[test]
+    fn test_translate_english_unchanged() {
+        let args = vec!["aiplus".to_string(), "refresh".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result[1], "refresh");
+    }
+
+    #[test]
+    fn test_translate_single_arg() {
+        let args = vec!["aiplus".to_string()];
+        let result = translate_chinese_subcommand(args);
+        assert_eq!(result.len(), 1);
+    }
 }
