@@ -120,7 +120,7 @@ cd "${PROJECT_ROOT}"
 
 section "Subproduct Drift Analysis"
 
-compare_subproduct "aiplus-auto-compact"
+compare_subproduct "aiplus-compact-reminder"
 compare_subproduct "aiplus-auto-team-consultant"
 compare_subproduct "aiplus-agent-memory"
 

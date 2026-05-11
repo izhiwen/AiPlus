@@ -1,6 +1,6 @@
 # Modules
 
-AiPlus Auto Compact is an independent AiPlus subproduct. It can be bundled and
+AiPlus Compact Reminder is an independent AiPlus subproduct. It can be bundled and
 installed by the AiPlus CLI (`aiplus`), or reviewed directly by users who only
 want the compact/checkpoint/resume workflow.
 
@@ -9,7 +9,7 @@ want the compact/checkpoint/resume workflow.
 Path:
 
 ```text
-<REPO_ROOT>/aiplus-auto-compact/core/
+<REPO_ROOT>/aiplus-compact-reminder/core/
 ```
 
 Responsibilities:
@@ -34,7 +34,7 @@ The core is runtime-neutral. It does not depend on Codex, Claude Code, OpenCode,
 Path:
 
 ```text
-<REPO_ROOT>/aiplus-auto-compact/adapters/codex/
+<REPO_ROOT>/aiplus-compact-reminder/adapters/codex/
 ```
 
 Responsibilities:
@@ -51,7 +51,7 @@ The Codex adapter cannot trigger Codex UI compaction or call `/compact` for the 
 Path:
 
 ```text
-<REPO_ROOT>/aiplus-auto-compact/adapters/claude-code/
+<REPO_ROOT>/aiplus-compact-reminder/adapters/claude-code/
 ```
 
 Responsibilities:
@@ -67,7 +67,7 @@ The command and hook files are guidance assets. They do not replace local valida
 Path:
 
 ```text
-<REPO_ROOT>/aiplus-auto-compact/adapters/opencode/
+<REPO_ROOT>/aiplus-compact-reminder/adapters/opencode/
 ```
 
 Responsibilities:
@@ -82,12 +82,12 @@ Responsibilities:
 Paths:
 
 ```text
-<REPO_ROOT>/aiplus-auto-compact/README.md
-<REPO_ROOT>/aiplus-auto-compact/SECURITY.md
-<REPO_ROOT>/aiplus-auto-compact/CHANGELOG.md
-<REPO_ROOT>/aiplus-auto-compact/RELEASE_CHECKLIST.md
-<REPO_ROOT>/aiplus-auto-compact/docs/
-<REPO_ROOT>/aiplus-auto-compact/examples/
+<REPO_ROOT>/aiplus-compact-reminder/README.md
+<REPO_ROOT>/aiplus-compact-reminder/SECURITY.md
+<REPO_ROOT>/aiplus-compact-reminder/CHANGELOG.md
+<REPO_ROOT>/aiplus-compact-reminder/RELEASE_CHECKLIST.md
+<REPO_ROOT>/aiplus-compact-reminder/docs/
+<REPO_ROOT>/aiplus-compact-reminder/examples/
 ```
 
 Responsibilities:

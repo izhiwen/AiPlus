@@ -1,6 +1,6 @@
 # Security
 
-AiPlus Auto Compact stores compact/resume state in local project files. Treat those files as potentially sensitive project records.
+AiPlus Compact Reminder stores compact/resume state in local project files. Treat those files as potentially sensitive project records.
 
 ## Compact Savings Estimate
 
@@ -39,7 +39,7 @@ Use placeholders such as `<REPO_ROOT>`, `<TARGET_PROJECT>`, `<OWNER>`, `<GITHUB_
 
 ## Data Boundaries
 
-AiPlus Auto Compact is local-first:
+AiPlus Compact Reminder is local-first:
 
 - It writes compact state under `<TARGET_PROJECT>/.codex/compact/`.
 - It writes checkpoint JSON under `<TARGET_PROJECT>/.codex/compact/checkpoints/`.

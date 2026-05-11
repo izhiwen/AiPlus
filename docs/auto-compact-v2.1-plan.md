@@ -1,8 +1,8 @@
-# Auto Compact v2.1 Plan
+# Compact Reminder v2.1 Plan
 
 ## Goal
 
-Improve Auto Compact Reminder effectiveness, reduce duplication with host compact, and make resume truly useful by reading from the context capsule. Focus on low-risk, local changes.
+Improve Compact Reminder Reminder effectiveness, reduce duplication with host compact, and make resume truly useful by reading from the context capsule. Focus on low-risk, local changes.
 
 ## Current State (v0.5.1)
 
@@ -232,13 +232,13 @@ Improve Auto Compact Reminder effectiveness, reduce duplication with host compac
 
 ## Release Dependency
 
-Auto Compact v2.1 should be released **after** Agent Memory v2.1 stabilizes, because:
+Compact Reminder v2.1 should be released **after** Agent Memory v2.1 stabilizes, because:
 - Resume reads from capsule which may reference memory records
 - Decision extraction depends on memory decision-log format
 - Profile sync enhancements affect compact context injection
 
 **Recommended sequence:**
 1. Agent Memory v2.1 (8–12 days)
-2. Auto Compact v2.1 (9–12 days)
+2. Compact Reminder v2.1 (9–12 days)
 3. Combined QA and docs update (3–5 days)
 4. Release (pending Owner approval)

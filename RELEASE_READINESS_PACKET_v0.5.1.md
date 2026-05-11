@@ -21,13 +21,13 @@ APPROVAL_NEEDED=[Owner approval before push/tag/GitHub Release/artifact upload]
 ```
 
 This packet covers three parallel workstreams that have converged in v0.5.1:
-1. **Auto Compact Reminder v2** — PASS (previously approved, no regressions)
+1. **Compact Reminder Reminder v2** — PASS (previously approved, no regressions)
 2. **Profile Supplemental Bundle** — PASS (MiniMax QA passed)
 3. **Agent Memory Foundation** — PASS (Q/A transcript redaction gap fixed and retested)
 
 ---
 
-## 1. Auto Compact v2 Readiness
+## 1. Compact Reminder v2 Readiness
 
 **Status:** PASS (previously verified, no regressions)
 
@@ -142,7 +142,7 @@ Agent Memory was introduced in v0.5.0 and hardened in v0.5.1:
 ### 3.3 Independent QA/Review
 
 **Reviews completed:**
-- GLM Rust Lead Review: PASS (Auto Compact + Agent Memory redaction)
+- GLM Rust Lead Review: PASS (Compact Reminder + Agent Memory redaction)
 - MiniMax Runtime QA: PASS (Profile Bundle + Agent Memory runtime)
 
 **Q/A Transcript Redaction Fix (post-MiniMax review):**
@@ -178,7 +178,7 @@ rtk cargo run -p aiplus-cli -- memory add --kind project_fact --text 'Q: What is
 
 These are non-blocking findings that should be tracked for future work:
 
-### 4.1 Auto Compact v2
+### 4.1 Compact Reminder v2
 
 | # | Limitation | Impact | Target |
 |---|-----------|--------|--------|
@@ -210,7 +210,7 @@ These are non-blocking findings that should be tracked for future work:
 ### 5.1 What IS in v0.5.1
 
 ```
-[Auto Compact Reminder v2]
+[Compact Reminder Reminder v2]
 - Compact remind/watch/prepare/resume/savings/checkpoint
 - Context capsule creation with checksums
 - Signal-safe watch loop (SIGTERM/SIGINT)
@@ -250,7 +250,7 @@ These are non-blocking findings that should be tracked for future work:
 ### 5.3 Release Checklist
 
 - [x] Code quality gates (fmt, clippy, test) — PASS
-- [x] Runtime QA (Auto Compact) — PASS
+- [x] Runtime QA (Compact Reminder) — PASS
 - [x] Runtime QA (Profile Bundle) — PASS
 - [x] Runtime QA (Agent Memory Q/A redaction) — PASS
 - [x] Secret/private boundary scan — PASS
@@ -293,7 +293,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 
-# Auto Compact
+# Compact Reminder
 cargo run -p aiplus-cli -- compact remind --json
 cargo run -p aiplus-cli -- compact watch --once --json
 cargo run -p aiplus-cli -- compact prepare
@@ -317,7 +317,7 @@ cargo run -p aiplus-cli -- doctor
 ## 8. Signature
 
 **Packet prepared by:** AiPlus Platform CEO Orchestrator  
-**Reviewers:** GLM Rust Lead (Auto Compact), MiniMax Runtime QA (Profile Bundle)  
+**Reviewers:** GLM Rust Lead (Compact Reminder), MiniMax Runtime QA (Profile Bundle)  
 **Status:** READY FOR OWNER REVIEW AND RELEASE APPROVAL
 
 **Explicit Non-Actions:**

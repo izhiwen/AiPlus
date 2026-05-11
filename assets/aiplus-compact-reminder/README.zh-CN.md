@@ -1,6 +1,6 @@
-# AiPlus Auto Compact
+# AiPlus Compact Reminder
 
-AiPlus Auto Compact 是 AiPlus 家族里的独立子产品，用来做 compact /
+AiPlus Compact Reminder 是 AiPlus 家族里的独立子产品，用来做 compact /
 checkpoint / resume handoff。它可以作为 AiPlus CLI（`aiplus`）安装的 bundled
 module 使用，也可以被只想采用 compact workflow 的用户直接阅读和改造。
 
@@ -65,13 +65,13 @@ resume AiPlus
 
 泛用的 `刷新` / `refresh` 在安装后仍应优先尝试 AiPlus refresh。如果项目自己也把
 `刷新` 当作项目状态刷新，请使用 `AiPlus 刷新` 或 `aiplus refresh` 避免歧义。含义：
-先报告 Auto Compact 和 compact state，再处理无关的项目 refresh，重新读取
+先报告 Compact Reminder 和 compact state，再处理无关的项目 refresh，重新读取
 `AGENTS.md`、`.aiplus/AGENTS.aiplus.md`，如果存在则读取
 `.codex/compact/current-handoff.md`，启用 AiPlus guidance，并继续当前任务。
 
 ### Path C: Advanced / module-only adoption
 
-如果你只想用 AiPlus Auto Compact，可以直接阅读这个 repo，检查
+如果你只想用 AiPlus Compact Reminder，可以直接阅读这个 repo，检查
 `core/templates/`、`core/docs/` 和各 runtime adapters，然后把 compact workflow
 复制或改造成适合自己项目的版本。这适合 policy review、自定义集成，或从
 `codex-compact-protocol` 迁移。
@@ -98,7 +98,7 @@ module-only path 不是 beginner install path。旧 Node helper 只保留在
 
 agent 应在安全且高价值的时机主动运行 `aiplus compact remind`：HEAVY 任务每 30
 分钟或 major phase boundary，MEDIUM 任务在阶段边界或 review/QA 前，以及
-subagent 批量启动、release prep、Owner handoff 前。Auto Compact 不会自动触发 host
+subagent 批量启动、release prep、Owner handoff 前。Compact Reminder 不会自动触发 host
 compact；它只决定 wait、prepare_only，还是建议用户手动 host compact。
 
 agent 应把 `aiplus compact prepare` 当作 backend tool 自动使用。如果 `prepare`
@@ -124,12 +124,12 @@ host compact 完成后：
 agent 应运行 `aiplus compact resume`，然后从恢复出来的状态继续。`continue`、
 `resume`、`refresh`、`go on`、`继续`、`刷新`、`接着` 等自然继续意图都应该可用。
 
-这是 best-effort automatic resume。AiPlus Auto Compact 可以准备 checkpoint，并告诉
+这是 best-effort automatic resume。AiPlus Compact Reminder 可以准备 checkpoint，并告诉
 agent 如何 resume，但不能唤醒一个正在等待用户消息的 host runtime。
 
 ## Compact Savings Estimate
 
-AiPlus Auto Compact 支持 AiPlus v0.3 savings estimate flow。普通用户可以在 agent
+AiPlus Compact Reminder 支持 AiPlus v0.3 savings estimate flow。普通用户可以在 agent
 对话里问：
 
 ```text
@@ -195,7 +195,7 @@ checkpoint` 会打印 `BLOCKED_DO_NOT_COMPACT`，默认不会创建普通 checkp
 ## Private Profile 与 Secret Boundary
 
 AiPlus 可以配合 private user-level profile 和
-Bitwarden-backed `secret-broker` 使用。AiPlus Auto Compact 必须把它们视为 private
+Bitwarden-backed `secret-broker` 使用。AiPlus Compact Reminder 必须把它们视为 private
 runtime layer，而不是 bundled module content。
 
 compact handoff、checkpoint 和 savings ledger 绝不能存 secret value、Bitwarden
@@ -268,7 +268,7 @@ distribution。
 
 ## 它能自动化什么
 
-AiPlus Auto Compact 可以：
+AiPlus Compact Reminder 可以：
 
 - 在目标项目中创建本地 compact state files。
 - 除非使用明确的 force flow，否则保留已有 compact files。
@@ -280,7 +280,7 @@ AiPlus Auto Compact 可以：
 
 ## 它不能自动化什么
 
-AiPlus Auto Compact 不能：
+AiPlus Compact Reminder 不能：
 
 - 点击 UI controls、调用 `/compact`，或强制任何 runtime compact。
 - 唤醒一个 compact 后正在等待用户消息的 host runtime。
@@ -333,7 +333,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | ba
 在本 repo 中运行 package acceptance tests：
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm test
 ```
 
@@ -373,7 +373,7 @@ user-facing path。
 
 ## 当前发布状态
 
-这个 repository 已在 GitHub public 发布为 `aiplus-auto-compact`。它没有发布到
+这个 repository 已在 GitHub public 发布为 `aiplus-compact-reminder`。它没有发布到
 npm、Cargo、Homebrew、任何 package registry 或 marketplace。AiPlus CLI
 （`aiplus`）是普通用户的预期 distribution surface。未来 tags、GitHub
 Releases、package publications、binary uploads、marketplace submissions 或
@@ -386,7 +386,7 @@ installer publication 都需要单独 Owner approval。
 提出 release change 前运行：
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm test
 ```
 

@@ -94,7 +94,7 @@ Each bundled module declares:
 - `secretBoundary`
 - `legacyStatus`
 
-The first dogfood modules are `auto-compact`, `auto-team-consultant`, and
+The first dogfood modules are `compact-reminder`, `auto-team-consultant`, and
 `agent-memory`.
 
 ## Install / Update / Write Boundary

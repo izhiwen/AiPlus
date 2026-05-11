@@ -25,7 +25,7 @@ model_hint: inherited
 effort_hint: medium
 scope: Check bundled assets, public subproduct layouts, adapters, managed block, and installed footprint.
 claimed_files: []
-allowed_files: [assets/**, ../aiplus-auto-compact/**, ../aiplus-auto-team-consultant/**, ../aiplus-agent-memory/**]
+allowed_files: [assets/**, ../aiplus-compact-reminder/**, ../aiplus-auto-team-consultant/**, ../aiplus-agent-memory/**]
 forbidden_files: [aiplus-work-with-zhiwen private content, any writes]
 conflict_rule: read-only task
 inputs: Module manifest requirements.
@@ -85,7 +85,7 @@ claimed_files:
   - assets/*/aiplus-module.json
   - MODULES.md
   - docs/module-contract-plan.md
-  - ../aiplus-auto-compact/aiplus-module.json
+  - ../aiplus-compact-reminder/aiplus-module.json
   - ../aiplus-auto-team-consultant/aiplus-module.json
   - ../aiplus-agent-memory/aiplus-module.json
 allowed_files: same as claimed_files plus README/CHANGELOG/RELEASE_CHECKLIST if needed

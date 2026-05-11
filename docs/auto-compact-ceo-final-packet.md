@@ -1,8 +1,8 @@
-# Auto Compact CEO Final Packet — v2.1 Resume/Capsule Hardening
+# Compact Reminder CEO Final Packet — v2.1 Resume/Capsule Hardening
 
 **Date:** 2026-05-10
-**Scope:** Auto Compact v2.1 resume/capsule/decision hardening
-**Role:** Auto Compact CEO
+**Scope:** Compact Reminder v2.1 resume/capsule/decision hardening
+**Role:** Compact Reminder CEO
 
 ---
 
@@ -72,7 +72,7 @@ NEXT_RECOMMENDED_ACTION=Platform CEO review and integration into final v2.1
 
 **File:** `crates/aiplus-cli/tests/parity.rs`
 
-**Problem:** The test corrupted the capsule by replacing `"objective":` with `"objective":"tampered_`, which produced invalid JSON (e.g., `"objective":"tampered_"Deliver Auto Compact reminder engine."`), causing a parse error instead of a checksum mismatch.
+**Problem:** The test corrupted the capsule by replacing `"objective":` with `"objective":"tampered_`, which produced invalid JSON (e.g., `"objective":"tampered_"Deliver Compact Reminder reminder engine."`), causing a parse error instead of a checksum mismatch.
 
 **Fix:** Use `serde_json::Value` manipulation to modify the objective while maintaining valid JSON structure.
 
@@ -239,5 +239,5 @@ The following was already implemented in the base code and verified working:
 
 ---
 
-**Packet prepared by:** Auto Compact CEO
+**Packet prepared by:** Compact Reminder CEO
 **Ready for Platform CEO integration.**

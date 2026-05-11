@@ -36,8 +36,8 @@ When creating a checkpoint, include:
 
 This plugin exposes project-local command docs:
 
-- `/aiplus-auto-compact:compact-checkpoint`
-- `/aiplus-auto-compact:compact-resume`
-- `/aiplus-auto-compact:compact-validate`
+- `/aiplus-compact-reminder:compact-checkpoint`
+- `/aiplus-compact-reminder:compact-resume`
+- `/aiplus-compact-reminder:compact-validate`
 
 Use these commands as structured prompts. They document the expected protocol and do not install global config or enable hooks automatically.

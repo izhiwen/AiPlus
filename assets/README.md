@@ -5,7 +5,7 @@ This directory contains the minimal files required by the local-only Rust
 
 Sources:
 
-- `aiplus-auto-compact` from `../aiplus-auto-compact`
+- `aiplus-compact-reminder` from `../aiplus-compact-reminder`
 - `aiplus-auto-team-consultant` from `../aiplus-auto-team-consultant`
 - `aiplus-agent-memory` from `../aiplus-agent-memory`
 
@@ -23,7 +23,7 @@ GitHub at runtime and do not silently change module contents.
 
 License files from child module snapshots are preserved:
 
-- `aiplus-auto-compact/LICENSE`: Apache-2.0
+- `aiplus-compact-reminder/LICENSE`: Apache-2.0
 - `aiplus-auto-team-consultant/LICENSE`: MIT
 - `aiplus-agent-memory/LICENSE`: Apache-2.0
 

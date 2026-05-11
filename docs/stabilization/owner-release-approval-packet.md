@@ -20,7 +20,7 @@ All five workstreams converge. Zero blockers. All QA passed. Boundaries preserve
 ## Release Scope
 
 ### RELEASE_SCOPE_INCLUDED
-- Auto Compact Reminder v2
+- Compact Reminder Reminder v2
 - Profile Supplemental Bundle (USER.md, MEMORY.md, preferences/, identities/, sync/)
 - Agent Memory Foundation (with Q/A transcript redaction)
 - Docs (README.md, README.zh-CN.md, stabilization docs)
@@ -135,9 +135,9 @@ None.
 None.
 
 ### LOW_FINDINGS (v2.1 backlog)
-1. Auto Compact: `load_context_capsule()` resume integration
-2. Auto Compact: `extract_decisions_from_ledger()` stub
-3. Auto Compact: Defensive redaction before capsule write
+1. Compact Reminder: `load_context_capsule()` resume integration
+2. Compact Reminder: `extract_decisions_from_ledger()` stub
+3. Compact Reminder: Defensive redaction before capsule write
 4. Profile Bundle: Enhanced identity TOML schema validation
 5. Profile Bundle: Extended user context redaction patterns
 6. Profile Bundle: Sync policy file parsing validation

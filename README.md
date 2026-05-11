@@ -12,7 +12,7 @@ AiPlus fixes these problems with four integrated modules that run entirely on yo
 
 **Agent Memory** stores project conventions as JSONL under `.aiplus/memory/`. Before any record is written, twelve redaction patterns strip sensitive strings like passwords, JWTs, and raw transcripts. The agent remembers your naming rules, coding standards, and architectural decisions across sessions. Rejected or forgotten records stay in the store but remain hidden from context.
 
-**Auto Compact** prepares structured handoffs before the context window fills up. It captures the decision log, agent state, and evidence into a checksum-verified capsule. After compact, `aiplus compact resume` reads the capsule and restores context automatically. The agent continues from where it left off, not from zero.
+**Compact Reminder** prepares structured handoffs before the context window fills up. It captures the decision log, agent state, and evidence into a checksum-verified capsule. After compact, `aiplus compact resume` reads the capsule and restores context automatically. The agent continues from where it left off, not from zero.
 
 **Auto Team Consultant** installs a routing system into your project. It defines clear roles: Advisor for direct advice, CEO for task breakdown, Reviewer for findings, and Builder for implementation. Tasks route through L0 direct advice up to L5 full governance. AI Integration is a default specialist team member, not an afterthought.
 

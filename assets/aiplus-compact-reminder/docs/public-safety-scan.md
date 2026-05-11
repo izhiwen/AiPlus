@@ -1,6 +1,6 @@
 # Public Safety Scan
 
-Scope: current `aiplus-auto-compact` public tree after R2 integration.
+Scope: current `aiplus-compact-reminder` public tree after R2 integration.
 
 ## Status
 
@@ -10,7 +10,7 @@ No public-safety blocker was found. Broad scan matches were reviewed as safety p
 
 ## Commands
 
-Run from `<REPO_ROOT>/aiplus-auto-compact`:
+Run from `<REPO_ROOT>/aiplus-compact-reminder`:
 
 ```bash
 rtk rg -n -i "(weapon|explosive|bomb|kill|suicide|self-harm|malware|credential|password|api[_-]?key|secret|token|private key|BEGIN (RSA|OPENSSH|EC|DSA)|sk-[A-Za-z0-9])" .

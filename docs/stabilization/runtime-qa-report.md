@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-All critical paths verified PASS from current source. Auto Compact v2, Profile Supplemental Bundle, and Agent Memory Foundation all function correctly with proper redaction, no global config edits, and no secret exposure.
+All critical paths verified PASS from current source. Compact Reminder v2, Profile Supplemental Bundle, and Agent Memory Foundation all function correctly with proper redaction, no global config edits, and no secret exposure.
 
 ## Test Matrix
 
@@ -20,7 +20,7 @@ All install dry-runs pass. Doctor confirms:
 - .opencode/opencode.json is valid strict JSON
 - No global configs touched
 
-### 2. Auto Compact (PASS)
+### 2. Compact Reminder (PASS)
 
 Commands tested:
 - `compact remind` - returns wait with template handoff detection
@@ -102,7 +102,7 @@ Benign NOT blocked:
 
 ## Findings
 
-1. All Auto Compact commands correctly report HOST_COMPACT_TRIGGERED=no
+1. All Compact Reminder commands correctly report HOST_COMPACT_TRIGGERED=no
 2. All memory commands correctly report secretValues=none
 3. Watch --once --json outputs single JSON object (fixed from earlier dual-output issue)
 4. Context capsule correctly created at .codex/compact/context-capsule.json

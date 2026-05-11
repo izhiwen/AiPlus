@@ -21,7 +21,7 @@ VERDICT=PASS
 GOAL_SET=YES
 GOAL_COMPLETE=YES
 FINAL_PROGRESS_PERCENT=100
-AUTO_COMPACT_STATUS=PASS
+COMPACT_REMINDER_STATUS=PASS
 PROFILE_BUNDLE_STATUS=PASS
 AGENT_MEMORY_STATUS=PASS
 DOCS_STATUS=PASS
@@ -37,7 +37,7 @@ TELEMETRY_STATUS=ABSENT
 
 ## What Can Release
 
-1. **Auto Compact v2** — Context capsules, signal-safe watch, JSON output
+1. **Compact Reminder v2** — Context capsules, signal-safe watch, JSON output
 2. **Profile Supplemental Bundle** — USER.md, MEMORY.md, preferences/, identities/, sync/ install
 3. **Agent Memory Foundation** — Q/A transcript redaction, budget-aware context, role identities
 4. **Documentation** — Bilingual README with synthetic examples only
@@ -68,9 +68,9 @@ None.
 None.
 
 ### LOW (7) — Backlog for v2.1
-1. Auto Compact: `load_context_capsule()` resume integration
-2. Auto Compact: `extract_decisions_from_ledger()` stub
-3. Auto Compact: Defensive redaction before capsule write
+1. Compact Reminder: `load_context_capsule()` resume integration
+2. Compact Reminder: `extract_decisions_from_ledger()` stub
+3. Compact Reminder: Defensive redaction before capsule write
 4. Profile Bundle: Enhanced identity TOML schema validation
 5. Profile Bundle: Extended user context redaction patterns
 6. Profile Bundle: Sync policy file parsing

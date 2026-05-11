@@ -1,6 +1,6 @@
 # Checkpoint And Resume Flow
 
-AiPlus Auto Compact is local-first. It prepares evidence for a compact/resume
+AiPlus Compact Reminder is local-first. It prepares evidence for a compact/resume
 boundary; it does not press, call, or automate any host agent compact control.
 
 ## Installed Through AiPlus
@@ -68,13 +68,13 @@ Use explicit AiPlus refresh triggers when a project has its own meaning for
 `刷新` or `refresh`; the agent should report AiPlus status before unrelated
 project refresh when AiPlus is mentioned.
 
-This is best-effort automatic resume. AiPlus Auto Compact can prepare the
+This is best-effort automatic resume. AiPlus Compact Reminder can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime
 that requires a user message.
 
 ## Module-Only Or Legacy Reference
 
-Advanced users who adopt only AiPlus Auto Compact can inspect `core/templates/`
+Advanced users who adopt only AiPlus Compact Reminder can inspect `core/templates/`
 and `core/docs/` directly, but compact execution should still use Rust-native
 AiPlus CLI:
 

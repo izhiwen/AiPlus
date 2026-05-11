@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Clarify the relationship between host-level compact (Codex/Claude Code built-in) and AiPlus Auto Compact. Help Owners understand when to use each and how they complement each other.
+Clarify the relationship between host-level compact (Codex/Claude Code built-in) and AiPlus Compact Reminder. Help Owners understand when to use each and how they complement each other.
 
 ## Host Compact (Codex / Claude Code / Cursor)
 
@@ -31,7 +31,7 @@ Clarify the relationship between host-level compact (Codex/Claude Code built-in)
 
 ---
 
-## AiPlus Auto Compact
+## AiPlus Compact Reminder
 
 ### What It Does
 
@@ -136,7 +136,7 @@ Clarify the relationship between host-level compact (Codex/Claude Code built-in)
 
 ## Conclusion
 
-AiPlus Auto Compact is **not a replacement** for host compact. It is a **complement** that adds Owner control, structure, and continuity on top of the host's checkpoint mechanism.
+AiPlus Compact Reminder is **not a replacement** for host compact. It is a **complement** that adds Owner control, structure, and continuity on top of the host's checkpoint mechanism.
 
 The ideal workflow uses both: host for the actual checkpoint, AiPlus for the structured handoff, gates, and capsule.
 

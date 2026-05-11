@@ -9,7 +9,7 @@
 |-----------|--------|-------|-----|-------|-------|
 | **aiplus-core** | PASS | 116 pass | GLM+MiniMax | Memory+Compact | All modules stable |
 | **aiplus-cli** | PASS | 26 parity + 5 continuity | GLM+MiniMax | Platform CEO | Main entry point |
-| **Auto Compact** | PASS | Full coverage | GLM+MiniMax | Memory+Compact | v2 ready |
+| **Compact Reminder** | PASS | Full coverage | GLM+MiniMax | Memory+Compact | v2 ready |
 | **Profile Install** | PASS | Runtime verified | MiniMax | Platform CEO | Supplemental bundle |
 | **Profile Status** | PASS | Runtime verified | MiniMax | Platform CEO | Shows all components |
 | **Profile Doctor** | PASS | Runtime verified | MiniMax | Platform CEO | Identity validation |
@@ -47,7 +47,7 @@ aiplus-cli
 
 | Component | Code Risk | QA Risk | Release Risk |
 |-----------|-----------|---------|--------------|
-| Auto Compact | LOW | LOW | LOW |
+| Compact Reminder | LOW | LOW | LOW |
 | Profile Bundle | LOW | LOW | LOW |
 | Agent Memory | LOW | LOW | LOW |
 | Secret Broker | MEDIUM | LOW | LOW |

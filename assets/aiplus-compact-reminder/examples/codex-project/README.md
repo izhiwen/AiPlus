@@ -1,6 +1,6 @@
 # Synthetic Codex Project Example
 
-This example shows how a Codex user can apply AiPlus Auto Compact to a synthetic project named `<EXAMPLE_PROJECT>`.
+This example shows how a Codex user can apply AiPlus Compact Reminder to a synthetic project named `<EXAMPLE_PROJECT>`.
 
 ## Layout
 
@@ -54,7 +54,7 @@ Current goal: Finish synthetic feature validation for <EXAMPLE_PROJECT>.
 Current phase: Verify docs and tests.
 Owner gate: APPROVED: <OWNER> approved manual compact review for synthetic example state.
 Next safe action: Run validation in <TARGET_PROJECT> and inspect checkpoint output.
-Evidence: npm test passed in <REPO_ROOT>/aiplus-auto-compact.
+Evidence: npm test passed in <REPO_ROOT>/aiplus-compact-reminder.
 ```
 
 Do not include real private paths, account data, transcripts, screenshots, provider payloads, or secrets.

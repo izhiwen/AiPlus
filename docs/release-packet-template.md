@@ -69,7 +69,7 @@ Author: Release Automation Lead
 
 | Subproduct | Asset Files | Source Files | Version Match | Private Content |
 |------------|-------------|--------------|---------------|-----------------|
-| aiplus-auto-compact | {count} | {count} | PASS / WARN | PASS / BLOCK |
+| aiplus-compact-reminder | {count} | {count} | PASS / WARN | PASS / BLOCK |
 | aiplus-auto-team-consultant | {count} | {count} | PASS / WARN | PASS / BLOCK |
 | aiplus-agent-memory | {count} | {count} | PASS / WARN | PASS / BLOCK |
 

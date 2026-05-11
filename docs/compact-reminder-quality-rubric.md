@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Measure Auto Compact Reminder effectiveness: does it prompt at the right time, provide useful guidance, avoid noise, and improve resume success?
+Measure Compact Reminder Reminder effectiveness: does it prompt at the right time, provide useful guidance, avoid noise, and improve resume success?
 
 ## Scoring
 

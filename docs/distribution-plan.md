@@ -75,7 +75,7 @@ binary's embedded assets:
 
 ```bash
 aiplus update
-aiplus update auto-compact
+aiplus update compact-reminder
 aiplus update auto-team-consultant
 aiplus add auto-team-consultant
 ```
@@ -100,7 +100,7 @@ Distribution must preserve these boundaries:
 The Rust mainline/public-ready package is Apache-2.0. Bundled child module
 snapshots preserve their existing licenses:
 
-- `aiplus-auto-compact`: Apache-2.0
+- `aiplus-compact-reminder`: Apache-2.0
 - `aiplus-auto-team-consultant`: MIT
 
 Licensing is not a safety, privacy, compliance, correctness, or release

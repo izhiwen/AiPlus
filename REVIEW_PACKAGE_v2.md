@@ -1,4 +1,4 @@
-# Auto Compact Reminder v2 - Re-Review Package
+# Compact Reminder Reminder v2 - Re-Review Package
 
 ## Summary
 All release blockers identified in the previous review have been resolved. This package is ready for GLM Rust Lead and MiniMax Runtime QA re-review.

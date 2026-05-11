@@ -10,7 +10,7 @@
 
 | Workstream | Lead | Status | QA | Blockers |
 |-----------|------|--------|-----|----------|
-| Auto Compact v2 | Memory+Compact Product | PASS | GLM Rust Lead + MiniMax | None |
+| Compact Reminder v2 | Memory+Compact Product | PASS | GLM Rust Lead + MiniMax | None |
 | Profile Supplemental Bundle | Platform CEO | PASS | MiniMax Runtime QA | None |
 | Agent Memory Foundation | Memory+Compact Product | PASS | GLM + MiniMax | Q/A redaction gap fixed |
 | Docs Stabilization | Docs Lead | PASS | Spot checks | None |

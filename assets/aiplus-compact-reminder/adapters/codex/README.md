@@ -31,7 +31,7 @@ aiplus compact validate
 aiplus compact checkpoint
 ```
 
-Auto Compact's core value is proactive reminder timing. For HEAVY tasks, run
+Compact Reminder's core value is proactive reminder timing. For HEAVY tasks, run
 `aiplus compact remind --event long-session` at least every 30 minutes and at
 major phase boundaries, before review/QA, before many subagents, before release
 prep, and before Owner handoff. For MEDIUM tasks, run it at phase boundaries and

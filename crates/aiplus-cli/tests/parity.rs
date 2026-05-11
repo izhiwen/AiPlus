@@ -188,7 +188,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let refresh = stdout(&run(target, &["refresh"], 0));
     assert!(refresh.contains("AiPlus refreshed."));
-    assert!(refresh.contains("- Auto Compact: installed"));
+    assert!(refresh.contains("- Compact Reminder: installed"));
     assert!(refresh.contains("- Auto Team Consultant: installed"));
     assert!(refresh.contains("- Compact state: present"));
     assert!(refresh.contains("- Agent Memory:"));
@@ -203,7 +203,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let refresh_zh = stdout(&run(target, &["refresh", "AiPlus 刷新"], 0));
     assert!(refresh_zh.contains("已刷新 AiPlus。"));
-    assert!(refresh_zh.contains("- Auto Compact: 已安装"));
+    assert!(refresh_zh.contains("- Compact Reminder: 已安装"));
     assert!(refresh_zh.contains("- Auto Team Consultant: 已安装"));
     assert!(refresh_zh.contains("- Agent Memory:"));
     assert!(refresh_zh.contains("- Memory records:"));
@@ -471,7 +471,7 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
             assert!(refresh.contains("aiplus compact remind"));
             assert!(refresh.contains("HEAVY work every 30 minutes"));
             assert!(advisor.contains("Agent Memory"));
-            assert!(advisor.contains("Auto Compact reminder schedule"));
+            assert!(advisor.contains("Compact Reminder reminder schedule"));
             assert!(advisor.contains("把这次经验沉淀成 skill"));
         }
         if runtime == "opencode" || runtime == "all" {
@@ -2848,7 +2848,7 @@ fn make_compact_handoff_current(target: &Path, phase: &str, last_updated: String
     handoff = replace_section_body(
         &handoff,
         "Current Goal",
-        "Deliver Auto Compact reminder engine.",
+        "Deliver Compact Reminder reminder engine.",
     );
     handoff = replace_section_body(&handoff, "Current Phase", phase);
     handoff = replace_section_body(

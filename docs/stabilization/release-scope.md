@@ -8,7 +8,7 @@
 
 ## Included in v0.5.1
 
-### Auto Compact Reminder v2
+### Compact Reminder Reminder v2
 - Compact remind/watch/prepare/resume/savings/checkpoint
 - Context capsule creation with checksums
 - Signal-safe watch loop (SIGTERM/SIGINT)

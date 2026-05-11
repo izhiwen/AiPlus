@@ -1,6 +1,6 @@
 # QA Report
 
-Scope: final local validation of `aiplus-auto-compact` before the approved
+Scope: final local validation of `aiplus-compact-reminder` before the approved
 AiPlus subproduct/module, installer-path, and auto-resume documentation update
 is pushed to GitHub `main`.
 
@@ -78,7 +78,7 @@ No local QA blocker found.
 
 ## Handoff
 
-Recommended next action: push the reviewed AiPlus Auto Compact documentation
+Recommended next action: push the reviewed AiPlus Compact Reminder documentation
 update to GitHub `main`, verify remote HEAD, and keep any future npm/Cargo/package
 registry publish, tags, GitHub Releases, marketplace submissions, binary
 uploads, global installs, and `$CODEX_HOME` changes behind separate Owner

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AiPlus Reminder State",
-  "description": "Project-local Auto Compact reminder watch state. No secrets, no raw transcript, no global config.",
+  "description": "Project-local Compact Reminder reminder watch state. No secrets, no raw transcript, no global config.",
   "type": "object",
   "required": ["schemaVersion", "projectId", "manualCompactOnly", "hostCompactTriggered"],
   "properties": {

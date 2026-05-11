@@ -1,8 +1,8 @@
-# AiPlus Auto Compact
+# AiPlus Compact Reminder
 
 [中文 README](README.zh-CN.md)
 
-AiPlus Auto Compact is an independent AiPlus subproduct for compact,
+AiPlus Compact Reminder is an independent AiPlus subproduct for compact,
 checkpoint, and resume handoffs. It can be used as a bundled module installed
 by the AiPlus CLI (`aiplus`), or inspected directly by users who only want the
 compact workflow.
@@ -67,14 +67,14 @@ aiplus status
 
 Generic `刷新` / `refresh` should still try AiPlus first after installation. If
 your project also uses `刷新` for its own state refresh, use `AiPlus 刷新` or
-`aiplus refresh` to avoid ambiguity. Meaning: report Auto Compact and compact
+`aiplus refresh` to avoid ambiguity. Meaning: report Compact Reminder and compact
 state before unrelated project refresh, reread `AGENTS.md`, reread
 `.aiplus/AGENTS.aiplus.md`, read `.codex/compact/current-handoff.md` if present,
 enable AiPlus guidance, and continue the current task.
 
 ### Path C: Advanced module-only adoption
 
-If you only want AiPlus Auto Compact, you can read this repository directly,
+If you only want AiPlus Compact Reminder, you can read this repository directly,
 inspect `core/templates/`, `core/docs/`, and the runtime adapters, then copy or
 adapt the compact workflow into your project. This is useful for policy review,
 custom integrations, or migration from `codex-compact-protocol`.
@@ -102,7 +102,7 @@ save progress
 Agents should proactively run `aiplus compact remind` at safe, high-value
 moments: HEAVY work every 30 minutes or major phase boundary, MEDIUM work at
 phase boundaries or before review/QA, and before subagent bursts, release prep,
-or Owner handoff. Auto Compact does not trigger host compact automatically; it
+or Owner handoff. Compact Reminder does not trigger host compact automatically; it
 decides whether to wait, prepare only, or suggest manual host compact.
 
 The agent should use `aiplus compact prepare` as an internal backend tool. If
@@ -134,13 +134,13 @@ The agent should run `aiplus compact resume` and then continue from the
 recovered state. Natural continuation phrases such as `continue`, `resume`,
 `refresh`, `go on`, `继续`, `刷新`, and `接着` should work.
 
-This is best-effort automatic resume. AiPlus Auto Compact can prepare the
+This is best-effort automatic resume. AiPlus Compact Reminder can prepare the
 checkpoint and tell the agent how to resume, but it cannot wake a host runtime
 that is waiting for the user.
 
 ## Compact Savings Estimate
 
-AiPlus Auto Compact supports the AiPlus v0.3 savings estimate flow. Ordinary
+AiPlus Compact Reminder supports the AiPlus v0.3 savings estimate flow. Ordinary
 users can ask:
 
 ```text
@@ -207,7 +207,7 @@ such as `Session Role`, `Workflow Level`, and `Output Contract`.
 ## Private Profile And Secrets Boundary
 
 AiPlus may be used with a private user-level profile
-and a Bitwarden-backed `secret-broker`. AiPlus Auto Compact must treat those as
+and a Bitwarden-backed `secret-broker`. AiPlus Compact Reminder must treat those as
 private runtime layers, not bundled module content.
 
 Compact handoffs, checkpoints, and savings ledgers must never store secret
@@ -291,7 +291,7 @@ distribution.
 
 ## What It Can Automate
 
-AiPlus Auto Compact can:
+AiPlus Compact Reminder can:
 
 - Create local compact state files in a target project.
 - Preserve existing compact files unless an explicit force flow is used.
@@ -303,7 +303,7 @@ AiPlus Auto Compact can:
 
 ## What It Cannot Automate
 
-AiPlus Auto Compact cannot:
+AiPlus Compact Reminder cannot:
 
 - Click UI controls, call `/compact`, or force any runtime to compact.
 - Wake a host runtime that is waiting for a user message after compact.
@@ -358,7 +358,7 @@ Node.
 Run package acceptance tests from this repository:
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm test
 ```
 
@@ -398,7 +398,7 @@ Existing `.codex/compact/` state remains compatible. For details, read [Migratio
 
 ## Current Release Status
 
-This repository is public on GitHub as `aiplus-auto-compact`. It is not
+This repository is public on GitHub as `aiplus-compact-reminder`. It is not
 published to npm, Cargo, Homebrew, any package registry, or any marketplace. The
 AiPlus CLI (`aiplus`) is the intended distribution surface for ordinary users.
 Future tags, GitHub Releases, package publications, binary uploads, marketplace
@@ -411,7 +411,7 @@ Keep contributions local-first and runtime-neutral unless the change is explicit
 Before proposing a release change:
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm test
 ```
 

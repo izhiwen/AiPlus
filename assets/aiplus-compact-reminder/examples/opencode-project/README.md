@@ -1,6 +1,6 @@
 # Synthetic OpenCode Project Example
 
-This example shows how an OpenCode user can apply AiPlus Auto Compact to a synthetic project named `<EXAMPLE_PROJECT>`.
+This example shows how an OpenCode user can apply AiPlus Compact Reminder to a synthetic project named `<EXAMPLE_PROJECT>`.
 
 Use the project-local OpenCode adapter when command, agent, prompt, and
 `opencode.json` examples are useful. AiPlus CLI (`aiplus`) is the ordinary-user

@@ -39,7 +39,7 @@ aiplus/
       tests/parity.rs
   assets/
     README.md
-    aiplus-auto-compact/
+    aiplus-compact-reminder/
     aiplus-auto-team-consultant/
   docs/
     architecture.md

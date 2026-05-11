@@ -1,6 +1,6 @@
 # Synthetic Claude Code Project Example
 
-This example shows how a Claude Code user can apply AiPlus Auto Compact to a synthetic project named `<EXAMPLE_PROJECT>`.
+This example shows how a Claude Code user can apply AiPlus Compact Reminder to a synthetic project named `<EXAMPLE_PROJECT>`.
 
 ## Load Adapter
 
@@ -20,9 +20,9 @@ English also works: `refresh`.
 The adapter command documents may also be used in Claude Code:
 
 ```text
-/aiplus-auto-compact:compact-validate
-/aiplus-auto-compact:compact-checkpoint
-/aiplus-auto-compact:compact-resume
+/aiplus-compact-reminder:compact-validate
+/aiplus-compact-reminder:compact-checkpoint
+/aiplus-compact-reminder:compact-resume
 ```
 
 ## Compact Commands

@@ -18,7 +18,7 @@
 | install opencode --dry-run | PASS | No files changed |
 | install all --dry-run | PASS | No files changed |
 
-## Auto Compact Results
+## Compact Reminder Results
 
 | Test | Status | Notes |
 |------|--------|-------|

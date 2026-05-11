@@ -20,7 +20,7 @@ Use this checklist before `<OWNER>` approves any public release, tag, package pu
 - Confirm installer docs mark the `install.sh` flow as future/planned until a
   reviewed AiPlus release installer is live.
 - Confirm compact docs describe best-effort automatic resume without claiming
-  Auto Compact can wake a host runtime.
+  Compact Reminder can wake a host runtime.
 - Confirm `SECURITY.md` describes local storage, reporting, redaction, and validation limits.
 - Confirm `CHANGELOG.md` includes the release entry.
 - Confirm `MODULES.md` reflects the current shared core and adapters.
@@ -32,14 +32,14 @@ Use this checklist before `<OWNER>` approves any public release, tag, package pu
 ## Validation Commands
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm test
 ```
 
 Optional JSON checks for Claude Code adapter files:
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact/adapters/claude-code
+cd <REPO_ROOT>/aiplus-compact-reminder/adapters/claude-code
 jq empty .claude-plugin/plugin.json
 jq empty hooks/hooks.example.json
 ```
@@ -47,7 +47,7 @@ jq empty hooks/hooks.example.json
 Optional package metadata check:
 
 ```bash
-cd <REPO_ROOT>/aiplus-auto-compact
+cd <REPO_ROOT>/aiplus-compact-reminder
 npm pack --dry-run
 ```
 
@@ -57,7 +57,7 @@ Do not publish from the dry run. Use it only to inspect package contents.
 
 - The README can be followed in about five minutes by a user with `aiplus`
   available on `PATH`.
-- The README supports users who want only AiPlus Auto Compact without implying
+- The README supports users who want only AiPlus Compact Reminder without implying
   this repository is the full AiPlus CLI repo.
 - The runtime choice table has exactly these columns: Runtime, Install command,
   Auto compact support, Recommended use.

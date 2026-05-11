@@ -59,6 +59,7 @@ pub const MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS: &str = "auto-compact";
 #[serde(rename_all = "camelCase")]
 pub struct ModuleManifest {
     pub schema_version: String,
+    #[serde(alias = "auto-compact")]
     pub name: String,
     pub display_name: String,
     pub version: String,

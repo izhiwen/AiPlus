@@ -1,4 +1,4 @@
-# AiPlus Auto Compact OpenCode Adapter
+# AiPlus Compact Reminder OpenCode Adapter
 
 This directory contains project-local OpenCode assets for the AiPlus compact checkpoint and resume protocol.
 
@@ -41,10 +41,10 @@ Manual example from a project root:
 
 ```bash
 mkdir -p .opencode/agents .opencode/commands .opencode/prompts
-cp aiplus-auto-compact/adapters/opencode/opencode.json.example .opencode/opencode.json
-cp aiplus-auto-compact/adapters/opencode/agents/*.md .opencode/agents/
-cp aiplus-auto-compact/adapters/opencode/commands/*.md .opencode/commands/
-cp aiplus-auto-compact/adapters/opencode/prompts/*.md .opencode/prompts/
+cp aiplus-compact-reminder/adapters/opencode/opencode.json.example .opencode/opencode.json
+cp aiplus-compact-reminder/adapters/opencode/agents/*.md .opencode/agents/
+cp aiplus-compact-reminder/adapters/opencode/commands/*.md .opencode/commands/
+cp aiplus-compact-reminder/adapters/opencode/prompts/*.md .opencode/prompts/
 ```
 
 If your project already has `.opencode/opencode.json`, merge the `agent` and `command` entries manually instead of overwriting it.
@@ -86,7 +86,7 @@ aiplus compact checkpoint
 aiplus compact resume
 ```
 
-Auto Compact's primary behavior is proactive reminder timing. For HEAVY tasks,
+Compact Reminder's primary behavior is proactive reminder timing. For HEAVY tasks,
 run `aiplus compact remind --event long-session` at least every 30 minutes and
 at major phase boundaries, before review/QA, before many subagents, before
 release prep, and before Owner handoff. For MEDIUM tasks, run it at phase

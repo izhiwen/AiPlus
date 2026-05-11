@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Rebrand**: `aiplus-auto-compact` module renamed to `aiplus-compact-reminder`.
+  The CLI subcommand `aiplus compact` remains unchanged. Backward compatibility
+  is preserved via serde alias and `normalize_module` legacy mapping so existing
+  manifests with `auto-compact` continue to deserialize correctly.
+  / **重命名**：`aiplus-auto-compact` 模块更名为 `aiplus-compact-reminder`。CLI 子命令
+  `aiplus compact` 保持不变。通过 serde alias 和 `normalize_module` 遗留映射保留向后
+  兼容性，使包含 `auto-compact` 的现有 manifest 仍能正确反序列化。
+
 ## 0.5.1
 
 - Wired Agent Continuity into `aiplus refresh`, `aiplus status`, and

@@ -1,4 +1,4 @@
-# AiPlus Auto Compact Claude Code Adapter
+# AiPlus Compact Reminder Claude Code Adapter
 
 This directory contains a Claude Code plugin-shaped adapter for the AiPlus compact checkpoint and resume protocol. It is project-local documentation and assets only.
 
@@ -6,9 +6,9 @@ This directory contains a Claude Code plugin-shaped adapter for the AiPlus compa
 
 - `.claude-plugin/plugin.json` defines the local plugin identity.
 - `skills/compact-protocol/SKILL.md` describes the compaction operating rules.
-- `commands/compact-checkpoint.md` documents `/aiplus-auto-compact:compact-checkpoint`.
-- `commands/compact-resume.md` documents `/aiplus-auto-compact:compact-resume`.
-- `commands/compact-validate.md` documents `/aiplus-auto-compact:compact-validate`.
+- `commands/compact-checkpoint.md` documents `/aiplus-compact-reminder:compact-checkpoint`.
+- `commands/compact-resume.md` documents `/aiplus-compact-reminder:compact-resume`.
+- `commands/compact-validate.md` documents `/aiplus-compact-reminder:compact-validate`.
 - `hooks/hooks.example.json` is an optional reviewed-before-use hook example.
 
 Claude Code plugin layout keeps `plugin.json` inside `.claude-plugin/`; `commands/`, `skills/`, and `hooks/` stay at the plugin root.
@@ -17,9 +17,9 @@ Claude Code plugin layout keeps `plugin.json` inside `.claude-plugin/`; `command
 
 When this directory is loaded as a Claude Code plugin, command files under `commands/` are exposed as namespaced slash commands:
 
-- `/aiplus-auto-compact:compact-checkpoint`
-- `/aiplus-auto-compact:compact-resume`
-- `/aiplus-auto-compact:compact-validate`
+- `/aiplus-compact-reminder:compact-checkpoint`
+- `/aiplus-compact-reminder:compact-resume`
+- `/aiplus-compact-reminder:compact-validate`
 
 The command files are prompt documents. They do not run shell scripts, change global settings, publish packages, push commits, or create tags.
 
@@ -48,7 +48,7 @@ refresh
 For direct adapter inspection in a local checkout, load this adapter explicitly:
 
 ```bash
-claude --plugin-dir ./aiplus-auto-compact/adapters/claude-code
+claude --plugin-dir ./aiplus-compact-reminder/adapters/claude-code
 ```
 
 You can then invoke the namespaced slash commands in Claude Code.
@@ -64,7 +64,7 @@ aiplus compact checkpoint
 aiplus compact resume
 ```
 
-Auto Compact's primary behavior is proactive reminder timing. For HEAVY tasks,
+Compact Reminder's primary behavior is proactive reminder timing. For HEAVY tasks,
 run `aiplus compact remind --event long-session` at least every 30 minutes and
 at major phase boundaries, before review/QA, before many subagents, before
 release prep, and before Owner handoff. For MEDIUM tasks, run it at phase

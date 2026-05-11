@@ -83,7 +83,7 @@ aiplus update
 If a module is missing:
 
 ```bash
-aiplus add auto-compact
+aiplus add compact-reminder
 aiplus add auto-team-consultant
 ```
 

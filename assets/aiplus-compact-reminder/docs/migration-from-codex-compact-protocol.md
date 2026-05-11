@@ -1,20 +1,20 @@
 # Migration From Codex Compact Protocol
 
-This guide is for users moving from `codex-compact-protocol` to AiPlus Auto Compact.
+This guide is for users moving from `codex-compact-protocol` to AiPlus Compact Reminder.
 
 ## What Changed
 
-AiPlus Auto Compact keeps the compact/resume state model, but supports two
+AiPlus Compact Reminder keeps the compact/resume state model, but supports two
 current audiences:
 
-- AiPlus users who install the bundled Auto Compact module through `aiplus`.
+- AiPlus users who install the bundled Compact Reminder module through `aiplus`.
 - Module-only users who visit this repository directly to inspect, copy, or
   adapt the compact workflow.
-- `aiplus-auto-compact` is the independent compact/checkpoint/resume workflow
+- `aiplus-compact-reminder` is the independent compact/checkpoint/resume workflow
   module.
 - `core/scripts/compactctl.mjs` is retained only as archived legacy history and
   compatibility-test reference, not as an active compact execution path.
-- Runtime adapters live under `<REPO_ROOT>/aiplus-auto-compact/adapters/`.
+- Runtime adapters live under `<REPO_ROOT>/aiplus-compact-reminder/adapters/`.
 
 The core protocol still uses the compatibility state path:
 
@@ -39,15 +39,15 @@ The tool still cannot trigger Codex UI compact, call `/compact`, or control Clau
 
 ## Path Mapping
 
-| Previous concept | AiPlus Auto Compact location |
+| Previous concept | AiPlus Compact Reminder location |
 | --- | --- |
-| Protocol templates | `<REPO_ROOT>/aiplus-auto-compact/core/templates/` |
-| Protocol schemas | `<REPO_ROOT>/aiplus-auto-compact/core/schemas/` |
+| Protocol templates | `<REPO_ROOT>/aiplus-compact-reminder/core/templates/` |
+| Protocol schemas | `<REPO_ROOT>/aiplus-compact-reminder/core/schemas/` |
 | Current agent backend CLI | `aiplus compact prepare`, `aiplus compact score`, `aiplus compact validate`, `aiplus compact checkpoint`, `aiplus compact resume` |
-| Archived legacy helper | `<REPO_ROOT>/aiplus-auto-compact/core/scripts/compactctl.mjs` retained only for history and compatibility tests |
+| Archived legacy helper | `<REPO_ROOT>/aiplus-compact-reminder/core/scripts/compactctl.mjs` retained only for history and compatibility tests |
 | Target project state | `<TARGET_PROJECT>/.codex/compact/` |
-| Codex-specific docs and assets | `<REPO_ROOT>/aiplus-auto-compact/adapters/codex/` |
-| Claude Code command assets | `<REPO_ROOT>/aiplus-auto-compact/adapters/claude-code/` |
+| Codex-specific docs and assets | `<REPO_ROOT>/aiplus-compact-reminder/adapters/codex/` |
+| Claude Code command assets | `<REPO_ROOT>/aiplus-compact-reminder/adapters/claude-code/` |
 
 ## Migration Steps
 
@@ -101,7 +101,7 @@ not reply, natural continuation messages such as `continue`, `resume`, `go on`,
 Load the Claude Code adapter when command documents are useful:
 
 ```bash
-claude --plugin-dir <REPO_ROOT>/aiplus-auto-compact/adapters/claude-code
+claude --plugin-dir <REPO_ROOT>/aiplus-compact-reminder/adapters/claude-code
 ```
 
 Then use the namespaced commands to guide validation, checkpoint, and resume.
@@ -113,7 +113,7 @@ When shell commands are needed, prefer `aiplus compact validate`,
 Use the OpenCode adapter when project-local config, commands, agents, and prompts are useful:
 
 ```bash
-cp <REPO_ROOT>/aiplus-auto-compact/adapters/opencode/opencode.json.example <TARGET_PROJECT>/.opencode/opencode.json
+cp <REPO_ROOT>/aiplus-compact-reminder/adapters/opencode/opencode.json.example <TARGET_PROJECT>/.opencode/opencode.json
 ```
 
 Merge rather than overwrite if the target project already has

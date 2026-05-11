@@ -1,4 +1,4 @@
-# AiPlus Auto Compact Core Protocol
+# AiPlus Compact Reminder Core Protocol
 
 The core protocol defines local compact/reminder/resume state that any host agent
 can read, validate, checkpoint, and resume from. It is intentionally
@@ -6,7 +6,7 @@ platform-neutral: adapters may expose the workflow inside a specific agent
 runtime, but the core files do not depend on a hosted API, cloud service, remote
 repository, global install, or automatic host compact trigger.
 
-AiPlus Auto Compact does not replace Codex, Claude Code, or OpenCode compact.
+AiPlus Compact Reminder does not replace Codex, Claude Code, or OpenCode compact.
 Its core value is proactive reminder timing: at stable high-value moments it
 runs `aiplus compact remind`, prepares a checkpoint/handoff first, estimates
 token/USD savings, and then tells the agent whether to wait, prepare only, or

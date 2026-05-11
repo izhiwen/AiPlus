@@ -1,4 +1,4 @@
-# Auto Compact Reminder v2 — Release-Readiness Packet
+# Compact Reminder Reminder v2 — Release-Readiness Packet
 
 **Generated:** 2025-05-10
 **Version:** 0.5.1
@@ -35,7 +35,7 @@ APPROVAL_NEEDED=[Owner approval before push/tag/GitHub Release/artifact upload]
 - `crates/aiplus-cli/src/main.rs` — Core CLI implementation (+2,452 lines)
 - `crates/aiplus-cli/tests/parity.rs` — Parity tests (+683 lines)
 - `Cargo.toml` / `Cargo.lock` — Dependencies (+292 lock lines)
-- Documentation updates across `assets/aiplus-auto-compact/`, `README.md`, etc.
+- Documentation updates across `assets/aiplus-compact-reminder/`, `README.md`, etc.
 
 ---
 
@@ -172,5 +172,5 @@ The following actions have **NOT** been performed and will **NOT** be performed 
 
 ---
 
-**Packet prepared by:** Auto Compact Reminder v2
+**Packet prepared by:** Compact Reminder Reminder v2
 **Ready for Owner review and release approval.**

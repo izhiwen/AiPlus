@@ -32,7 +32,7 @@ No network fetch is used at runtime, and the CLI does not depend on GitHub.
 
 Bundled modules:
 
-- `aiplus-auto-compact`: current-task checkpoint and resume.
+- `aiplus-compact-reminder`: current-task checkpoint and resume.
 - `aiplus-auto-team-consultant`: Advisor, CEO, Reviewer, and Builder workflow.
 - `aiplus-agent-memory`: Agent Continuity foundation for Memory Context, Role
   Identity, and Skill Candidate governance.
@@ -43,7 +43,7 @@ The Rust mainline/public-ready package is Apache-2.0. The workspace `LICENSE`
 and Cargo metadata use Apache-2.0. Bundled child module snapshots preserve their
 existing licenses:
 
-- `aiplus-auto-compact`: Apache-2.0
+- `aiplus-compact-reminder`: Apache-2.0
 - `aiplus-auto-team-consultant`: MIT
 - `aiplus-agent-memory`: Apache-2.0
 
@@ -63,10 +63,10 @@ The CLI release is v0.2.1. The installed project manifest schema remains
   "targetRoot": "...",
   "runtimeAdapters": ["codex"],
   "modules": {
-    "auto-compact": {
+    "compact-reminder": {
       "version": "0.1.0",
       "source": "bundled",
-      "path": ".aiplus/modules/aiplus-auto-compact"
+      "path": ".aiplus/modules/aiplus-compact-reminder"
     }
   },
   "managedFiles": []
@@ -146,7 +146,7 @@ aiplus/
       tests/parity.rs
   assets/
     README.md
-    aiplus-auto-compact/
+    aiplus-compact-reminder/
     aiplus-auto-team-consultant/
     aiplus-agent-memory/
   docs/

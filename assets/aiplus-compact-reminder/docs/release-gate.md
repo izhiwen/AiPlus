@@ -1,6 +1,6 @@
 # Release Gate
 
-Scope: local QA/release readiness review for the AiPlus Auto Compact
+Scope: local QA/release readiness review for the AiPlus Compact Reminder
 subproduct/module, installer-path, and auto-resume documentation update.
 
 ## Gate Status
@@ -9,7 +9,7 @@ PASS.
 
 Local validation passed before the approved GitHub `main` update. GitHub
 remote/latest-commit verification must be repeated after this update is pushed
-to `https://github.com/izhiwen/aiplus-auto-compact`.
+to `https://github.com/izhiwen/aiplus-compact-reminder`.
 
 ## Required Checks
 
@@ -22,7 +22,7 @@ to `https://github.com/izhiwen/aiplus-auto-compact`.
 | Adapter required files | PASS | Required Codex, Claude Code, and OpenCode adapter files exist |
 | README runtime coverage | PASS | Root README covers AiPlus CLI (`aiplus`), Codex, Claude Code, OpenCode, validation, safety, and current release status |
 | README beginner flow | PASS | Root README and `README.zh-CN.md` cover AiPlus ecosystem installer path, existing `aiplus` path, module-only path, `刷新`/`refresh`, and `aiplus compact ...` before legacy Node reference |
-| Subproduct identity | PASS | README states AiPlus Auto Compact is an independent AiPlus subproduct and bundled AiPlus CLI module |
+| Subproduct identity | PASS | README states AiPlus Compact Reminder is an independent AiPlus subproduct and bundled AiPlus CLI module |
 | Best-effort auto-resume | PASS | README, core docs, adapter docs, and examples describe host-return resume behavior and user-message fallback |
 | README link/path sanity | PASS | Relative markdown links checked with no broken links |
 | Public-safety scan | PASS | No blocker; expected policy/detector/test matches only |
@@ -33,7 +33,7 @@ to `https://github.com/izhiwen/aiplus-auto-compact`.
 
 ## Final Rerun Commands
 
-Run from the final `aiplus-auto-compact` checkout before publication:
+Run from the final `aiplus-compact-reminder` checkout before publication:
 
 ```bash
 rtk npm test
@@ -93,7 +93,7 @@ Not performed:
 ## Handoff Notes
 
 Owner gate needed: no for pushing reviewed `main` changes to
-`izhiwen/aiplus-auto-compact` under the current approved goal. Separate Owner
+`izhiwen/aiplus-compact-reminder` under the current approved goal. Separate Owner
 approval is still required for npm/Cargo/package registry publish, tags, GitHub
 Releases, binary uploads, marketplace submission, global installs, and deletion
 or transfer of the existing Codex-first repo.

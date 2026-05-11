@@ -1,4 +1,4 @@
-# Auto Compact v2.1 — ACCEPT_PENDING_REVIEW
+# Compact Reminder v2.1 — ACCEPT_PENDING_REVIEW
 
 **Date:** 2026-05-10
 **Verifier:** Independent review
@@ -50,7 +50,7 @@
 ## Verdict
 
 ```
-AUTO_COMPACT_V2_1_DEEP_HARDENING_STATUS=PASS
+COMPACT_REMINDER_V2_1_DEEP_HARDENING_STATUS=PASS
 ```
 
 **Evidence confirmed:** bad-state matrix has actual test cases with concrete methods and results, not summary-only. Long-task dogfood has verifiable objective, next safe action, owner gates, decisions_loaded, and checksum in context capsule.

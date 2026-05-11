@@ -1,9 +1,9 @@
-# Auto Compact v2.1 Deep Hardening and Dogfood — Final Packet
+# Compact Reminder v2.1 Deep Hardening and Dogfood — Final Packet
 
 **Date:** 2026-05-10
-**Scope:** Auto Compact v2.1 resume/capsule/remind/watch/checkpoint quality
-**Role:** Auto Compact CEO
-**Goal:** Complete a long-running Auto Compact v2.1 hardening and dogfood mission
+**Scope:** Compact Reminder v2.1 resume/capsule/remind/watch/checkpoint quality
+**Role:** Compact Reminder CEO
+**Goal:** Complete a long-running Compact Reminder v2.1 hardening and dogfood mission
 
 ---
 
@@ -13,14 +13,14 @@
 VERDICT=PASS
 GOAL_SET=YES
 GOAL_COMPLETE=YES
-SCOPE=Auto Compact v2.1 deep hardening and dogfood
+SCOPE=Compact Reminder v2.1 deep hardening and dogfood
 SOURCE_UNDER_TEST=/Users/steve/Dropbox/Project/AiPlus/aiplus-public (source binary)
 CLAIMED_FILES=[
   crates/aiplus-cli/src/main.rs,
   crates/aiplus-cli/tests/parity.rs,
   crates/aiplus-cli/tests/continuity.rs,
   crates/aiplus-core/src/capsule.rs,
-  assets/aiplus-auto-compact/**,
+  assets/aiplus-compact-reminder/**,
   docs/compact-guide.md,
   docs/stabilization/*compact*
 ]
@@ -233,10 +233,10 @@ NEXT_RECOMMENDED_ACTION=Platform CEO review and integration
 **Schemas validated:**
 - context-capsule.schema.json: VALID
 - reminder-state.schema.json: VALID
-- All schemas in assets/aiplus-auto-compact/core/schemas/ present
+- All schemas in assets/aiplus-compact-reminder/core/schemas/ present
 
 **Docs verified:**
-- Auto Compact README: no overclaim, no "guaranteed recovery", no "automatic compact"
+- Compact Reminder README: no overclaim, no "guaranteed recovery", no "automatic compact"
 - SECURITY.md: mentions no telemetry, no cloud sync
 - Adapter docs: safety warnings present
 
@@ -297,5 +297,5 @@ Added 4 comprehensive tests for decision ledger extraction covering normal, sens
 
 ---
 
-**Packet prepared by:** Auto Compact CEO
+**Packet prepared by:** Compact Reminder CEO
 **Ready for Platform CEO integration.**

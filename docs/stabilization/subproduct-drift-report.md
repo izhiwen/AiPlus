@@ -9,7 +9,7 @@
 
 | Subproduct | Status | Version | Relationship to Mainline |
 |-----------|--------|---------|------------------------|
-| aiplus-auto-compact | Stable | v0.4.6 | Embedded in aiplus-public as module |
+| aiplus-compact-reminder | Stable | v0.4.6 | Embedded in aiplus-public as module |
 | aiplus-agent-memory | Stable | v0.5.1 | Embedded in aiplus-public as module |
 | aiplus-auto-team-consultant | Stable | v0.4.6 | Embedded in aiplus-public as module |
 | aiplus-work-with-zhiwen | Private | v0.3.0 | Installed via profile install, never embedded |
@@ -21,7 +21,7 @@
 ### No Critical Drift Detected
 
 All subproducts are either:
-1. **Embedded in mainline** (auto-compact, agent-memory, auto-team-consultant) — versions match
+1. **Embedded in mainline** (compact-reminder, agent-memory, auto-team-consultant) — versions match
 2. **Private profile** (work-with-zhiwen) — correctly kept separate
 
 ### Source of Truth
@@ -29,7 +29,7 @@ All subproducts are either:
 | Component | Source of Truth |
 |-----------|----------------|
 | Rust CLI + Core | `aiplus-public/` |
-| Auto Compact logic | `aiplus-public/crates/aiplus-core/src/compact_state.rs` |
+| Compact Reminder logic | `aiplus-public/crates/aiplus-core/src/compact_state.rs` |
 | Agent Memory logic | `aiplus-public/crates/aiplus-core/src/memory*.rs` |
 | Private profile content | `aiplus-work-with-zhiwen/` (local only) |
 

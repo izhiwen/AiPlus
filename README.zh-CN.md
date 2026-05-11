@@ -12,7 +12,7 @@ AiPlus 用四个集成模块解决这些问题，全部在本地运行。
 
 **Agent Memory** 把项目规范以 JSONL 形式存在 `.aiplus/memory/` 下。任何记录写入前，十二条 redaction 模式自动剥除 password、JWT、raw transcript 等敏感串。agent 跨 session 记住你的命名规则、编码标准和架构决策。被拒绝或已忘记的记录留在 store 里，但默认不进入上下文。
 
-**Auto Compact** 在 context window 耗尽前准备结构化交接。它把 decision log、agent state 和 evidence 捕获进 checksum 验证的 capsule。compact 后，`aiplus compact resume` 读取 capsule 并自动恢复上下文。agent 从断点继续，不是从零开始。
+**Compact Reminder** 在 context window 耗尽前准备结构化交接。它把 decision log、agent state 和 evidence 捕获进 checksum 验证的 capsule。compact 后，`aiplus compact resume` 读取 capsule 并自动恢复上下文。agent 从断点继续，不是从零开始。
 
 **Auto Team Consultant** 在项目中安装路由系统。它定义清晰角色：Advisor 负责直接建议，CEO 负责任务拆分，Reviewer 负责审阅发现，Builder 负责实现。任务从 L0 直接建议路由到 L5 完整治理。AI Integration 是默认专家团队成员，不是事后补充。
 

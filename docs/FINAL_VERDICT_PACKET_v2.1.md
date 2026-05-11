@@ -64,13 +64,13 @@ SAFETY_PACKET={
    - Backlog and rejected items
    - Effort estimate: 8–12 days
 
-2. **`docs/auto-compact-v2.1-plan.md`**
+2. **`docs/compact-reminder-v2.1-plan.md`**
    - P0: Resume reads context capsule, decision extraction from ledger
    - P1: Watch deduplication/escalation, snooze persistence
    - P2: Host compact trigger helper, savings estimation accuracy, Owner gate preservation
    - P3: Workflow documentation and value prop clarity
    - Effort estimate: 9–12 days
-   - Release sequence: Agent Memory v2.1 first, then Auto Compact v2.1
+   - Release sequence: Agent Memory v2.1 first, then Compact Reminder v2.1
 
 3. **`docs/memory-quality-rubric.md`**
    - 7 dimensions scored 0–10
@@ -146,7 +146,7 @@ Per Owner instruction and role constraints (planning/docs lead), **no source cod
 
 The following files were **created** (not modified):
 - `docs/agent-memory-v2.1-plan.md`
-- `docs/auto-compact-v2.1-plan.md`
+- `docs/compact-reminder-v2.1-plan.md`
 - `docs/memory-quality-rubric.md`
 - `docs/compact-reminder-quality-rubric.md`
 - `docs/hermes-like-memory-gap-analysis.md`
