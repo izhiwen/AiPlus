@@ -1,5 +1,4 @@
 # AiPlus
-
 [中文 README](README.zh-CN.md)
 
 ## Why This Exists
