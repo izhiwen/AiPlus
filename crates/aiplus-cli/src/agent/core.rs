@@ -132,6 +132,18 @@ pub struct TeamState {
     pub worktree_paths: HashMap<String, PathBuf>,
 }
 
+/// The 8 core roles
+const CORE_ROLES: &[&str] = &[
+    "advisor",
+    "ceo",
+    "architect",
+    "pm",
+    "engineer-a",
+    "engineer-b",
+    "reviewer",
+    "qa",
+];
+
 /// The 6 functional experts available in v0.1
 const FUNCTIONAL_EXPERTS: &[&str] = &[
     "ai-integration",
@@ -251,8 +263,13 @@ pub fn get_role_config(role: &str) -> Result<AgentConfig> {
     // Return a default config for known roles even if file doesn't exist
     if is_stub(role) {
         Ok(AgentConfig::with_role(role, "expert", "stub", true))
-    } else if FUNCTIONAL_EXPERTS.contains(&role) {
-        Ok(AgentConfig::with_role(role, "expert", "inactive", false))
+    } else if FUNCTIONAL_EXPERTS.contains(&role) || CORE_ROLES.contains(&role) {
+        let tier = if role == "advisor" || role == "ceo" {
+            "owner_facing"
+        } else {
+            "internal"
+        };
+        Ok(AgentConfig::with_role(role, tier, "inactive", false))
     } else {
         anyhow::bail!("Unknown role: {}", role)
     }
