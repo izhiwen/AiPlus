@@ -11,6 +11,10 @@ serde.workspace = true
 serde_json.workspace = true
 toml = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
+fs2 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+serde_yaml_ng = { workspace = true }
 
 [dev-dependencies]
 tempfile.workspace = true

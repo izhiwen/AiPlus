@@ -1,5 +1,6 @@
 pub mod agent_team;
 pub mod assets;
+pub mod auditor;
 pub mod auto_write;
 pub mod capsule;
 pub mod compact_state;
@@ -45,7 +46,8 @@ pub use memory_context::{select_records, ContextBudget};
 pub use module_manifest::{
     available_modules_text, bundled_module_specs, default_module_names, module_spec,
     normalize_module, validate_bundled_module_manifests, ModuleManifest, ModuleSpec,
-    MODULE_SLUG_COMPACT_REMINDER, MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS,
+    MODULE_SLUG_AGENT_TEAM, MODULE_SLUG_COMPACT_REMINDER,
+    MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS,
 };
 pub use paths::{identity_dir, memory_dir, skills_dir};
 pub use profile_sync::{ProfileSync, SyncResult};

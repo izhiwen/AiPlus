@@ -44,9 +44,6 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         AgentSub::Integrate { role } => integrate::handle_integrate(&role),
         AgentSub::Transcript => transcript::handle_transcript(),
         AgentSub::PruneWorktrees { yes } => prune_worktrees::handle_prune_worktrees(yes),
-        AgentSub::Audit(_args) => {
-            println!("Audit command not yet implemented in v0.1");
-            Ok(())
-        }
+        AgentSub::Audit(args) => audit::dispatch(args),
     }
 }

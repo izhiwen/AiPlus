@@ -642,6 +642,8 @@ fn translate_chinese_subcommand(args: Vec<String>) -> Vec<String> {
             ("记录", "transcript"),
             ("清理", "prune-worktrees"),
             ("清理团队工作区", "prune-worktrees"),
+            ("审计", "audit"),
+            ("查", "audit"),
         ];
         for (zh, en) in agent_aliases {
             if translated[1] == zh {
@@ -676,7 +678,7 @@ fn main() {
         }
         let msg = error.to_string();
         if msg.starts_with("STUB_NOT_INVITABLE") {
-            eprintln!("{}", msg);
+            println!("{}", msg);
             process::exit(2);
         }
         eprintln!("INTERNAL_ERROR {error:?}");
@@ -3696,7 +3698,7 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
     append_audit(&root, "memory.add", &id)?;
 
     // Invalidate warm-bench cache: memory add/forget → invalidate all
-    if let Ok(mut cache) = crate::agent::cache::global_cache().lock() {
+    if let Ok(cache) = crate::agent::cache::global_cache().lock() {
         cache.invalidate_all();
     }
 
@@ -3751,7 +3753,7 @@ fn memory_forget(id: Option<String>) -> Result<()> {
     append_audit(&root, "memory.forget", &id)?;
 
     // Invalidate warm-bench cache: memory add/forget → invalidate all
-    if let Ok(mut cache) = crate::agent::cache::global_cache().lock() {
+    if let Ok(cache) = crate::agent::cache::global_cache().lock() {
         cache.invalidate_all();
     }
 

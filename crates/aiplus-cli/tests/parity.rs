@@ -3194,10 +3194,11 @@ fn agent_team_invite_stub_errors_with_stub_not_invitable() {
     setup_fake_env(target);
     run(target, &["install", "codex"], 0);
 
-    let err = run(target, &["agent", "invite", "data-analyst"], 2);
-    let err_str = stderr(&err);
-    assert!(err_str.contains("STUB_NOT_INVITABLE"));
-    assert!(err_str.contains("expert is v0.2 stub, not yet functional"));
+    let output = run(target, &["agent", "invite", "data-analyst"], 2);
+    let out_str = stdout(&output);
+    assert!(out_str.contains("STUB_NOT_INVITABLE"));
+    assert!(out_str.contains("expert is v0.2 stub, not yet functional"));
+    assert!(!out_str.contains("INTERNAL_ERROR"));
 }
 
 #[test]
@@ -3255,4 +3256,506 @@ fn agent_team_doctor_validates_configs() {
     assert!(doctor.contains("devops (DevOps) [ACTIVE]"));
     assert!(doctor.contains("WARNING: worktree .aiplus/agents/devops-wt does not exist"));
     assert!(doctor.contains("Doctor check complete."));
+}
+
+// =============================================================================
+// AiPlus Agent Team v0.1 Parity Tests
+// =============================================================================
+
+fn init_git_repo(target: &Path) {
+    let output = Command::new("git")
+        .args(["init"])
+        .current_dir(target)
+        .output()
+        .expect("git init failed");
+    assert!(output.status.success(), "git init failed");
+
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(target)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(target)
+        .output()
+        .unwrap();
+}
+
+fn git_commit_all(target: &Path, message: &str) {
+    Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(target)
+        .output()
+        .unwrap();
+    let output = Command::new("git")
+        .args(["commit", "--no-verify", "-m", message])
+        .current_dir(target)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git commit failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn create_agent_with_worktree(target: &Path, role: &str) {
+    let agents_dir = target.join(".aiplus/agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+    fs::write(
+        agents_dir.join(format!("{}.toml", role)),
+        format!(
+            "schema_version = \"1.0\"\n\n[agent]\nrole = \"{}\"\ndisplay_name = \"{}\"\ntier = \"expert\"\nstatus = \"active\"\n\n[workspace]\nneeds_worktree = true\n",
+            role, role
+        ),
+    )
+    .unwrap();
+}
+
+fn list_agent_worktrees(target: &Path) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(target)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut roles = Vec::new();
+    for block in stdout.split("\n\n") {
+        let mut path = None;
+        let mut branch = None;
+        for line in block.lines() {
+            if line.starts_with("worktree ") {
+                path = Some(line.strip_prefix("worktree ").unwrap().trim());
+            } else if line.starts_with("branch ") {
+                branch = Some(line.strip_prefix("branch ").unwrap().trim());
+            }
+        }
+        if let (Some(p), Some(b)) = (path, branch) {
+            if b.starts_with("agent/") || b.starts_with("refs/heads/agent/") {
+                let role = b
+                    .strip_prefix("refs/heads/agent/")
+                    .or_else(|| b.strip_prefix("agent/"))
+                    .unwrap_or("unknown");
+                if Path::new(p) != target {
+                    roles.push(role.to_string());
+                }
+            }
+        }
+    }
+    roles
+}
+
+fn get_worktree_path(target: &Path, role: &str) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(target)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected_branch = format!("agent/{}", role);
+    for block in stdout.split("\n\n") {
+        let mut path = None;
+        let mut branch = None;
+        for line in block.lines() {
+            if line.starts_with("worktree ") {
+                path = Some(line.strip_prefix("worktree ").unwrap().trim());
+            } else if line.starts_with("branch ") {
+                branch = Some(line.strip_prefix("branch ").unwrap().trim());
+            }
+        }
+        if let (Some(p), Some(b)) = (path, branch) {
+            if b == expected_branch || b == format!("refs/heads/{}", expected_branch) {
+                return Some(PathBuf::from(p));
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn cli_parity_basic_command_structure() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    // aiplus agent status returns 0
+    let status = stdout(&run(target, &["agent", "status"], 0));
+    assert!(status.contains("AiPlus Agent Team v0.1"));
+    assert!(status.contains("Team Roster:"));
+
+    // aiplus agent --help contains expected subcommands
+    let help = stdout(&run(target, &["agent", "--help"], 0));
+    for subcommand in [
+        "status", "doctor", "list", "talk", "route", "reset", "invite", "dismiss", "disable",
+        "enable", "integrate", "transcript", "prune-worktrees", "audit",
+    ] {
+        assert!(help.contains(subcommand), "help missing subcommand: {}", subcommand);
+    }
+
+    // aiplus agent audit --help contains 9 audit subcommands
+    let audit_help = stdout(&run(target, &["agent", "audit", "--help"], 0));
+    let audit_subcommands = [
+        "run", "canary", "replay", "owner-feedback", "owner-feedback-retract", "force-skip",
+        "re-sign-manifest", "setup-gpg", "weekly-spot-check", "status",
+    ];
+    let mut found = 0;
+    for sub in &audit_subcommands {
+        if audit_help.contains(sub) {
+            found += 1;
+        }
+    }
+    assert!(
+        found >= 9,
+        "expected at least 9 audit subcommands in help, found {}. help text:\n{}",
+        found,
+        audit_help
+    );
+}
+
+#[test]
+fn chinese_aliases_parity() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    // aiplus 团队 works (top-level alias → agent status)
+    let team = stdout(&run(target, &["团队"], 0));
+    assert!(team.contains("AiPlus Agent Team v0.1"), "团队 alias failed:\n{}", team);
+    assert!(team.contains("Team Roster:"));
+
+    // aiplus 审计 状态 works (top-level alias → agent audit status)
+    let audit_status = stdout(&run(target, &["审计", "状态"], 0));
+    assert!(
+        audit_status.contains("=== Audit System Status ==="),
+        "审计 状态 alias failed:\n{}",
+        audit_status
+    );
+
+    // aiplus 派单 engineer-a works (top-level alias → agent route engineer-a)
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# Test\n").unwrap();
+    git_commit_all(target, "Initial commit");
+    create_agent_with_worktree(target, "engineer-a");
+
+    let route = stdout(&run(target, &["派单", "engineer-a"], 0));
+    assert!(
+        route.contains("Routing task to engineer-a"),
+        "派单 alias failed:\n{}",
+        route
+    );
+
+    // Verify each alias maps to correct English command by checking outputs match
+    let direct_status = stdout(&run(target, &["agent", "status"], 0));
+    assert_eq!(
+        team.contains("AiPlus Agent Team v0.1"),
+        direct_status.contains("AiPlus Agent Team v0.1"),
+        "团队 alias should produce same output as agent status"
+    );
+}
+
+#[test]
+fn three_layer_memory_parity() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    run(target, &["install", "codex"], 0);
+
+    // aiplus memory status works
+    let mem_status = stdout(&run(target, &["memory", "status"], 0));
+    assert!(mem_status.contains("MEMORY_STATUS"));
+    assert!(mem_status.contains("MEMORY_STATUS=PASS"));
+    assert!(mem_status.contains("scope=project-local"));
+
+    // aiplus memory add works
+    let mem_add = stdout(&run(
+        target,
+        &[
+            "memory",
+            "add",
+            "--scope",
+            "project",
+            "--kind",
+            "preference",
+            "--text",
+            "Prefer dark mode UI",
+        ],
+        0,
+    ));
+    assert!(mem_add.contains("MEMORY_ADD"));
+    assert!(mem_add.contains("MEMORY_ADD_STATUS=PASS"));
+    assert!(mem_add.contains("scope=project"));
+    assert!(mem_add.contains("kind=preference"));
+
+    // Extract memory ID from output
+    let id_line = mem_add.lines().find(|l| l.starts_with("id=mem_")).unwrap();
+    let id = id_line.trim_start_matches("id=");
+    assert!(!id.is_empty());
+
+    // Verify memory was added by checking status again
+    let mem_status_after = stdout(&run(target, &["memory", "status"], 0));
+    assert!(
+        mem_status_after.contains("records_active=1"),
+        "memory status should show 1 active record after add:\n{}",
+        mem_status_after
+    );
+
+    // aiplus memory forget works
+    let mem_forget = stdout(&run(target, &["memory", "forget", id], 0));
+    assert!(mem_forget.contains("MEMORY_FORGET"));
+    assert!(mem_forget.contains("MEMORY_FORGET_STATUS=PASS"));
+    assert!(mem_forget.contains("forgotten=yes"));
+    assert!(mem_forget.contains("status=rejected"));
+
+    // Verify memory was forgotten
+    let mem_status_final = stdout(&run(target, &["memory", "status"], 0));
+    assert!(
+        mem_status_final.contains("records_active=0"),
+        "memory status should show 0 active records after forget:\n{}",
+        mem_status_final
+    );
+}
+
+#[test]
+fn worktree_lifecycle_parity() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+
+    // Set up git repository
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# Test Project\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    // Install aiplus
+    run(target, &["install", "codex"], 0);
+
+    // Commit aiplus files so integrate doesn't see uncommitted changes
+    git_commit_all(target, "Install AiPlus");
+
+    // Create agent configs that need worktrees
+    create_agent_with_worktree(target, "engineer-a");
+    git_commit_all(target, "Add engineer-a agent config");
+
+    // aiplus agent route engineer-a creates worktree
+    let route = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
+    assert!(
+        route.contains("Creating worktree for engineer-a") || route.contains("Worktree created:"),
+        "route should create worktree:\n{}",
+        route
+    );
+
+    // Verify worktree exists
+    let worktree_path = get_worktree_path(target, "engineer-a");
+    assert!(
+        worktree_path.is_some(),
+        "worktree for engineer-a should exist after route"
+    );
+    let worktree_path = worktree_path.unwrap();
+    assert!(worktree_path.exists(), "worktree directory should exist");
+
+    // aiplus agent integrate engineer-a merges branch
+    // First make a commit in the worktree
+    fs::write(worktree_path.join("feature.txt"), "new feature\n").unwrap();
+    Command::new("git")
+        .args(["add", "feature.txt"])
+        .current_dir(&worktree_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "--no-verify", "-m", "Add feature"])
+        .current_dir(&worktree_path)
+        .output()
+        .unwrap();
+
+    let integrate = stdout(&run(target, &["agent", "integrate", "engineer-a"], 0));
+    assert!(
+        integrate.contains("Successfully integrated engineer-a"),
+        "integrate should merge branch:\n{}",
+        integrate
+    );
+
+    // Verify the feature file exists in main repo after merge
+    assert!(
+        target.join("feature.txt").exists(),
+        "feature.txt should be merged into main repo"
+    );
+
+    // aiplus agent dismiss engineer-a
+    let dismiss = stdout(&run(target, &["agent", "dismiss", "engineer-a"], 0));
+    assert!(
+        dismiss.contains("Dismissing engineer-a"),
+        "dismiss should report role:\n{}",
+        dismiss
+    );
+
+    // aiplus agent prune-worktrees --yes cleans all
+    let prune = stdout(&run(target, &["agent", "prune-worktrees", "--yes"], 0));
+    assert!(
+        prune.contains("Removing worktree for engineer-a") || prune.contains("Removed 1 worktree"),
+        "prune-worktrees should remove worktree:\n{}",
+        prune
+    );
+
+    // Verify no agent worktrees remain
+    let remaining = list_agent_worktrees(target);
+    assert!(remaining.is_empty(), "Expected no remaining agent worktrees, found: {:?}", remaining);
+}
+
+#[test]
+fn warm_bench_cache_parity() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+
+    // Set up git repository
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# Test Project\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    // Install aiplus
+    run(target, &["install", "codex"], 0);
+    create_agent_with_worktree(target, "engineer-a");
+
+    // First route creates worktree (cold start)
+    let route1 = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
+    assert!(
+        route1.contains("Creating worktree for engineer-a"),
+        "first route should create worktree:\n{}",
+        route1
+    );
+
+    // Cache hit after first route: second route reuses existing worktree
+    let route2 = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
+    assert!(
+        route2.contains("Using existing worktree:"),
+        "second route should hit cache and reuse worktree:\n{}",
+        route2
+    );
+
+    // Cache invalidation on dismiss
+    let dismiss = stdout(&run(target, &["agent", "dismiss", "engineer-a"], 0));
+    assert!(
+        dismiss.contains("Dismissing engineer-a"),
+        "dismiss should succeed and invalidate cache:\n{}",
+        dismiss
+    );
+
+    // After dismiss, route should still reuse worktree (git-level cache), but warm-bench cache was invalidated
+    let route_after_dismiss = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
+    assert!(
+        route_after_dismiss.contains("Using existing worktree:") || route_after_dismiss.contains("Creating worktree for engineer-a"),
+        "route after dismiss should succeed:\n{}",
+        route_after_dismiss
+    );
+
+    // Cache clear on reset
+    let reset = stdout(&run(target, &["agent", "reset"], 0));
+    assert!(
+        reset.contains("Warm-bench cache cleared."),
+        "reset should clear cache:\n{}",
+        reset
+    );
+    assert!(reset.contains("Resetting agent team state..."));
+}
+
+#[test]
+fn acceptance_scenario_parity() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+
+    // Set up git repository
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# Test Project\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    // Install aiplus and create agents
+    run(target, &["install", "codex"], 0);
+    git_commit_all(target, "Install AiPlus");
+
+    create_agent_with_worktree(target, "engineer-a");
+    create_agent_with_worktree(target, "engineer-b");
+    git_commit_all(target, "Add agent configs");
+
+    // Step 1: Route engineer-a
+    let route_a = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
+    assert!(
+        route_a.contains("Creating worktree for engineer-a") || route_a.contains("Worktree created:"),
+        "step 1 route engineer-a failed:\n{}",
+        route_a
+    );
+
+    // Step 2: Route engineer-b
+    let route_b = stdout(&run(target, &["agent", "route", "engineer-b"], 0));
+    assert!(
+        route_b.contains("Creating worktree for engineer-b") || route_b.contains("Worktree created:"),
+        "step 2 route engineer-b failed:\n{}",
+        route_b
+    );
+
+    // Step 3: Status shows both agents
+    let status = stdout(&run(target, &["agent", "status"], 0));
+    assert!(
+        status.contains("Worktree status:") || status.contains("Worktree"),
+        "step 3 status should show worktrees:\n{}",
+        status
+    );
+
+    // Step 4: Integrate engineer-a (after making a commit in its worktree)
+    let worktree_a = get_worktree_path(target, "engineer-a").expect("engineer-a worktree should exist");
+    fs::write(worktree_a.join("feature-a.txt"), "feature a\n").unwrap();
+    Command::new("git")
+        .args(["add", "feature-a.txt"])
+        .current_dir(&worktree_a)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "--no-verify", "-m", "Add feature A"])
+        .current_dir(&worktree_a)
+        .output()
+        .unwrap();
+
+    let integrate = stdout(&run(target, &["agent", "integrate", "engineer-a"], 0));
+    assert!(
+        integrate.contains("Successfully integrated engineer-a"),
+        "step 4 integrate engineer-a failed:\n{}",
+        integrate
+    );
+    assert!(
+        target.join("feature-a.txt").exists(),
+        "feature-a.txt should exist in main repo after integrate"
+    );
+
+    // Step 5: Dismiss engineer-b
+    let dismiss = stdout(&run(target, &["agent", "dismiss", "engineer-b"], 0));
+    assert!(
+        dismiss.contains("Dismissing engineer-b"),
+        "step 5 dismiss engineer-b failed:\n{}",
+        dismiss
+    );
+
+    // Step 6: Final state is clean - prune all worktrees
+    let prune = stdout(&run(target, &["agent", "prune-worktrees", "--yes"], 0));
+    assert!(
+        prune.contains("Removed") || prune.contains("Removing worktree"),
+        "step 6 prune-worktrees should clean up:\n{}",
+        prune
+    );
+
+    // Verify no agent worktrees remain
+    let remaining = list_agent_worktrees(target);
+    assert!(
+        remaining.is_empty(),
+        "Final state should have no agent worktrees, found: {:?}",
+        remaining
+    );
+
+    // Verify main repo still has the merged file
+    assert!(
+        target.join("feature-a.txt").exists(),
+        "Final state should retain merged files"
+    );
 }

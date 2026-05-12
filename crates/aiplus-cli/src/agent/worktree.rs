@@ -91,9 +91,23 @@ pub fn worktree_exists_for_role(project_root: &Path, role: &str) -> Result<Optio
     Ok(None)
 }
 
-/// Detect if the project root is inside a cloud sync folder.
-pub fn detect_sync_folder(project_root: &Path) -> Option<String> {
-    let path_str = project_root.to_string_lossy().to_lowercase();
+/// Check if a given path is tracked as a git worktree (any branch).
+pub fn is_tracked_worktree_path(project_root: &Path, path: &Path) -> Result<bool> {
+    let worktrees = list_worktrees(project_root)?;
+    let canonical_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+    for wt in &worktrees {
+        let wt_canonical = std::fs::canonicalize(&wt.path).unwrap_or_else(|_| wt.path.clone());
+        if wt_canonical == canonical_path {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Detect if a path is inside a cloud sync folder.
+pub fn detect_sync_folder(path: &Path) -> Option<String> {
+    let path_str = path.to_string_lossy().to_lowercase();
     let sync_names = [
         ("dropbox", "Dropbox"),
         ("icloud", "iCloud"),
@@ -191,18 +205,8 @@ pub fn check_parent_dir(project_root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Generate a short unique suffix for collision avoidance.
-fn generate_short_uuid() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let random_part = secs % 10000;
-    format!("{:04x}", random_part)
-}
-
 /// Resolve the worktree path from template or default.
+/// Default is sibling: ../{project_name}.{role}
 pub fn resolve_worktree_path(
     project_root: &Path,
     role: &str,
@@ -214,40 +218,6 @@ pub fn resolve_worktree_path(
         _ => format!("../{}.{}", repo_name, role),
     };
     Ok(project_root.join(path_str))
-}
-
-/// Find a non-colliding path by appending a short UUID suffix if needed.
-pub fn find_non_colliding_path(base_path: &Path) -> PathBuf {
-    if !base_path.exists() {
-        return base_path.to_path_buf();
-    }
-
-    let short_id = generate_short_uuid();
-    let new_path = if let Some(parent) = base_path.parent() {
-        if let Some(name) = base_path.file_name().and_then(|n| n.to_str()) {
-            parent.join(format!("{}-{}", name, short_id))
-        } else {
-            PathBuf::from(format!("{}-{}", base_path.display(), short_id))
-        }
-    } else {
-        PathBuf::from(format!("{}-{}", base_path.display(), short_id))
-    };
-
-    if !new_path.exists() {
-        return new_path;
-    }
-
-    // Very unlikely, but try once more
-    let short_id2 = generate_short_uuid();
-    if let Some(parent) = base_path.parent() {
-        if let Some(name) = base_path.file_name().and_then(|n| n.to_str()) {
-            parent.join(format!("{}-{}", name, short_id2))
-        } else {
-            PathBuf::from(format!("{}-{}", base_path.display(), short_id2))
-        }
-    } else {
-        PathBuf::from(format!("{}-{}", base_path.display(), short_id2))
-    }
 }
 
 /// Check if a git branch exists.
@@ -263,10 +233,11 @@ pub fn branch_exists(project_root: &Path, branch: &str) -> Result<bool> {
 
 /// Create a git worktree for the given agent role.
 ///
-/// Handles:
-/// - Sync folder detection and fallback
-/// - Path collision avoidance
-/// - Branch existence checks (uses plain form if branch exists, -B if new)
+/// Schema v0.1.4 requirements:
+/// - Always uses `git worktree add -B agent/<role> <path>`
+/// - Creates worktree at sibling level by default
+/// - Warns about sync folders but continues with adjusted path
+/// - Reuses existing worktrees, errors on untracked directory collisions
 pub fn create_worktree(project_root: &Path, role: &str, template: Option<&str>) -> Result<PathBuf> {
     // Ensure this is a git repo
     if !project_root.join(".git").exists() {
@@ -277,84 +248,82 @@ pub fn create_worktree(project_root: &Path, role: &str, template: Option<&str>) 
         );
     }
 
-    // Check for sync folders
+    // 1. Check if worktree already exists for this role -> reuse
+    if let Some(existing_path) = worktree_exists_for_role(project_root, role)? {
+        println!(
+            "Reusing existing worktree for {} at {}",
+            role,
+            existing_path.display()
+        );
+        return Ok(existing_path);
+    }
+
+    // 2. Resolve the target path
+    let mut path = resolve_worktree_path(project_root, role, template)?;
+
+    // 3. Sync folder detection
     if let Some(sync_name) = detect_sync_folder(project_root) {
         eprintln!(
-            "ERROR: Project root appears to be inside a {} sync folder.",
+            "WARNING: Project root appears to be inside a {} sync folder.",
             sync_name
         );
         eprintln!("Git worktrees in sync folders can cause conflicts and data loss.");
+
+        // If the resolved path would also be in a sync folder, use fallback
+        if detect_sync_folder(&path).is_some() {
+            path = get_fallback_worktree_path(project_root, role)?;
+            eprintln!("Using fallback location outside sync folder: {}", path.display());
+        } else {
+            eprintln!("Using sibling path: {}", path.display());
+        }
         eprintln!();
-
-        let fallback = get_fallback_worktree_path(project_root, role)?;
-        eprintln!("Recommended fallback location: {}", fallback.display());
-        eprintln!("Auto-selecting fallback location to avoid sync conflicts.");
-
-        return create_worktree_at_path(project_root, role, &fallback);
     }
 
-    let base_path = resolve_worktree_path(project_root, role, template)?;
-    let path = find_non_colliding_path(&base_path);
-
-    if path != base_path {
-        eprintln!(
-            "WARNING: Worktree path {} already exists. Using {} instead.",
-            base_path.display(),
-            path.display()
-        );
+    // 4. Collision handling
+    if path.exists() {
+        // Path exists - check if it's tracked as a worktree
+        if is_tracked_worktree_path(project_root, &path)? {
+            anyhow::bail!(
+                "Worktree path {} already exists and is tracked by git for a different branch. \
+                 Please resolve this collision manually.",
+                path.display()
+            );
+        } else {
+            anyhow::bail!(
+                "Worktree directory {} already exists but is not tracked by git worktree. \
+                 Please remove it or choose a different location.",
+                path.display()
+            );
+        }
     }
 
     create_worktree_at_path(project_root, role, &path)
 }
 
 fn create_worktree_at_path(project_root: &Path, role: &str, path: &Path) -> Result<PathBuf> {
-    if path.exists() {
-        anyhow::bail!(
-            "Worktree path already exists and could not be resolved: {}",
-            path.display()
-        );
-    }
-
     check_parent_dir(project_root, path)?;
 
     let branch = format!("agent/{}", role);
-    let branch_exists = branch_exists(project_root, &branch)?;
 
-    let output = if branch_exists {
-        // Branch exists - use plain form to reattach (don't reset with -B)
-        Command::new("git")
-            .args(["worktree", "add", path.to_str().unwrap_or(""), &branch])
-            .current_dir(project_root)
-            .output()
-            .with_context(|| {
-                format!(
-                    "Failed to run 'git worktree add {} {}' for {}",
-                    path.display(),
-                    branch,
-                    role
-                )
-            })?
-    } else {
-        // Branch doesn't exist - use -B to create and reset
-        Command::new("git")
-            .args([
-                "worktree",
-                "add",
-                "-B",
-                &branch,
-                path.to_str().unwrap_or(""),
-            ])
-            .current_dir(project_root)
-            .output()
-            .with_context(|| {
-                format!(
-                    "Failed to run 'git worktree add -B {} {}' for {}",
-                    branch,
-                    path.display(),
-                    role
-                )
-            })?
-    };
+    // Schema v0.1.4: Always use -B to create/reset the branch
+    let output = Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "-B",
+            &branch,
+            path.to_str().unwrap_or(""),
+        ])
+        .current_dir(project_root)
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to run 'git worktree add -B {} {}' for {}",
+                branch,
+                path.display(),
+                role
+            )
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -366,14 +335,14 @@ fn create_worktree_at_path(project_root: &Path, role: &str, path: &Path) -> Resu
         );
     }
 
-    println!("Created worktree for {} at {}", role, path.display());
-    if branch_exists {
-        println!("  (Reattached to existing branch {})", branch);
-    } else {
-        println!("  (Created new branch {} with -B)", branch);
-    }
+    // Return canonical path for consistent comparisons with git output
+    let canonical_path = std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf());
 
-    Ok(path.to_path_buf())
+    println!("Created worktree for {} at {}", role, canonical_path.display());
+    println!("  (Branch: {})", branch);
+
+    Ok(canonical_path)
 }
 
 /// Remove a git worktree at the given path.
@@ -421,6 +390,69 @@ pub fn remove_worktree(project_root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Prune orphaned worktrees (remove stale entries from git worktree list).
+pub fn prune_orphaned_worktrees(project_root: &Path) -> Result<()> {
+    let output = Command::new("git")
+        .args(["worktree", "prune"])
+        .current_dir(project_root)
+        .output()
+        .context("Failed to run 'git worktree prune'")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git worktree prune failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Get all worktrees with agent/* branches.
+pub fn get_all_agent_worktrees(project_root: &Path) -> Result<Vec<(String, PathBuf)>> {
+    let worktrees = list_worktrees(project_root)?;
+    let mut agent_worktrees = Vec::new();
+
+    for wt in worktrees {
+        // Skip the main worktree
+        if wt.path == project_root {
+            continue;
+        }
+
+        if let Some(ref branch) = wt.branch {
+            let role = branch
+                .strip_prefix("refs/heads/agent/")
+                .or_else(|| branch.strip_prefix("agent/"))
+                .map(|s| s.to_string());
+
+            if let Some(role) = role {
+                agent_worktrees.push((role, wt.path));
+            }
+        }
+    }
+
+    Ok(agent_worktrees)
+}
+
+/// Remove all agent worktrees.
+pub fn prune_agent_worktrees(project_root: &Path) -> Result<Vec<PathBuf>> {
+    let agent_worktrees = get_all_agent_worktrees(project_root)?;
+    let mut removed = Vec::new();
+
+    for (role, path) in agent_worktrees {
+        println!("Removing worktree for {} at {}", role, path.display());
+        match remove_worktree(project_root, &path) {
+            Ok(_) => removed.push(path),
+            Err(e) => eprintln!("  ERROR: Failed to remove worktree for {}: {}", role, e),
+        }
+    }
+
+    // Prune orphaned entries
+    if let Err(e) = prune_orphaned_worktrees(project_root) {
+        eprintln!("WARNING: Failed to prune orphaned worktrees: {}", e);
+    }
+
+    Ok(removed)
+}
+
 /// Merge an agent's branch into the current branch.
 pub fn merge_agent_branch(project_root: &Path, role: &str) -> Result<()> {
     let branch = format!("agent/{}", role);
@@ -461,6 +493,8 @@ pub fn merge_agent_branch(project_root: &Path, role: &str) -> Result<()> {
     println!("Merging {} into current branch...", branch);
     let output = Command::new("git")
         .args([
+            "-c",
+            "core.hooksPath=/dev/null",
             "merge",
             "--no-ff",
             &branch,
@@ -534,4 +568,250 @@ pub fn get_stale_worktrees(project_root: &Path) -> Result<Vec<(String, PathBuf)>
     }
 
     Ok(stale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn setup_git_repo() -> (TempDir, PathBuf) {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path().join("test-repo");
+        fs::create_dir(&repo).unwrap();
+
+        // Initialize git repo
+        let output = Command::new("git")
+            .args(["init"])
+            .current_dir(&repo)
+            .output()
+            .expect("git init failed");
+        assert!(
+            output.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Configure git user for commits
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        fs::write(repo.join("README.md"), "# Test\n").unwrap();
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "--no-verify", "-m", "Initial commit"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+
+        (temp, repo)
+    }
+
+    #[test]
+    fn test_create_worktree_succeeds() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        assert!(worktree_path.exists());
+    }
+
+    #[test]
+    fn test_worktree_branch_is_correct() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        // Check branch in worktree
+        let output = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&worktree_path)
+            .output()
+            .unwrap();
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(branch, "agent/engineer-a");
+    }
+
+    #[test]
+    fn test_worktree_listed_by_git() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        let worktrees = list_worktrees(&repo).unwrap();
+        let canonical_wt = std::fs::canonicalize(&worktree_path).unwrap();
+        let found = worktrees.iter().any(|wt| {
+            let wt_canonical = std::fs::canonicalize(&wt.path).unwrap_or_else(|_| wt.path.clone());
+            wt_canonical == canonical_wt
+                && (wt.branch.as_deref() == Some("agent/engineer-a")
+                    || wt.branch.as_deref() == Some("refs/heads/agent/engineer-a"))
+        });
+        assert!(found, "Worktree should be listed by git worktree list");
+    }
+
+    #[test]
+    fn test_reuse_existing_worktree() {
+        let (_temp, repo) = setup_git_repo();
+        let path1 = create_worktree(&repo, "engineer-a", None).unwrap();
+        let path2 = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        assert_eq!(path1, path2, "Should reuse existing worktree");
+    }
+
+    #[test]
+    fn test_untracked_directory_collision_errors() {
+        let (_temp, repo) = setup_git_repo();
+
+        // Create the collision directory
+        let collision_path = repo.parent().unwrap().join("test-repo.engineer-a");
+        fs::create_dir(&collision_path).unwrap();
+
+        let result = create_worktree(&repo, "engineer-a", None);
+        assert!(result.is_err(), "Should error on untracked directory collision");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("not tracked by git worktree"),
+            "Error should mention untracked: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_dismiss_removes_worktree() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        assert!(worktree_path.exists());
+        remove_worktree(&repo, &worktree_path).unwrap();
+        assert!(!worktree_path.exists(), "Worktree should be removed");
+    }
+
+    #[test]
+    fn test_integration_merges_correctly() {
+        let (_temp, repo) = setup_git_repo();
+
+        // Create worktree
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        // Make a commit in the worktree
+        fs::write(worktree_path.join("feature.txt"), "new feature\n").unwrap();
+        Command::new("git")
+            .args(["add", "feature.txt"])
+            .current_dir(&worktree_path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "--no-verify", "-m", "Add feature"])
+            .current_dir(&worktree_path)
+            .output()
+            .unwrap();
+
+        // Merge back to main
+        merge_agent_branch(&repo, "engineer-a").unwrap();
+
+        // Verify the file exists in main
+        assert!(
+            repo.join("feature.txt").exists(),
+            "Feature file should be merged to main"
+        );
+    }
+
+    #[test]
+    fn test_sync_folder_detection() {
+        let dropbox_path = PathBuf::from("/Users/steve/Dropbox/Project/test");
+        assert_eq!(
+            detect_sync_folder(&dropbox_path),
+            Some("Dropbox".to_string())
+        );
+
+        let icloud_path = PathBuf::from("/Users/steve/iCloud Drive/test");
+        assert_eq!(
+            detect_sync_folder(&icloud_path),
+            Some("iCloud".to_string())
+        );
+
+        let normal_path = PathBuf::from("/Users/steve/projects/test");
+        assert_eq!(detect_sync_folder(&normal_path), None);
+    }
+
+    #[test]
+    fn test_prune_agent_worktrees() {
+        let (_temp, repo) = setup_git_repo();
+
+        // Create multiple agent worktrees
+        let path1 = create_worktree(&repo, "engineer-a", None).unwrap();
+        let path2 = create_worktree(&repo, "engineer-b", None).unwrap();
+
+        assert!(path1.exists());
+        assert!(path2.exists());
+
+        let removed = prune_agent_worktrees(&repo).unwrap();
+        assert_eq!(removed.len(), 2);
+
+        assert!(!path1.exists());
+        assert!(!path2.exists());
+    }
+
+    #[test]
+    fn test_get_stale_worktrees() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        // Manually remove the directory to make it stale
+        fs::remove_dir_all(&worktree_path).unwrap();
+
+        let stale = get_stale_worktrees(&repo).unwrap();
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].0, "engineer-a");
+    }
+
+    #[test]
+    fn test_create_worktree_uses_sibling_path() {
+        let (_temp, repo) = setup_git_repo();
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+
+        // Should be at sibling level: ../test-repo.engineer-a
+        let expected_name = "test-repo.engineer-a";
+        assert!(
+            worktree_path.to_string_lossy().contains(expected_name),
+            "Worktree should be at sibling path, got: {}",
+            worktree_path.display()
+        );
+    }
+
+    #[test]
+    fn test_create_worktree_always_uses_dash_b() {
+        let (_temp, repo) = setup_git_repo();
+
+        // Create a branch manually first
+        Command::new("git")
+            .args(["branch", "agent/engineer-a"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+
+        // create_worktree should still succeed (the branch exists but no worktree)
+        let worktree_path = create_worktree(&repo, "engineer-a", None).unwrap();
+        assert!(worktree_path.exists());
+
+        // Verify it's on the correct branch
+        let output = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&worktree_path)
+            .output()
+            .unwrap();
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(branch, "agent/engineer-a");
+    }
 }

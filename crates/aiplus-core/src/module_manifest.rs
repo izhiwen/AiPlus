@@ -65,6 +65,7 @@ pub const MODULES: &[ModuleSpec] = &[
 
 pub const MODULE_SLUG_COMPACT_REMINDER: &str = "compact-reminder";
 pub const MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS: &str = "auto-compact";
+pub const MODULE_SLUG_AGENT_TEAM: &str = "agent-team";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -341,6 +342,36 @@ mod tests {
         assert!(
             !"agent-team".starts_with("auto-team"),
             "agent-team must not prefix-match auto-team-consultant"
+        );
+        // Word boundary check: ensure "agent-team" is not a substring of any other slug
+        for slug in &slugs {
+            if *slug != MODULE_SLUG_AGENT_TEAM {
+                assert!(
+                    !slug.contains(MODULE_SLUG_AGENT_TEAM),
+                    "slug '{}' must not contain '{}' as substring",
+                    slug,
+                    MODULE_SLUG_AGENT_TEAM
+                );
+                assert!(
+                    !MODULE_SLUG_AGENT_TEAM.contains(slug),
+                    "'{}' must not contain slug '{}' as substring",
+                    MODULE_SLUG_AGENT_TEAM,
+                    slug
+                );
+            }
+        }
+        // Explicit word boundary check against auto-team-consultant
+        assert_ne!(
+            MODULE_SLUG_AGENT_TEAM, "auto-team-consultant",
+            "agent-team must not conflict with auto-team-consultant"
+        );
+        assert!(
+            !"auto-team-consultant".contains(MODULE_SLUG_AGENT_TEAM),
+            "auto-team-consultant must not contain agent-team as substring"
+        );
+        assert!(
+            !MODULE_SLUG_AGENT_TEAM.contains("auto-team-consultant"),
+            "agent-team must not contain auto-team-consultant as substring"
         );
     }
 

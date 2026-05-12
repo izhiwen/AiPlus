@@ -1,6 +1,46 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+use aiplus_core::agent_team::RoleId;
+
+/// Cached state payload for a role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedState {
+    pub data: String,
+}
+
+impl CachedState {
+    pub fn new(data: String) -> Self {
+        Self { data }
+    }
+}
+
+/// Reason a cache entry was invalidated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidationReason {
+    RoleDismissed,
+    RoleRouteCalled,
+    RoleIntegrateCompleted,
+    GitStateChanged,
+    CacheExplicitlyCleared,
+    TtlExpired,
+}
+
+impl InvalidationReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InvalidationReason::RoleDismissed => "role_dismissed",
+            InvalidationReason::RoleRouteCalled => "role_route_called",
+            InvalidationReason::RoleIntegrateCompleted => "role_integrate_completed",
+            InvalidationReason::GitStateChanged => "git_state_changed",
+            InvalidationReason::CacheExplicitlyCleared => "cache_explicitly_cleared",
+            InvalidationReason::TtlExpired => "ttl_expired",
+        }
+    }
+}
 
 /// In-process warm-bench cache for AiPlus Agent Team v0.1.
 ///
@@ -8,107 +48,222 @@ use std::time::{Duration, Instant};
 /// - std-only HashMap + manual TTL sweep (no lru, moka, cached, dashmap)
 /// - TTL values from each role's TOML `[agent] warm_bench_ttl_seconds`
 /// - 6 invalidation triggers as discrete events (no debounce)
-#[allow(dead_code)]
 pub struct WarmBenchCache {
-    entries: HashMap<String, (Instant, String)>, // role -> (last_access, cached_state_json)
-    hits: u64,
-    misses: u64,
-    evictions: u64,
+    inner: Arc<Mutex<HashMap<RoleId, (Instant, CachedState)>>>,
+    shutdown: Arc<(Mutex<bool>, Condvar)>,
+    ttl: Duration,
+    bg_thread: Option<JoinHandle<()>>,
+    audit_log_path: Option<PathBuf>,
 }
 
-#[allow(dead_code)]
 impl WarmBenchCache {
-    pub fn new() -> Self {
+    /// Create a new cache with the given TTL.
+    /// Spawns a background thread that periodically purges expired entries.
+    pub fn new(ttl_seconds: u64) -> Self {
+        let inner = Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new((Mutex::new(false), Condvar::new()));
+        let ttl = Duration::from_secs(ttl_seconds);
+        let audit_log_path = Self::default_audit_log_path();
+
+        let bg_thread = {
+            let inner = Arc::clone(&inner);
+            let shutdown = Arc::clone(&shutdown);
+            let audit_log_path = audit_log_path.clone();
+            let ttl = ttl;
+            Some(thread::spawn(move || {
+                Self::background_purge_loop(inner, shutdown, ttl, audit_log_path);
+            }))
+        };
+
         Self {
-            entries: HashMap::new(),
-            hits: 0,
-            misses: 0,
-            evictions: 0,
+            inner,
+            shutdown,
+            ttl,
+            bg_thread,
+            audit_log_path,
         }
     }
 
-    /// Look up a cached state for `role`. If the entry exists and is within
-    /// `ttl_seconds`, returns a reference to the cached JSON state and bumps
-    /// the hit counter. If the entry is expired it is removed, the eviction
-    /// counter is bumped, and `None` is returned.
-    pub fn get(&mut self, role: &str, ttl_seconds: u64) -> Option<&str> {
-        let now = Instant::now();
+    /// Create a new cache without a background thread (for testing).
+    #[cfg(test)]
+    pub fn new_without_bg(ttl_seconds: u64) -> Self {
+        let inner = Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new((Mutex::new(false), Condvar::new()));
         let ttl = Duration::from_secs(ttl_seconds);
 
-        if let Some((last_access, _state)) = self.entries.get(role) {
-            if now.duration_since(*last_access) <= ttl {
-                self.hits += 1;
-                // Update last_access in-place without re-inserting
-                let entry = self.entries.get_mut(role).unwrap();
-                entry.0 = now;
-                return Some(&entry.1);
+        Self {
+            inner,
+            shutdown,
+            ttl,
+            bg_thread: None,
+            audit_log_path: None,
+        }
+    }
+
+    fn default_audit_log_path() -> Option<PathBuf> {
+        std::env::current_dir()
+            .ok()
+            .map(|root| {
+                root.join(".aiplus")
+                    .join("agent-team")
+                    .join("audit-trail")
+                    .join("cache-invalidations.log")
+            })
+    }
+
+    fn log_invalidation(role: Option<&str>, reason: InvalidationReason, path: Option<&Path>) {
+        if let Some(path) = path {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let line = serde_json::json!({
+                "schemaVersion": "0.1.0",
+                "event": "cache_invalidation",
+                "reason": reason.as_str(),
+                "role": role.unwrap_or("*"),
+                "timestamp": aiplus_core::timestamp(),
+                "secretValues": "none"
+            });
+            let _ = aiplus_core::append_jsonl_atomic(path, &line.to_string());
+        }
+    }
+
+    fn background_purge_loop(
+        inner: Arc<Mutex<HashMap<RoleId, (Instant, CachedState)>>>,
+        shutdown: Arc<(Mutex<bool>, Condvar)>,
+        ttl: Duration,
+        audit_log_path: Option<PathBuf>,
+    ) {
+        let (lock, cvar) = &*shutdown;
+        let interval = if ttl.is_zero() {
+            Duration::from_millis(100)
+        } else {
+            ttl / 2
+        };
+        loop {
+            let guard = lock.lock().unwrap();
+            let result = cvar.wait_timeout(guard, interval).unwrap();
+            let should_shutdown = *result.0;
+            drop(result);
+
+            if should_shutdown {
+                break;
+            }
+
+            Self::purge_expired(&inner, ttl, audit_log_path.as_deref());
+        }
+    }
+
+    fn purge_expired(
+        inner: &Arc<Mutex<HashMap<RoleId, (Instant, CachedState)>>>,
+        ttl: Duration,
+        audit_log_path: Option<&Path>,
+    ) {
+        let now = Instant::now();
+        let mut map = inner.lock().unwrap();
+        let expired: Vec<String> = map
+            .iter()
+            .filter(|(_, (instant, _))| now.duration_since(*instant) > ttl)
+            .map(|(role, _)| role.clone())
+            .collect();
+
+        for role in expired {
+            map.remove(&role);
+            drop(map);
+            Self::log_invalidation(Some(&role), InvalidationReason::TtlExpired, audit_log_path);
+            map = inner.lock().unwrap();
+        }
+    }
+
+    /// Look up a cached state for `role_id`. Returns `Some(state)` if the entry
+    /// exists and has not expired. Returns `None` and evicts if expired.
+    pub fn get(&self, role_id: &str) -> Option<CachedState> {
+        let now = Instant::now();
+        let mut map = self.inner.lock().unwrap();
+
+        if let Some((instant, state)) = map.get(role_id) {
+            if now.duration_since(*instant) <= self.ttl {
+                return Some(state.clone());
             }
             // Expired — evict on access
-            self.entries.remove(role);
-            self.evictions += 1;
-            self.misses += 1;
+            map.remove(role_id);
+            drop(map);
+            Self::log_invalidation(
+                Some(role_id),
+                InvalidationReason::TtlExpired,
+                self.audit_log_path.as_deref(),
+            );
             return None;
         }
 
-        self.misses += 1;
         None
     }
 
-    /// Insert or replace the cached state for `role`.
-    pub fn put(&mut self, role: &str, state: String) {
-        self.entries
-            .insert(role.to_string(), (Instant::now(), state));
+    /// Insert or replace the cached state for `role_id`.
+    pub fn set(&self, role_id: RoleId, state: CachedState) {
+        let mut map = self.inner.lock().unwrap();
+        map.insert(role_id, (Instant::now(), state));
     }
 
-    /// Remove the entry for a specific role.
-    pub fn invalidate(&mut self, role: &str) {
-        if self.entries.remove(role).is_some() {
-            self.evictions += 1;
+    /// Remove the entry for a specific role, logging the reason.
+    pub fn invalidate(&self, role_id: &str, reason: InvalidationReason) {
+        let mut map = self.inner.lock().unwrap();
+        if map.remove(role_id).is_some() {
+            drop(map);
+            Self::log_invalidation(Some(role_id), reason, self.audit_log_path.as_deref());
         }
     }
 
-    /// Remove all entries.
-    pub fn invalidate_all(&mut self) {
-        let count = self.entries.len() as u64;
-        self.entries.clear();
-        self.evictions += count;
-    }
-
-    /// Manually sweep all expired entries. Called periodically or before
-    /// reporting cache diagnostics.
-    pub fn sweep_expired(&mut self) {
-        let now = Instant::now();
-        let expired: Vec<String> = self
-            .entries
-            .iter()
-            .filter(|(_, (last_access, _))| {
-                // We don't know the per-role TTL here, so we use a default
-                // conservative sweep of 1 hour. Callers should prefer
-                // per-role get() for precise TTL enforcement.
-                now.duration_since(*last_access) > Duration::from_secs(3600)
-            })
-            .map(|(role, _)| role.clone())
-            .collect();
-        for role in expired {
-            self.entries.remove(&role);
-            self.evictions += 1;
+    /// Remove all entries, logging the reason.
+    pub fn clear(&self, reason: InvalidationReason) {
+        let mut map = self.inner.lock().unwrap();
+        if !map.is_empty() {
+            map.clear();
+            drop(map);
+            Self::log_invalidation(None, reason, self.audit_log_path.as_deref());
         }
     }
 
-    /// Return (hits, misses, evictions).
-    pub fn stats(&self) -> (u64, u64, u64) {
-        (self.hits, self.misses, self.evictions)
+    /// Backward-compatible invalidate without explicit reason.
+    pub fn invalidate_role(&self, role_id: &str) {
+        self.invalidate(role_id, InvalidationReason::CacheExplicitlyCleared);
     }
 
-    /// Returns true if the cache has at least one live entry.
-    pub fn is_warm(&self) -> bool {
-        !self.entries.is_empty()
+    /// Backward-compatible clear without explicit reason.
+    pub fn invalidate_all(&self) {
+        self.clear(InvalidationReason::CacheExplicitlyCleared);
+    }
+
+    /// Explicitly sweep expired entries. Useful for testing or diagnostics.
+    pub fn sweep_expired(&self) {
+        Self::purge_expired(&self.inner, self.ttl, self.audit_log_path.as_deref());
+    }
+
+    /// Signal the background thread to shut down and wait for it.
+    pub fn shutdown(mut self) {
+        let (lock, cvar) = &*self.shutdown;
+        {
+            let mut guard = lock.lock().unwrap();
+            *guard = true;
+        }
+        cvar.notify_all();
+        if let Some(handle) = self.bg_thread.take() {
+            let _ = handle.join();
+        }
     }
 }
 
-impl Default for WarmBenchCache {
-    fn default() -> Self {
-        Self::new()
+impl Drop for WarmBenchCache {
+    fn drop(&mut self) {
+        let (lock, cvar) = &*self.shutdown;
+        {
+            let mut guard = lock.lock().unwrap();
+            *guard = true;
+        }
+        cvar.notify_all();
+        if let Some(handle) = self.bg_thread.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -116,86 +271,118 @@ static CACHE: OnceLock<Mutex<WarmBenchCache>> = OnceLock::new();
 
 /// Access the process-global warm-bench cache.
 pub fn global_cache() -> &'static Mutex<WarmBenchCache> {
-    CACHE.get_or_init(|| Mutex::new(WarmBenchCache::new()))
+    CACHE.get_or_init(|| Mutex::new(WarmBenchCache::new(1800)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::thread;
+    use std::time::Duration;
 
     #[test]
-    fn put_and_get_within_ttl_is_hit() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("advisor", r#"{"state":"ready"}"#.to_string());
-        let result = cache.get("advisor", 3600);
-        assert_eq!(result, Some(r#"{"state":"ready"}"#));
-        assert_eq!(cache.stats(), (1, 0, 0));
+    fn cache_hit_returns_correct_state() {
+        let cache = WarmBenchCache::new_without_bg(3600);
+        let state = CachedState::new(r#"{"key":"value","nested":{"a":1}}"#.to_string());
+        cache.set("test".to_string(), state.clone());
+        let result = cache.get("test");
+        assert_eq!(result, Some(state));
     }
 
     #[test]
-    fn get_after_ttl_expires_is_miss_and_eviction() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("qa", r#"{"state":"busy"}"#.to_string());
-        // Simulate TTL expiration by using 0-second TTL
-        let result = cache.get("qa", 0);
-        assert_eq!(result, None);
-        let (hits, misses, evictions) = cache.stats();
-        assert_eq!(hits, 0);
-        assert_eq!(misses, 1);
-        assert_eq!(evictions, 1);
+    fn cache_miss_after_ttl_expiration() {
+        let cache = WarmBenchCache::new_without_bg(1);
+        cache.set("expiring".to_string(), CachedState::new("data".to_string()));
+        assert!(cache.get("expiring").is_some());
+        thread::sleep(Duration::from_secs(2));
+        assert!(cache.get("expiring").is_none());
     }
 
     #[test]
-    fn invalidate_makes_next_get_miss() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("pm", r#"{"state":"planning"}"#.to_string());
-        assert!(cache.get("pm", 3600).is_some());
-        cache.invalidate("pm");
-        assert!(cache.get("pm", 3600).is_none());
-        let (hits, misses, evictions) = cache.stats();
-        assert_eq!(hits, 1);
-        assert_eq!(misses, 1);
-        assert_eq!(evictions, 1);
+    fn invalidate_removes_entry() {
+        let cache = WarmBenchCache::new_without_bg(3600);
+        cache.set("pm".to_string(), CachedState::new(r#"{"state":"planning"}"#.to_string()));
+        assert!(cache.get("pm").is_some());
+        cache.invalidate("pm", InvalidationReason::RoleDismissed);
+        assert!(cache.get("pm").is_none());
     }
 
     #[test]
-    fn invalidate_all_clears_all_entries() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("ceo", r#"{"state":"reviewing"}"#.to_string());
-        cache.put("architect", r#"{"state":"designing"}"#.to_string());
-        cache.invalidate_all();
-        assert!(cache.get("ceo", 3600).is_none());
-        assert!(cache.get("architect", 3600).is_none());
-        let (_, _, evictions) = cache.stats();
-        assert_eq!(evictions, 2);
+    fn clear_removes_all_entries() {
+        let cache = WarmBenchCache::new_without_bg(3600);
+        cache.set("ceo".to_string(), CachedState::new(r#"{"state":"reviewing"}"#.to_string()));
+        cache.set("architect".to_string(), CachedState::new(r#"{"state":"designing"}"#.to_string()));
+        cache.clear(InvalidationReason::CacheExplicitlyCleared);
+        assert!(cache.get("ceo").is_none());
+        assert!(cache.get("architect").is_none());
+    }
+
+    #[test]
+    fn concurrent_access_is_safe() {
+        let cache = Arc::new(WarmBenchCache::new_without_bg(3600));
+        let mut handles = vec![];
+
+        // Writers
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            handles.push(thread::spawn(move || {
+                cache.set(format!("role-{}", i), CachedState::new(format!("state-{}", i)));
+            }));
+        }
+
+        // Readers
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = cache.get(&format!("role-{}", i));
+                }
+            }));
+        }
+
+        // Invalidators
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            handles.push(thread::spawn(move || {
+                cache.invalidate(&format!("role-{}", i), InvalidationReason::CacheExplicitlyCleared);
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn background_thread_purges_expired() {
+        let cache = WarmBenchCache::new(0); // TTL=0, bg thread will purge quickly
+        cache.set("test-role".to_string(), CachedState::new("data".to_string()));
+
+        // Wait for background thread to run at least once
+        thread::sleep(Duration::from_millis(300));
+
+        // Should be purged by background thread
+        assert!(cache.get("test-role").is_none());
     }
 
     #[test]
     fn sweep_expired_removes_stale_entries() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("engineer-a", r#"{"state":"coding"}"#.to_string());
-        // Short sleep to ensure the entry is "old" relative to a 1h sweep
+        let cache = WarmBenchCache::new_without_bg(0);
+        cache.set("engineer-a".to_string(), CachedState::new(r#"{"state":"coding"}"#.to_string()));
         thread::sleep(Duration::from_millis(10));
-        // put a fresh entry
-        cache.put("engineer-b", r#"{"state":"reviewing"}"#.to_string());
-        // No expired entries with 1h default sweep if we haven't slept an hour,
-        // so verify sweep doesn't remove fresh entries.
+        cache.set("engineer-b".to_string(), CachedState::new(r#"{"state":"reviewing"}"#.to_string()));
+        // With TTL=0, everything is expired immediately
         cache.sweep_expired();
-        assert!(cache.get("engineer-a", 3600).is_some());
-        assert!(cache.get("engineer-b", 3600).is_some());
+        assert!(cache.get("engineer-a").is_none());
+        assert!(cache.get("engineer-b").is_none());
     }
 
     #[test]
-    fn stats_track_correctly() {
-        let mut cache = WarmBenchCache::new();
-        cache.put("reviewer", r#"{"state":"idle"}"#.to_string());
-        cache.get("reviewer", 3600);
-        cache.get("reviewer", 3600);
-        cache.get("unknown", 3600);
-        let (hits, misses, evictions) = cache.stats();
-        assert_eq!(hits, 2);
-        assert_eq!(misses, 1);
-        assert_eq!(evictions, 0);
+    fn invalidation_reason_is_tracked() {
+        let cache = WarmBenchCache::new_without_bg(3600);
+        cache.set("reviewer".to_string(), CachedState::new(r#"{"state":"idle"}"#.to_string()));
+        cache.invalidate("reviewer", InvalidationReason::RoleRouteCalled);
+        // Should be gone regardless of reason
+        assert!(cache.get("reviewer").is_none());
     }
 }

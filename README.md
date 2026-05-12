@@ -21,8 +21,9 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    considerations. You only find out at release week, or worse, from a user
    complaint.
 6. **One agent wears every hat.** CEO, reviewer, builder, advisor — all crammed
-   into the same context window. Roles drift, quality drops, and no one is
-   accountable for the handoff.
+   into the same context window. Roles **drift**, context **pollutes** across
+   hats, and the agent does each hat **shallowly**. Real engineering teams
+   divide labor because the work *is* that structured.
 
 AiPlus is five small modules that, together, fix all six.
 
@@ -49,10 +50,11 @@ and actual completion time is logged as local JSONL. Human-time bias is
 detected automatically. Future estimates use AI-native p50 and p90 numbers
 calibrated from your own history.
 
-**Agent Team** — The agent stops being a one-person band. Define roles, invite
-them when needed, and dismiss them when done. A coordinator routes work to the
+**Agent Team** — Replace single-agent **drift** with a permanent team.
+Advisor, CEO, Architect, PM, two Engineers, Reviewer, and QA — each with its
+own persona, workspace, and memory namespace. A coordinator routes work to the
 right role, keeps transcripts, and prunes stale worktrees so your project stays
-clean.
+clean. No more role pollution, no more shallow-each-hat.
 
 Everything stays inside `.aiplus/` in your project. Nothing uploads. Nothing
 syncs to a cloud. Nothing edits your global agent config.
@@ -111,13 +113,14 @@ aiplus velocity estimate --task-type feature --human-estimate 5h
 aiplus velocity report
 
 # Agent Team
-aiplus agent status
-aiplus agent route --role reviewer
+aiplus agent status              # Show team status
+aiplus agent route engineer-a    # Assign task to engineer-a
+aiplus agent integrate engineer-a # Merge work back
+aiplus agent audit run           # Run acceptance audit
 aiplus agent talk <role>
 aiplus agent invite <role>
 aiplus agent dismiss <role>
-aiplus agent integrate <role>
-aiplus agent transcript <role>
+aiplus agent transcript
 aiplus agent prune-worktrees
 
 # Updates
