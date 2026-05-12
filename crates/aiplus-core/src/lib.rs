@@ -1,3 +1,4 @@
+pub mod agent_team;
 pub mod assets;
 pub mod auto_write;
 pub mod capsule;

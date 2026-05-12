@@ -1,32 +1,52 @@
+pub mod audit;
 pub mod cache;
 pub mod commands;
 pub mod core;
-pub mod handlers;
+pub mod disable;
+pub mod dismiss;
+pub mod doctor;
+pub mod enable;
+pub mod integrate;
+pub mod invite;
+pub mod list;
+pub mod prune_worktrees;
+pub mod reset;
+pub mod route;
+pub mod status;
+pub mod talk;
+pub mod transcript;
 pub mod worktree;
 
+#[allow(unused_imports)]
+pub use aiplus_core::agent_team::{
+    AcceptanceMode, AuditArgs, AuditSub, AuditorVerdict, BlockedReason, CheckKind, RoleId, Tier,
+};
 pub use commands::{AgentArgs, AgentSub};
-pub use handlers::*;
 
 use anyhow::Result;
 
 pub fn dispatch(args: AgentArgs) -> Result<()> {
     match args.subcommand {
-        AgentSub::Status { verbose: _ } => handle_status(),
-        AgentSub::Doctor => handle_doctor(),
-        AgentSub::List { functional } => handle_list(functional),
-        AgentSub::Talk { role } => handle_talk(&role),
+        AgentSub::Status { verbose: _ } => status::handle_status(),
+        AgentSub::Doctor => doctor::handle_doctor(),
+        AgentSub::List { functional } => list::handle_list(functional),
+        AgentSub::Talk { role } => talk::handle_talk(&role),
         AgentSub::Route {
             role,
             task,
             role_opt: _,
-        } => handle_route(role.as_deref(), &task.join(" ")),
-        AgentSub::Reset => handle_reset(),
-        AgentSub::Invite { role } => handle_invite(&role),
-        AgentSub::Dismiss { role } => handle_dismiss(&role),
-        AgentSub::Disable { role } => handle_disable(&role),
-        AgentSub::Enable { role } => handle_enable(&role),
-        AgentSub::Integrate { role } => handle_integrate(&role),
-        AgentSub::Transcript => handle_transcript(),
-        AgentSub::PruneWorktrees { yes } => handle_prune_worktrees(yes),
+        } => route::handle_route(role.as_deref(), &task.join(" ")),
+        AgentSub::Reset => reset::handle_reset(),
+        AgentSub::Invite { role } => invite::handle_invite(&role),
+        AgentSub::Dismiss { role } => dismiss::handle_dismiss(&role),
+        AgentSub::Disable { role } => disable::handle_disable(&role),
+        AgentSub::Enable { role } => enable::handle_enable(&role),
+        AgentSub::Integrate { role } => integrate::handle_integrate(&role),
+        AgentSub::Transcript => transcript::handle_transcript(),
+        AgentSub::PruneWorktrees { yes } => prune_worktrees::handle_prune_worktrees(yes),
+        AgentSub::Audit(_args) => {
+            println!("Audit command not yet implemented in v0.1");
+            Ok(())
+        }
     }
 }

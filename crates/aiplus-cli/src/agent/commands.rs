@@ -1,3 +1,4 @@
+use crate::agent::audit;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -61,4 +62,7 @@ pub enum AgentSub {
         #[arg(long, action = clap::ArgAction::SetTrue)]
         yes: bool,
     },
+
+    #[command(visible_aliases = ["审计", "查"])]
+    Audit(audit::AuditArgs),
 }
