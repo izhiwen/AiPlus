@@ -13,6 +13,8 @@ pub enum AgentSub {
     Status {
         #[arg(long, action = clap::ArgAction::SetTrue)]
         verbose: bool,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        json: bool,
     },
 
     #[command(visible_aliases = ["健康", "诊断"])]

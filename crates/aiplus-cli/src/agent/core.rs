@@ -132,7 +132,7 @@ pub struct TeamState {
     pub worktree_paths: HashMap<String, PathBuf>,
 }
 
-/// The 8 core roles
+/// The 8 core roles available in v0.1
 const CORE_ROLES: &[&str] = &[
     "advisor",
     "ceo",
@@ -142,6 +142,21 @@ const CORE_ROLES: &[&str] = &[
     "engineer-b",
     "reviewer",
     "qa",
+];
+
+/// The 11 experts (6 functional + 5 stub) available in v0.1
+const EXPERTS: &[&str] = &[
+    "ai-integration",
+    "security-reviewer",
+    "tech-writer",
+    "devops",
+    "ui-designer",
+    "researcher",
+    "data-analyst",
+    "customer-researcher",
+    "performance-engineer",
+    "accessibility",
+    "compliance-reviewer",
 ];
 
 /// The 6 functional experts available in v0.1

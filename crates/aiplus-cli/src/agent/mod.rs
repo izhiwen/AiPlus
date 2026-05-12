@@ -27,7 +27,7 @@ use anyhow::Result;
 
 pub fn dispatch(args: AgentArgs) -> Result<()> {
     match args.subcommand {
-        AgentSub::Status { verbose: _ } => status::handle_status(),
+        AgentSub::Status { verbose: _, json } => status::handle_status(json),
         AgentSub::Doctor => doctor::handle_doctor(),
         AgentSub::List { functional } => list::handle_list(functional),
         AgentSub::Talk { role } => talk::handle_talk(&role),
