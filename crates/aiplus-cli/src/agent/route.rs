@@ -61,14 +61,40 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                 }
                 // Persist the dispatch so this becomes a real side effect, not
                 // just narrative. Phase D v0: writes audit log + marks role
-                // active. `aiplus agent status` and `aiplus agent transcript`
-                // both read this.
+                // active. v1: mirrors to project memory and surfaces a
+                // consultant nudge for medium/heavy tasks.
                 if let Err(e) =
                     state::record_dispatch(&project_root, candidate, task, "aiplus agent route")
                 {
                     eprintln!("  WARN: failed to record dispatch: {e}");
                 } else {
                     println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
+                }
+                if !task.is_empty() {
+                    let (tier, why) = state::score_task_tier(task);
+                    match tier {
+                        "HEAVY" => {
+                            println!();
+                            println!("  ⚠  Task tier: HEAVY ({why}).");
+                            println!(
+                                "     Recommendation: run `aiplus-auto-team-consultant` before \
+                                 staffing this dispatch, and double-check Owner sign-off on \
+                                 STOP-gated actions (submission / posting / authorship / release)."
+                            );
+                        }
+                        "MEDIUM" => {
+                            println!();
+                            println!("  ℹ  Task tier: MEDIUM ({why}).");
+                            println!(
+                                "     Recommendation: brief the consultant team before \
+                                 implementation; flag identification-adjacent assumptions to \
+                                 Theorist/Architect first."
+                            );
+                        }
+                        _ => {
+                            // LIGHT — no nudge.
+                        }
+                    }
                 }
                 return Ok(());
             }

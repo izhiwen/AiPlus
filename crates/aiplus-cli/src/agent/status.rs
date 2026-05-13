@@ -35,6 +35,20 @@ pub fn handle_status(json_output: bool) -> Result<()> {
     } else {
         println!("AiPlus Agent Team v0.1");
         println!("Project root: {}", project_root.display());
+        // Show which virtual team is currently active.
+        if let Some(team) = crate::agent::set_team::read_active_team(&project_root) {
+            let other = match team.as_str() {
+                "agent-team" => Some("aieconlab"),
+                "aieconlab" => Some("agent-team"),
+                _ => None,
+            };
+            match other {
+                Some(other) => println!(
+                    "Active team: {team}  (switch with `aiplus agent set-team {other}`)"
+                ),
+                None => println!("Active team: {team}"),
+            }
+        }
         println!();
 
         println!("Team Roster:");

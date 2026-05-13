@@ -494,6 +494,12 @@ pub fn merge_agent_branch(project_root: &Path, role: &str) -> Result<()> {
     let runtime_state_paths: &[&str] = &[
         ".aiplus/agents/dispatch-log.jsonl",
         ".aiplus/agents/active-roles.json",
+        ".aiplus/agents/active-team.txt",
+        ".aiplus/agents/_teams/",
+        ".aiplus/memory/audit.jsonl",
+        ".aiplus/memory/facts.jsonl",
+        ".aiplus/memory/decisions.jsonl",
+        ".aiplus/memory/project-memory.jsonl",
     ];
     let blocking = String::from_utf8_lossy(&status_output.stdout)
         .lines()

@@ -41,6 +41,12 @@ pub enum AgentSub {
     #[command(visible_aliases = ["重置", "复位"])]
     Reset,
 
+    /// Switch which installed virtual team is the active one.
+    /// `agent-team` (software-engineering) or `aieconlab` (econ research).
+    /// Re-runs the chosen team's install hook so `.aiplus/agents/` reflects it.
+    #[command(visible_aliases = ["切团队", "选团队"])]
+    SetTeam { team: String },
+
     #[command(visible_aliases = ["召唤", "请"])]
     Invite { role: String },
 

@@ -69,10 +69,12 @@ pub fn record_dispatch(
     let agents_dir = project_root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir).context("ensure .aiplus/agents/")?;
 
+    let timestamp = aiplus_core::now_iso();
+
     // 1) Append a dispatch-log line.
     let entry = DispatchLogEntry {
         schema_version: "0.1.0".to_string(),
-        timestamp: aiplus_core::now_iso(),
+        timestamp: timestamp.clone(),
         role: role.to_string(),
         task: task.to_string(),
         // v0 default: reversibility is unspecified. Future work: the PI
@@ -92,5 +94,84 @@ pub fn record_dispatch(
     let serialized = serde_json::to_string_pretty(&state)?;
     let active_path = project_root.join(ACTIVE_ROLES_PATH);
     aiplus_core::write_file_atomic(&active_path, serialized.as_bytes())?;
+
+    // 3) Mirror to `.aiplus/memory/audit.jsonl` so dispatches show up in
+    //    the project's general audit trail (not just the team-local one).
+    //    This makes `aiplus memory` queries surface dispatches alongside
+    //    other audited events (compact runs, secret-broker calls, etc.).
+    let memory_audit_path = project_root.join(".aiplus/memory/audit.jsonl");
+    if let Some(parent) = memory_audit_path.parent() {
+        // Only mirror if the memory dir already exists — don't create
+        // .aiplus/memory/ on systems where memory wasn't installed.
+        if parent.exists() {
+            let memory_entry = serde_json::json!({
+                "schemaVersion": "0.1.0",
+                "kind": "agent-dispatch",
+                "timestamp": timestamp,
+                "role": role,
+                "task": task,
+                "source": source,
+            });
+            let memory_line = serde_json::to_string(&memory_entry)?;
+            let _ = aiplus_core::append_jsonl_atomic(&memory_audit_path, &memory_line);
+        }
+    }
     Ok(())
+}
+
+/// Score a task description on the LIGHT/MEDIUM/HEAVY scale that
+/// `aiplus-auto-team-consultant` and the PI persona use. The scoring is
+/// keyword-driven and deliberately conservative — it errs on the side of
+/// triggering a consult-before-plan suggestion rather than missing one.
+///
+/// Returns the tier and the human-readable rationale.
+pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
+    let lower = task.to_lowercase();
+    let heavy_signals = [
+        "submit",
+        "submission",
+        "structural",
+        "redesign",
+        "rewrite",
+        "refactor",
+        "schema",
+        "migrate",
+        "migration",
+        "release",
+        "deploy",
+        "production",
+        "r&r",
+        "revise",
+        "identification strategy",
+        "authorship",
+    ];
+    let medium_signals = [
+        "robustness",
+        "specification",
+        "spec",
+        "identification",
+        "instrument",
+        "fixed effect",
+        "cluster",
+        "merge",
+        "integrate",
+        "review",
+        "audit",
+        "rebuttal",
+        "regression",
+    ];
+    let heavy_hits = heavy_signals.iter().filter(|kw| lower.contains(*kw)).count();
+    let medium_hits = medium_signals
+        .iter()
+        .filter(|kw| lower.contains(*kw))
+        .count();
+    if heavy_hits >= 1 {
+        ("HEAVY", "task description contains submission / structural / redesign / migration / rewrite keywords")
+    } else if medium_hits >= 2 {
+        ("MEDIUM", "task description contains multiple specification / robustness / identification / review keywords")
+    } else if medium_hits >= 1 {
+        ("MEDIUM", "task description contains a specification / robustness / identification / review keyword")
+    } else {
+        ("LIGHT", "no high-risk signals detected in task description")
+    }
 }

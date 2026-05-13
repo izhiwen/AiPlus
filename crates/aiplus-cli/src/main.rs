@@ -77,8 +77,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.5";
-const RELEASE_TAG: &str = "v0.5.5";
+const VERSION: &str = "0.5.6";
+const RELEASE_TAG: &str = "v0.5.6";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -6241,6 +6241,14 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         AIECONLAB_TEAM_SECTION,
     )?;
 
+    // Snapshot AEL's active layout into _teams/aieconlab/ for fast switching,
+    // and mark AEL as the currently active team. Phase D v1: this is the
+    // mechanism behind `aiplus agent set-team`. With both agent-team and
+    // aieconlab installed, the most-recently-`aiplus add`-ed module is
+    // active and the other is preserved as a snapshot.
+    crate::agent::set_team::snapshot_active_team(root, "aieconlab")?;
+    crate::agent::set_team::set_active_team(root, "aieconlab")?;
+
     Ok(())
 }
 
@@ -6382,6 +6390,10 @@ fn agent_team_init(root: &Path) -> Result<()> {
         "AGENT_TEAM_TEAM",
         AGENT_TEAM_SECTION,
     )?;
+
+    // Snapshot + activate. See aieconlab_init for rationale.
+    crate::agent::set_team::snapshot_active_team(root, "agent-team")?;
+    crate::agent::set_team::set_active_team(root, "agent-team")?;
 
     Ok(())
 }
@@ -9691,6 +9703,8 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.2"
             | "0.5.3"
             | "0.5.4"
+            | "0.5.5"
+            | "0.5.6"
     )
 }
 

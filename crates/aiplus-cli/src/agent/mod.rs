@@ -12,6 +12,7 @@ pub mod list;
 pub mod prune_worktrees;
 pub mod reset;
 pub mod route;
+pub mod set_team;
 pub mod state;
 pub mod status;
 pub mod talk;
@@ -38,6 +39,7 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
             role_opt: _,
         } => route::handle_route(role.as_deref(), &task.join(" ")),
         AgentSub::Reset => reset::handle_reset(),
+        AgentSub::SetTeam { team } => set_team::handle_set_team(&team),
         AgentSub::Invite { role } => invite::handle_invite(&role),
         AgentSub::Dismiss { role } => dismiss::handle_dismiss(&role),
         AgentSub::Disable { role } => disable::handle_disable(&role),
