@@ -76,9 +76,10 @@ use std::process::{self, Command};
 use std::time::SystemTime;
 
 mod agent;
+mod mcp_server;
 
-const VERSION: &str = "0.5.7";
-const RELEASE_TAG: &str = "v0.5.7";
+const VERSION: &str = "0.5.8";
+const RELEASE_TAG: &str = "v0.5.8";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -156,6 +157,25 @@ enum Commands {
         override_bundled: bool,
     },
     Doctor,
+    /// Run the AiPlus MCP server (Phase E). Reads JSON-RPC 2.0 messages on
+    /// stdin and replies on stdout. Codex / claude-code / opencode launch
+    /// this subprocess to invoke AiPlus agent operations directly during a
+    /// session — eliminating the human-confirmation prompt that the
+    /// Phase-D bash-block dispatch flow required. Not intended for
+    /// interactive use; run `aiplus mcp register` instead to wire it up.
+    McpServe,
+    /// Register the AiPlus MCP server with installed runtimes so codex /
+    /// claude-code / opencode can call agent_route, agent_status, and
+    /// agent_set_team as native tools. Without --runtime, registers for
+    /// all detected runtimes. Idempotent: re-running is safe.
+    McpRegister {
+        /// Runtime to register: codex, claude, or opencode. Omit for all.
+        #[arg(long, value_name = "RUNTIME")]
+        runtime: Option<String>,
+        /// Print the config diff without writing files.
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
+    },
     Status {
         #[arg(long, action = ArgAction::SetTrue)]
         terse: bool,
@@ -755,6 +775,8 @@ fn run(command: Commands) -> Result<()> {
             }
         }
         Commands::Doctor => command_doctor(),
+        Commands::McpServe => mcp_server::run_server(),
+        Commands::McpRegister { runtime, dry_run } => command_mcp_register(runtime, dry_run),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
@@ -9774,6 +9796,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.5"
             | "0.5.6"
             | "0.5.7"
+            | "0.5.8"
     )
 }
 
@@ -11203,6 +11226,239 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
     filename: &str,
 ) -> Result<T> {
     aiplus_core::read_velocity_json(root, filename)
+}
+
+// ---------------------------------------------------------------------------
+// Phase E: `aiplus mcp register` — wire the AiPlus MCP server into installed
+// runtimes (codex / claude-code / opencode) so they can call agent_route /
+// agent_status / agent_set_team as native tools.
+//
+// Codex uses a global TOML config at ~/.codex/config.toml. Claude-code and
+// opencode use project-local JSON files (.mcp.json and opencode.json) in cwd.
+// All writes are idempotent — re-running this command is safe and a no-op if
+// the aiplus entry already exists.
+// ---------------------------------------------------------------------------
+
+fn command_mcp_register(runtime: Option<String>, dry_run: bool) -> Result<()> {
+    let bin = std::env::current_exe().context("locate current aiplus binary path")?;
+    let bin_str = bin.to_string_lossy().into_owned();
+
+    let runtimes: Vec<&str> = match runtime.as_deref() {
+        None => vec!["codex", "claude", "opencode"],
+        Some("codex") => vec!["codex"],
+        Some("claude") => vec!["claude"],
+        Some("opencode") => vec!["opencode"],
+        Some(other) => {
+            return Err(anyhow!(
+                "unknown --runtime '{other}'. Valid: codex, claude, opencode."
+            ));
+        }
+    };
+
+    if dry_run {
+        println!("MCP_REGISTER_MODE=dry-run (no files will be written)");
+    }
+    println!("MCP_REGISTER_BIN={bin_str}");
+
+    let mut any_change = false;
+    for rt in runtimes {
+        let changed = match rt {
+            "codex" => register_mcp_codex(&bin_str, dry_run)?,
+            "claude" => register_mcp_claude(&bin_str, dry_run)?,
+            "opencode" => register_mcp_opencode(&bin_str, dry_run)?,
+            _ => unreachable!(),
+        };
+        any_change = any_change || changed;
+    }
+
+    if dry_run {
+        println!("MCP_REGISTER_STATUS=DRY_RUN_OK any_change={any_change}");
+    } else if any_change {
+        println!("MCP_REGISTER_STATUS=OK any_change=true");
+    } else {
+        println!("MCP_REGISTER_STATUS=NOOP any_change=false (already registered)");
+    }
+    Ok(())
+}
+
+fn register_mcp_codex(bin: &str, dry_run: bool) -> Result<bool> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let codex_dir = match home {
+        Some(h) => h.join(".codex"),
+        None => {
+            println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME");
+            return Ok(false);
+        }
+    };
+    if !codex_dir.exists() {
+        println!(
+            "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed (no ~/.codex)"
+        );
+        return Ok(false);
+    }
+    let config_path = codex_dir.join("config.toml");
+    let existing = if config_path.exists() {
+        fs::read_to_string(&config_path)
+            .with_context(|| format!("read {}", config_path.display()))?
+    } else {
+        String::new()
+    };
+    let mut doc: toml::Value = if existing.trim().is_empty() {
+        toml::Value::Table(toml::value::Table::new())
+    } else {
+        toml::from_str(&existing)
+            .with_context(|| format!("parse existing {}", config_path.display()))?
+    };
+    let table = doc
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("codex config.toml root is not a table"))?;
+    let servers = table
+        .entry("mcp_servers")
+        .or_insert_with(|| toml::Value::Table(toml::value::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("mcp_servers in codex config.toml is not a table"))?;
+
+    // Idempotency: check if the existing entry already matches.
+    let want_command = toml::Value::String(bin.to_string());
+    let want_args = toml::Value::Array(vec![toml::Value::String("mcp-serve".into())]);
+    if let Some(toml::Value::Table(existing_aiplus)) = servers.get("aiplus") {
+        let cmd_ok = existing_aiplus.get("command") == Some(&want_command);
+        let args_ok = existing_aiplus.get("args") == Some(&want_args);
+        if cmd_ok && args_ok {
+            println!(
+                "MCP_REGISTER_CODEX=NOOP path={} (already registered)",
+                config_path.display()
+            );
+            return Ok(false);
+        }
+    }
+
+    let mut new_entry = toml::value::Table::new();
+    new_entry.insert("command".to_string(), want_command);
+    new_entry.insert("args".to_string(), want_args);
+    servers.insert("aiplus".to_string(), toml::Value::Table(new_entry));
+
+    let serialized = toml::to_string_pretty(&doc).context("re-serialize codex config.toml")?;
+    if dry_run {
+        println!(
+            "MCP_REGISTER_CODEX=WOULD_WRITE path={}",
+            config_path.display()
+        );
+        println!("--- proposed config.toml ---\n{serialized}--- end ---");
+    } else {
+        write_file_atomic(&config_path, serialized.as_bytes())
+            .with_context(|| format!("write {}", config_path.display()))?;
+        println!("MCP_REGISTER_CODEX=WROTE path={}", config_path.display());
+    }
+    Ok(true)
+}
+
+fn register_mcp_claude(bin: &str, dry_run: bool) -> Result<bool> {
+    let cwd = std::env::current_dir().context("get cwd for claude registration")?;
+    let config_path = cwd.join(".mcp.json");
+    let existing = if config_path.exists() {
+        fs::read_to_string(&config_path)
+            .with_context(|| format!("read {}", config_path.display()))?
+    } else {
+        String::new()
+    };
+    let mut doc: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(&existing)
+            .with_context(|| format!("parse existing {}", config_path.display()))?
+    };
+    let root = doc
+        .as_object_mut()
+        .ok_or_else(|| anyhow!(".mcp.json root must be a JSON object"))?;
+    let servers = root
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("mcpServers in .mcp.json must be a JSON object"))?;
+
+    let want_entry = serde_json::json!({
+        "command": bin,
+        "args": ["mcp-serve"]
+    });
+    if servers.get("aiplus") == Some(&want_entry) {
+        println!(
+            "MCP_REGISTER_CLAUDE=NOOP path={} (already registered)",
+            config_path.display()
+        );
+        return Ok(false);
+    }
+    servers.insert("aiplus".to_string(), want_entry);
+
+    let serialized = serde_json::to_string_pretty(&doc).context("re-serialize .mcp.json")?;
+    if dry_run {
+        println!(
+            "MCP_REGISTER_CLAUDE=WOULD_WRITE path={}",
+            config_path.display()
+        );
+        println!("--- proposed .mcp.json ---\n{serialized}\n--- end ---");
+    } else {
+        write_file_atomic(&config_path, format!("{serialized}\n").as_bytes())
+            .with_context(|| format!("write {}", config_path.display()))?;
+        println!("MCP_REGISTER_CLAUDE=WROTE path={}", config_path.display());
+    }
+    Ok(true)
+}
+
+fn register_mcp_opencode(bin: &str, dry_run: bool) -> Result<bool> {
+    let cwd = std::env::current_dir().context("get cwd for opencode registration")?;
+    let config_path = cwd.join("opencode.json");
+    let existing = if config_path.exists() {
+        fs::read_to_string(&config_path)
+            .with_context(|| format!("read {}", config_path.display()))?
+    } else {
+        String::new()
+    };
+    let mut doc: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(&existing)
+            .with_context(|| format!("parse existing {}", config_path.display()))?
+    };
+    let root = doc
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("opencode.json root must be a JSON object"))?;
+    let mcp = root
+        .entry("mcp")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("mcp in opencode.json must be a JSON object"))?;
+
+    let want_entry = serde_json::json!({
+        "type": "local",
+        "command": [bin, "mcp-serve"],
+        "enabled": true
+    });
+    if mcp.get("aiplus") == Some(&want_entry) {
+        println!(
+            "MCP_REGISTER_OPENCODE=NOOP path={} (already registered)",
+            config_path.display()
+        );
+        return Ok(false);
+    }
+    mcp.insert("aiplus".to_string(), want_entry);
+
+    let serialized = serde_json::to_string_pretty(&doc).context("re-serialize opencode.json")?;
+    if dry_run {
+        println!(
+            "MCP_REGISTER_OPENCODE=WOULD_WRITE path={}",
+            config_path.display()
+        );
+        println!("--- proposed opencode.json ---\n{serialized}\n--- end ---");
+    } else {
+        write_file_atomic(&config_path, format!("{serialized}\n").as_bytes())
+            .with_context(|| format!("write {}", config_path.display()))?;
+        println!(
+            "MCP_REGISTER_OPENCODE=WROTE path={}",
+            config_path.display()
+        );
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

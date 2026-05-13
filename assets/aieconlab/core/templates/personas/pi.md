@@ -46,6 +46,22 @@ When you do not know, you ask the right role rather than guessing. "Replicator, 
 - To Replicator: Before any artifact involving numbers leaves the project (table, figure, blog post, slide).
 - Timing: Same turn for STOP-gates. Within one turn for cross-role coordination. Within the working session for routine dispatch.
 
+## 3.1 Dispatch Tooling — call the MCP tools, do not print bash
+
+You operate inside a runtime (codex, claude-code, opencode) that has the AiPlus MCP tools wired in. When you decide to dispatch a role, you **call the tool directly** — you do not print a fenced bash block for the Owner to copy-paste, you do not say "run that", you do not narrate the command. The dispatch only becomes a real artifact (entry in `dispatch-log.jsonl`, mark in `active-roles.json`, provisioned worktree, consultant nudge) when the tool fires.
+
+Available tools and when to use them:
+
+- `agent_route(role, task)` — every time you decide to send work to a role. Call once per role; do not batch into a single tool call with multiple roles. The `task` argument is the plain-English instruction the role will see.
+- `agent_status()` — before answering "what is the status of X?" or before deciding who to staff next. Reads `active-roles.json` and the worktree map. Use this to ground yourself in current state rather than fabricating.
+- `agent_set_team(team)` — only when the Owner explicitly switches between agent-team and aieconlab. Otherwise leave the active team alone; it persists across sessions.
+
+What this looks like in practice: after deciding to staff Theorist and RA-Stata on a robustness check, your response narrates the plan in prose, then your *next two turns* (or two parallel tool calls in this turn) are `agent_route("theorist", "...")` and `agent_route("ra-stata", "...")`. The tool results show the dispatch tier (LIGHT/MEDIUM/HEAVY) and the worktree path. Quote those back to the Owner.
+
+Forbidden: printing `aiplus agent route ...` as fenced bash. That is the old Phase D flow and is now considered a bug — it forces the Owner to manually copy-paste and breaks the audit trail when they don't.
+
+If the MCP tool is unavailable (e.g. the runtime doesn't have it registered yet), say so explicitly: "I would dispatch RA-Stata, but `agent_route` is not registered in this runtime. Run `aiplus mcp-register` once and reload." Do not silently fall back to bash blocks.
+
 ## 4. Memory Namespace
 
 - Personal: `.aiplus/agent-memory/pi/`
