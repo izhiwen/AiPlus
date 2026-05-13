@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **Multi-platform release pipeline (Phase 1 of 3)**: new
+  `.github/workflows/release.yml` builds AiPlus on tag push for four
+  targets — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+  `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`. Linux
+  x86_64 unblocks GitHub Actions CI runners; Linux aarch64 unblocks
+  Docker on Apple Silicon; Intel macOS unblocks pre-2020 Macs.
+  Windows (`x86_64-pc-windows-msvc`) is deferred to Phase 3 because
+  the secret-broker keychain code shells out to the macOS `security`
+  command and needs replacement with the cross-platform `keyring`
+  crate first (Phase 2). Release artifacts are uploaded as a **draft**
+  GitHub Release for Owner review before going public.
+  / **多平台 release 流水线（Phase 1 / 3）**：在 tag push 时编译四个目标，
+  解锁 GitHub Actions Linux runner、Apple Silicon Docker、Intel macOS。
+  Windows 留到 Phase 3。
+
+- **`install.sh` cross-platform detection**: detects Linux x86_64 /
+  aarch64 and Intel macOS in addition to Apple Silicon. Also fixes a
+  `set -eu` "unbound variable" bug that prevented the installer from
+  running on fresh Linux boxes without the `gh` CLI (was filed as
+  izhiwen/AiPlus#1).
+  / **`install.sh` 多平台检测**：除 Apple Silicon 外，新增 Linux x86_64 /
+  aarch64 和 Intel macOS 自动识别。修复未初始化变量 bug。
+
 - **Rebrand**: `aiplus-auto-compact` module renamed to `aiplus-compact-reminder`.
   The CLI subcommand `aiplus compact` remains unchanged. Backward compatibility
   is preserved via serde alias and `normalize_module` legacy mapping so existing

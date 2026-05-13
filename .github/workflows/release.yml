@@ -1,0 +1,133 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+            ext: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            ext: tar.gz
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: tar.gz
+            cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Linux aarch64 cross-compile toolchain
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p aiplus-cli --locked
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BIN_NAME="aiplus"
+          ASSET="aiplus-${{ matrix.target }}.tar.gz"
+          cd target/${{ matrix.target }}/release
+          tar -czf "${GITHUB_WORKSPACE}/${ASSET}" "${BIN_NAME}"
+          cd "${GITHUB_WORKSPACE}"
+          ls -la "${ASSET}"
+
+      - name: Compute checksum (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ASSET="aiplus-${{ matrix.target }}.tar.gz"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${ASSET}" > "${ASSET}.sha256"
+          else
+            sha256sum "${ASSET}" > "${ASSET}.sha256"
+          fi
+          cat "${ASSET}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiplus-${{ matrix.target }}
+          path: |
+            aiplus-${{ matrix.target }}.tar.gz
+            aiplus-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: publish release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble single checksums.txt
+        run: |
+          cd dist
+          ls -la
+          {
+            for f in aiplus-*.tar.gz; do
+              if command -v shasum >/dev/null 2>&1; then
+                shasum -a 256 "$f"
+              else
+                sha256sum "$f"
+              fi
+            done
+          } > checksums.txt
+          echo "=== checksums.txt ==="
+          cat checksums.txt
+          # Remove per-asset .sha256 files (we consolidated into checksums.txt)
+          rm -f aiplus-*.tar.gz.sha256
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Publishing release for tag: ${TAG}"
+          # Create a draft release so the Owner can review notes/assets before
+          # making it visible to consumers. Owner promotes from draft via
+          # GitHub UI or `gh release edit "${TAG}" --draft=false`.
+          gh release create "${TAG}" \
+            --title "AiPlus ${TAG}" \
+            --draft \
+            --generate-notes \
+            dist/aiplus-*.tar.gz \
+            dist/checksums.txt
