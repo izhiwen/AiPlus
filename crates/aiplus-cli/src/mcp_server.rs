@@ -93,11 +93,7 @@ pub fn run_server() -> Result<()> {
             "tools/call" => handle_tools_call(id, request.params, &project_root),
             "resources/list" => empty_array_response(id, "resources"),
             "prompts/list" => empty_array_response(id, "prompts"),
-            other => error_response(
-                id,
-                -32601,
-                &format!("method not implemented: {other}"),
-            ),
+            other => error_response(id, -32601, &format!("method not implemented: {other}")),
         };
         write_response(&mut stdout, response)?;
     }
@@ -345,8 +341,14 @@ mod tests {
 
     #[test]
     fn unknown_tool_returns_is_error_envelope() {
-        let resp = handle_tools_call(json!(1), json!({"name": "nonexistent"}), &std::env::temp_dir());
-        let result = resp.result.expect("tools/call always returns result envelope");
+        let resp = handle_tools_call(
+            json!(1),
+            json!({"name": "nonexistent"}),
+            &std::env::temp_dir(),
+        );
+        let result = resp
+            .result
+            .expect("tools/call always returns result envelope");
         assert_eq!(result["isError"], json!(true));
         let text = result["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("unknown tool"));
