@@ -1,5 +1,5 @@
 # AiPlus
-[![CI](https://github.com/izhiwen/aiplus/actions/workflows/ci.yml/badge.svg)](https://github.com/izhiwen/aiplus/actions/workflows/ci.yml)
+[![CI](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml/badge.svg)](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 [中文 README](README.zh-CN.md)
@@ -82,8 +82,16 @@ syncs to a cloud. Nothing edits your global agent config.
 Install the `aiplus` command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh \
   | bash
+```
+
+If you'd rather inspect the script before running it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh -o install.sh
+less install.sh
+bash install.sh
 ```
 
 Install AiPlus into your project:
@@ -167,11 +175,11 @@ MyProject/
 Each module also ships as its own GitHub repo if you want to inspect or
 adopt one piece at a time:
 
-- [aiplus-agent-memory](https://github.com/izhiwen/aiplus-agent-memory)
-- [aiplus-compact-reminder](https://github.com/izhiwen/aiplus-compact-reminder)
-- [aiplus-auto-team-consultant](https://github.com/izhiwen/aiplus-auto-team-consultant)
-- [aiplus-agent-velocity](https://github.com/izhiwen/aiplus-agent-velocity)
-- [aiplus-agent-team](https://github.com/izhiwen/aiplus-agent-team)
+- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
+- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
+- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
+- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
 
 ## Safety boundaries
 
@@ -196,9 +204,9 @@ never bundled into public repositories. See `aiplus profile install` and
 
 ## Status
 
-Current version: v0.5.1 with v2.1 hardening across all modules. See
+Current cut: **v0.5.1**. See
 [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md) for tracked work
-before the next cut.
+before the next release.
 
 ## License
 

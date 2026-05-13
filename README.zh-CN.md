@@ -1,5 +1,5 @@
 # AiPlus
-[![CI](https://github.com/izhiwen/aiplus/actions/workflows/ci.yml/badge.svg)](https://github.com/izhiwen/aiplus/actions/workflows/ci.yml)
+[![CI](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml/badge.svg)](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 [English README](README.md)
@@ -40,8 +40,16 @@ AiPlus 是五个小模块，加起来正好把这六件事一起治了。
 装 `aiplus` 命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh \
   | bash
+```
+
+如果你想先看一眼脚本再跑：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh -o install.sh
+less install.sh
+bash install.sh
 ```
 
 把 AiPlus 装进你的项目：
@@ -121,11 +129,11 @@ MyProject/
 
 每个模块也作为独立 GitHub repo 发布，方便你单独看或单独采用：
 
-- [aiplus-agent-memory](https://github.com/izhiwen/aiplus-agent-memory)
-- [aiplus-compact-reminder](https://github.com/izhiwen/aiplus-compact-reminder)
-- [aiplus-auto-team-consultant](https://github.com/izhiwen/aiplus-auto-team-consultant)
-- [aiplus-agent-velocity](https://github.com/izhiwen/aiplus-agent-velocity)
-- [aiplus-agent-team](https://github.com/izhiwen/aiplus-agent-team)
+- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
+- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
+- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
+- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
 
 ## 安全边界
 
@@ -146,7 +154,7 @@ AiPlus 支持可选的用户级私有 profile，存个人偏好和 secret alias 
 
 ## 状态
 
-当前版本：v0.5.1 + 全模块 v2.1 加固。下次 cut 前要做的事见 [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md)。
+当前版本：**v0.5.1**。下次发布前要做的事见 [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md)。
 
 ## License
 
