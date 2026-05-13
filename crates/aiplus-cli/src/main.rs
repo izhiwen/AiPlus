@@ -78,8 +78,8 @@ use std::time::SystemTime;
 mod agent;
 mod mcp_server;
 
-const VERSION: &str = "0.5.8";
-const RELEASE_TAG: &str = "v0.5.8";
+const VERSION: &str = "0.5.9";
+const RELEASE_TAG: &str = "v0.5.9";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -9797,6 +9797,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.6"
             | "0.5.7"
             | "0.5.8"
+            | "0.5.9"
     )
 }
 
