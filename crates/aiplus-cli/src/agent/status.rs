@@ -38,10 +38,23 @@ pub fn handle_status(json_output: bool) -> Result<()> {
         println!();
 
         println!("Team Roster:");
-        if state.active_roles.is_empty() && state.disabled_roles.is_empty() {
+        // Read persisted active roles from .aiplus/agents/active-roles.json
+        // (populated by `aiplus agent route <role>`). Falls back to whatever
+        // load_team_config inferred if persistence layer is empty.
+        let project_root = std::env::current_dir().ok();
+        let persisted = project_root
+            .as_ref()
+            .and_then(|root| crate::agent::state::load_active_roles(root).ok())
+            .map(|state| state.active_roles)
+            .unwrap_or_default();
+        if !persisted.is_empty() {
+            let mut sorted: Vec<&String> = persisted.iter().collect();
+            sorted.sort();
+            println!("  Active roles: {:?}", sorted);
+        } else if state.active_roles.is_empty() && state.disabled_roles.is_empty() {
             let core_count = state.agents.len() - state.stub_roles.len();
             println!(
-                "  Active roles: (lazy — {} core roles configured, activated on first dispatch by the PI/CEO)",
+                "  Active roles: [] ({} core roles configured; no dispatches recorded yet — run `aiplus agent route <role>` to mark one active)",
                 core_count
             );
         } else {

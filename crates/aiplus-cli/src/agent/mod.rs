@@ -12,6 +12,7 @@ pub mod list;
 pub mod prune_worktrees;
 pub mod reset;
 pub mod route;
+pub mod state;
 pub mod status;
 pub mod talk;
 pub mod transcript;

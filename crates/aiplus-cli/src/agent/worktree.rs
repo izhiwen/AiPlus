@@ -481,14 +481,32 @@ pub fn merge_agent_branch(project_root: &Path, role: &str) -> Result<()> {
         );
     }
 
-    // Check for uncommitted changes
+    // Check for uncommitted changes. Skip runtime-state files that the agent
+    // CLI writes during normal operation (dispatch log, active-roles state)
+    // — these are local-only artifacts equivalent to log files and should
+    // not block git operations.
     let status_output = Command::new("git")
         .args(["status", "--porcelain"])
         .current_dir(project_root)
         .output()
         .context("Failed to check git status")?;
 
-    if !status_output.stdout.is_empty() {
+    let runtime_state_paths: &[&str] = &[
+        ".aiplus/agents/dispatch-log.jsonl",
+        ".aiplus/agents/active-roles.json",
+    ];
+    let blocking = String::from_utf8_lossy(&status_output.stdout)
+        .lines()
+        .filter(|line| {
+            // git status --porcelain format: "XY path" (3 prefix bytes)
+            line.len() > 3
+                && !runtime_state_paths
+                    .iter()
+                    .any(|state| line[3..].trim_start_matches('"').starts_with(state))
+        })
+        .count();
+
+    if blocking > 0 {
         anyhow::bail!(
             "Working directory has uncommitted changes. \
              Please commit or stash them before integrating."

@@ -1,5 +1,6 @@
 use crate::agent::cache;
 use crate::agent::core::get_role_config;
+use crate::agent::state;
 use crate::agent::worktree;
 use anyhow::Result;
 
@@ -19,13 +20,16 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                 if let Ok(cache) = cache::global_cache().lock() {
                     cache.invalidate(candidate, cache::InvalidationReason::RoleRouteCalled);
                 }
+                let project_root = std::env::current_dir()?;
                 if config.needs_worktree {
-                    let project_root = std::env::current_dir()?;
-                    match worktree::worktree_exists_for_role(&project_root, candidate)? {
-                        Some(path) => {
+                    // Worktree provisioning requires a git repo. If the project
+                    // isn't one, surface a clear note but still record the
+                    // dispatch so the audit log entry isn't lost.
+                    match worktree::worktree_exists_for_role(&project_root, candidate) {
+                        Ok(Some(path)) => {
                             println!("  Using existing worktree: {}", path.display());
                         }
-                        None => {
+                        Ok(None) => {
                             println!("  Creating worktree for {}...", candidate);
                             let template = config.worktree_path.as_deref();
                             match worktree::create_worktree(
@@ -45,7 +49,26 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                                 }
                             }
                         }
+                        Err(err) => {
+                            // Likely "not a git repository" — non-fatal. Warn
+                            // and continue so we still record the dispatch.
+                            eprintln!(
+                                "  NOTE: skipping worktree provisioning ({err}); \
+                                 init this project with `git init` to enable per-role worktrees."
+                            );
+                        }
                     }
+                }
+                // Persist the dispatch so this becomes a real side effect, not
+                // just narrative. Phase D v0: writes audit log + marks role
+                // active. `aiplus agent status` and `aiplus agent transcript`
+                // both read this.
+                if let Err(e) =
+                    state::record_dispatch(&project_root, candidate, task, "aiplus agent route")
+                {
+                    eprintln!("  WARN: failed to record dispatch: {e}");
+                } else {
+                    println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
                 }
                 return Ok(());
             }

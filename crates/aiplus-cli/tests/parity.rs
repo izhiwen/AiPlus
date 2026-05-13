@@ -172,8 +172,10 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let status = stdout(&run(target, &["status"], 0));
     assert!(status.contains("runtimeAdapters=[codex]"));
+    // aieconlab is now opt-in (auto_install = false); the default install
+    // brings the SWE-flavored agent-team plus the substrate modules.
     assert!(status.contains(
-        "modules=[agent-memory@0.5.1, agent-team@0.1.0, aieconlab@0.1.0, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
+        "modules=[agent-memory@0.5.1, agent-team@0.1.0, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
     ));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("agentMemory="));

@@ -77,8 +77,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.4";
-const RELEASE_TAG: &str = "v0.5.4";
+const VERSION: &str = "0.5.5";
+const RELEASE_TAG: &str = "v0.5.5";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -6232,8 +6232,50 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         embedded_asset_text("aieconlab/core/templates/consultant-team.aieconlab.toml")?;
     write_file_atomic(&consultant_path, consultant_content.as_bytes())?;
 
+    // Advertise the team in AGENTS.aiplus.md so any runtime that reads it
+    // (codex, claude-code, opencode) discovers AEL roles without the user
+    // having to mention them explicitly. Idempotent — runs once per module.
+    append_team_section_to_agents_aiplus(
+        root,
+        "AIECONLAB_TEAM",
+        AIECONLAB_TEAM_SECTION,
+    )?;
+
     Ok(())
 }
+
+const AIECONLAB_TEAM_SECTION: &str = r#"## Virtual Team: AiEconLab (AEL)
+
+This project has the AiEconLab applied-economics research team installed.
+Role definitions live under `.aiplus/agents/personas/`. Owner talks only
+to Advisor and PI; PI orchestrates the rest.
+
+- Owner-facing (2): `Advisor`, `PI`
+- Internal core (6): `Theorist`, `PM`, `RA-Stata`, `RA-Python`, `Referee`, `Replicator`
+- Experts on-demand (12): `lit-reviewer`, `writer`, `econometrician`,
+  `reproducibility`, `historical-sources`, `job-talk-coach`, `viz-specialist`,
+  `ethics-irb`, `llm-measurement`, `survey-experiment`, `computation`,
+  `coauthor-liaison`
+
+To embody a role in this session, the Owner says:
+
+    Speak as the AEL Advisor — <question>
+    Speak as the AEL PI — <task>
+
+Or, for an interactive session with the persona pre-loaded, run:
+
+    aiplus agent talk advisor          # or pi, theorist, ra-stata, ...
+
+When embodying a role: read `.aiplus/agents/personas/<role>.md` first. The
+persona's Forbidden Actions and Escalation rules are binding. STOP-gated
+actions (journal submission, working-paper posting, referee response send,
+data sharing, authorship change) always escalate to the Owner.
+
+`aiplus agent route <role> "<task>"` records dispatches to
+`.aiplus/agents/dispatch-log.jsonl` and marks the role active. Use it after
+the PI commits to a staffing decision to make the dispatch a real artifact
+rather than narrative.
+"#;
 
 fn agent_team_init(root: &Path) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
@@ -6334,6 +6376,79 @@ fn agent_team_init(root: &Path) -> Result<()> {
         )?;
     }
 
+    // Advertise the agent-team in AGENTS.aiplus.md so runtimes discover it.
+    append_team_section_to_agents_aiplus(
+        root,
+        "AGENT_TEAM_TEAM",
+        AGENT_TEAM_SECTION,
+    )?;
+
+    Ok(())
+}
+
+const AGENT_TEAM_SECTION: &str = r#"## Virtual Team: AiPlus Agent Team (software-engineering)
+
+This project has the AiPlus Agent Team installed for software-engineering
+workflows. Role definitions live under `.aiplus/agents/personas/`. Owner
+talks only to Advisor and CEO; CEO orchestrates the rest.
+
+- Owner-facing (2): `Advisor`, `CEO`
+- Internal core (6): `Architect`, `PM`, `Engineer-A`, `Engineer-B`, `Reviewer`, `QA`
+- Experts on-demand (11): `ai-integration`, `security-reviewer`, `tech-writer`,
+  `devops`, `ui-designer`, `researcher`, and 5 v0.2 stubs
+
+To embody a role: say "Speak as the Agent Team Advisor — <question>" or
+run `aiplus agent talk <role>`. Persona spec at
+`.aiplus/agents/personas/<role>.md` is binding; Forbidden Actions and
+STOP-gates always escalate to the Owner.
+
+`aiplus agent route <role> "<task>"` records dispatches to
+`.aiplus/agents/dispatch-log.jsonl` and marks the role active.
+"#;
+
+/// Append a team-overview section to `.aiplus/AGENTS.aiplus.md` so any runtime
+/// that reads the AiPlus project context (codex, claude-code, opencode)
+/// discovers the installed virtual team. Idempotent — the marker comment
+/// prevents duplicate appends across reinstalls.
+fn append_team_section_to_agents_aiplus(
+    root: &Path,
+    marker: &str,
+    section: &str,
+) -> Result<()> {
+    let path = root.join(".aiplus").join("AGENTS.aiplus.md");
+    if !path.exists() {
+        // No AiPlus AGENTS file yet — shouldn't happen post-install, but
+        // skip rather than error so the team install still completes.
+        return Ok(());
+    }
+    let begin = format!("<!-- BEGIN {marker} -->");
+    let end = format!("<!-- END {marker} -->");
+    let current = std::fs::read_to_string(&path)
+        .with_context(|| format!("read {}", path.display()))?;
+    let block = format!("\n{begin}\n{}\n{end}\n", section.trim_end());
+    let next = if let Some(start_idx) = current.find(&begin) {
+        // Replace existing block (idempotent rewrite).
+        let end_idx = current[start_idx..]
+            .find(&end)
+            .map(|i| start_idx + i + end.len())
+            .unwrap_or_else(|| current.len());
+        let mut buf = String::with_capacity(current.len() + block.len());
+        buf.push_str(&current[..start_idx]);
+        buf.push_str(block.trim_start());
+        if end_idx < current.len() {
+            buf.push_str(&current[end_idx..]);
+        }
+        buf
+    } else {
+        // Append at end.
+        let mut buf = current;
+        if !buf.ends_with('\n') {
+            buf.push('\n');
+        }
+        buf.push_str(&block);
+        buf
+    };
+    write_file_atomic(&path, next.as_bytes())?;
     Ok(())
 }
 
