@@ -98,7 +98,7 @@ Both audiences share the same `aiplus-agent-memory`,
 
 ## Install
 
-### Option A — pre-built binary (recommended, v0.5.9+)
+### Option A — pre-built binary (recommended, v0.5.10+)
 
 Pre-built binaries for macOS (Intel + Apple Silicon), Linux (x86_64 +
 aarch64), and Windows ship with every release.
@@ -246,7 +246,7 @@ never bundled into public repositories. See `aiplus profile install` and
 ## Status
 
 Latest release: see [Releases](https://github.com/izhiwen/AiPlus/releases/latest)
-(currently `v0.5.9`, pre-built binaries for macOS / Linux / Windows).
+(currently `v0.5.10`, pre-built binaries for macOS / Linux / Windows).
 Active development on `main`; pre-release notes for the next cut live
 under [`docs/roadmap/`](docs/roadmap/).
 

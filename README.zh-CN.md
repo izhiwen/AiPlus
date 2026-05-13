@@ -46,7 +46,7 @@ AiPlus 同时服务两类受众，底座（substrate）共享：
 
 ## 安装
 
-### 方法 A —— 预编译二进制（推荐，v0.5.9+）
+### 方法 A —— 预编译二进制（推荐，v0.5.10+）
 
 每个 release 都包 macOS（Intel + Apple Silicon）、Linux（x86_64 + aarch64）、Windows 预编译二进制。
 
@@ -184,7 +184,7 @@ AiPlus 支持可选的用户级私有 profile，存个人偏好和 secret alias 
 
 ## 状态
 
-最新发布：见 [Releases](https://github.com/izhiwen/AiPlus/releases/latest)（当前 `v0.5.9`，含 macOS / Linux / Windows 预编译二进制）。`main` 分支活跃开发；下次 cut 前要做的事见 [`docs/roadmap/`](docs/roadmap/)。
+最新发布：见 [Releases](https://github.com/izhiwen/AiPlus/releases/latest)（当前 `v0.5.10`，含 macOS / Linux / Windows 预编译二进制）。`main` 分支活跃开发；下次 cut 前要做的事见 [`docs/roadmap/`](docs/roadmap/)。
 
 ## License
 
