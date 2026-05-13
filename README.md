@@ -77,9 +77,50 @@ clean. No more role pollution, no more shallow-each-hat.
 Everything stays inside `.aiplus/` in your project. Nothing uploads. Nothing
 syncs to a cloud. Nothing edits your global agent config.
 
+## Who is this for
+
+AiPlus serves two audiences with the same underlying agent substrate:
+
+- **Software engineers** building with Codex / Claude Code / OpenCode.
+  The default `aiplus install` bootstrap installs the SWE-tuned team
+  (Advisor, CEO, Architect, PM, 2× Engineer, Reviewer, QA) plus 11
+  software-engineering experts.
+- **Applied-economics researchers** building papers, replication
+  packages, and LLM-as-measurement workflows.
+  Run `aiplus add aieconlab` to install [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab) —
+  8 research roles (Advisor, PI, Theorist, PM, RA-Stata, RA-Python,
+  Referee, Replicator) + 12 experts including LLM-as-Measurement
+  Specialist. Replaces the SWE consultant team with one designed from
+  first principles for plan-time econ review.
+
+Both audiences share the same `aiplus-agent-memory`,
+`aiplus-compact-reminder`, and `aiplus-auto-team-consultant` substrate.
+
 ## Install
 
-Install the `aiplus` command:
+### Option A — pre-built binary (recommended, v0.5.9+)
+
+Pre-built binaries for macOS (Intel + Apple Silicon), Linux (x86_64 +
+aarch64), and Windows ship with every release.
+
+```bash
+# macOS Apple Silicon
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv aiplus /usr/local/bin/
+
+# macOS Intel
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-apple-darwin.tar.gz | tar xz
+
+# Linux x86_64
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-unknown-linux-gnu.tar.gz | tar xz
+
+# Windows (PowerShell)
+# Download aiplus-x86_64-pc-windows-msvc.zip from the latest release, extract, add to PATH
+```
+
+Checksums published at `https://github.com/izhiwen/AiPlus/releases/latest/download/checksums.txt`.
+
+### Option B — install script (curl-pipe-bash)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh \
@@ -94,7 +135,7 @@ less install.sh
 bash install.sh
 ```
 
-Install AiPlus into your project:
+### Install AiPlus into your project
 
 ```bash
 cd MyProject
@@ -204,9 +245,10 @@ never bundled into public repositories. See `aiplus profile install` and
 
 ## Status
 
-Current cut: **v0.5.1**. See
-[v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md) for tracked work
-before the next release.
+Latest release: see [Releases](https://github.com/izhiwen/AiPlus/releases/latest)
+(currently `v0.5.9`, pre-built binaries for macOS / Linux / Windows).
+Active development on `main`; pre-release notes for the next cut live
+under [`docs/roadmap/`](docs/roadmap/).
 
 ## License
 

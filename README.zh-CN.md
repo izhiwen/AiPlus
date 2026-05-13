@@ -35,9 +35,39 @@ AiPlus 是五个小模块，加起来正好把这六件事一起治了。
 
 所有数据都留在你项目里的 `.aiplus/`。**不上传，不云同步，不动你的全局 agent 配置。**
 
+## 谁会用这个
+
+AiPlus 同时服务两类受众，底座（substrate）共享：
+
+- **软件工程师** —— 用 Codex / Claude Code / OpenCode 写代码的。`aiplus install` 默认装 SWE 团队（Advisor / CEO / Architect / PM / 2× Engineer / Reviewer / QA + 11 SWE expert）。
+- **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab)：8 个研究角色（Advisor / PI / Theorist / PM / RA-Stata / RA-Python / Referee / Replicator）+ 12 个 expert（含 LLM-as-Measurement Specialist）。**替换** SWE consultant 团队为应用经济学专属版本。
+
+两类受众共用 `aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` 底座。
+
 ## 安装
 
-装 `aiplus` 命令：
+### 方法 A —— 预编译二进制（推荐，v0.5.9+）
+
+每个 release 都包 macOS（Intel + Apple Silicon）、Linux（x86_64 + aarch64）、Windows 预编译二进制。
+
+```bash
+# macOS Apple Silicon
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv aiplus /usr/local/bin/
+
+# macOS Intel
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-apple-darwin.tar.gz | tar xz
+
+# Linux x86_64
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-unknown-linux-gnu.tar.gz | tar xz
+
+# Windows (PowerShell)
+# 下载 aiplus-x86_64-pc-windows-msvc.zip，解压，加进 PATH
+```
+
+校验和：`https://github.com/izhiwen/AiPlus/releases/latest/download/checksums.txt`
+
+### 方法 B —— 安装脚本（curl-pipe-bash）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh \
@@ -52,7 +82,7 @@ less install.sh
 bash install.sh
 ```
 
-把 AiPlus 装进你的项目：
+### 把 AiPlus 装进你的项目
 
 ```bash
 cd MyProject
@@ -154,7 +184,7 @@ AiPlus 支持可选的用户级私有 profile，存个人偏好和 secret alias 
 
 ## 状态
 
-当前版本：**v0.5.1**。下次发布前要做的事见 [v0.5.2 known gaps](docs/roadmap/v0.5.2-known-gaps.md)。
+最新发布：见 [Releases](https://github.com/izhiwen/AiPlus/releases/latest)（当前 `v0.5.9`，含 macOS / Linux / Windows 预编译二进制）。`main` 分支活跃开发；下次 cut 前要做的事见 [`docs/roadmap/`](docs/roadmap/)。
 
 ## License
 

@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new feature or change
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: pain
+    attributes:
+      label: What pain does this solve
+      description: One paragraph. "Today, when I try to ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Which AiPlus layer would change
+      options:
+        - aiplus CLI (top-level commands)
+        - agent-memory
+        - compact-reminder
+        - auto-team-consultant
+        - agent-team
+        - aieconlab (note: open in AiEconLab repo instead)
+        - runtime adapter (codex / claude-code / opencode)
+        - documentation
+        - release pipeline / CI
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

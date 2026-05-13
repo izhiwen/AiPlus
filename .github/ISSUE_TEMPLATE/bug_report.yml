@@ -1,0 +1,79 @@
+name: Bug report
+description: Report something that's broken or behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Please fill in the sections
+        below so the maintainer can reproduce and triage quickly.
+  - type: input
+    id: aiplus-version
+    attributes:
+      label: AiPlus CLI version
+      description: Output of `aiplus --version`
+      placeholder: "0.5.9"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (x86_64)
+        - Linux (aarch64)
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Which runtime adapter were you using?
+      options:
+        - codex
+        - claude-code
+        - opencode
+        - n/a — bug not runtime-specific
+    validations:
+      required: true
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: How did you install AiPlus?
+      options:
+        - Pre-built binary from GitHub release
+        - install.sh script
+        - cargo build from source
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimum reproduction steps
+      placeholder: |
+        1. mkdir test && cd test && git init -q -b main
+        2. aiplus install codex
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Output of `aiplus doctor`
+      render: shell
