@@ -772,9 +772,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let lock_path = tmp.path().join("deep").join("nested").join(".audit.lock");
         let sentinel_path = tmp.path().join("sentinel");
-        write_file(&sentinel_path,
-            "name: Test\nemail: test@example.com\n",
-        );
+        write_file(&sentinel_path, "name: Test\nemail: test@example.com\n");
 
         let gate = PreAuditGate::new(
             tmp.path().join("manifest.yaml"),
