@@ -14,11 +14,8 @@ pub fn handle_owner_feedback_retract(run_id: &str) -> Result<()> {
         "timestamp": aiplus_core::now_iso(),
     });
 
-    aiplus_core::append_jsonl_atomic(
-        &feedback_path,
-        &retraction.to_string(),
-    )
-    .with_context(|| "failed to write owner-feedback.jsonl")?;
+    aiplus_core::append_jsonl_atomic(&feedback_path, &retraction.to_string())
+        .with_context(|| "failed to write owner-feedback.jsonl")?;
 
     println!("Owner feedback retracted for run {}", run_id);
     Ok(())

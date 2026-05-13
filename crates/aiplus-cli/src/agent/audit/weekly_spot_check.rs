@@ -33,7 +33,10 @@ pub fn handle_weekly_spot_check() -> Result<()> {
 
     // Pending items from spot-check queue
     let pending = read_spot_check_queue(&queue_path)?;
-    let pending_count = pending.iter().filter(|e| !e.retracted && e.owner_verdict.is_none()).count();
+    let pending_count = pending
+        .iter()
+        .filter(|e| !e.retracted && e.owner_verdict.is_none())
+        .count();
     println!("Pending items: {}", pending_count);
 
     for entry in &pending {
@@ -57,8 +60,8 @@ fn read_spot_check_queue(path: &Path) -> Result<Vec<SpotCheckEntry>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut entries = Vec::new();
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         if let Ok(entry) = serde_json::from_str::<SpotCheckEntry>(line) {
@@ -72,8 +75,8 @@ fn count_feedback_last_30_days(path: &Path) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut count = 0;
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {

@@ -155,11 +155,42 @@ CROSS_RUNTIME_INSTALL_EVIDENCE={
 
 ## Quality Gates
 FMT_STATUS=PASS
-CLIPPY_STATUS=PASS (28 warnings, 0 errors)
-WORKSPACE_TEST_STATUS=PASS (228 passed, 0 failed)
+CLIPPY_STATUS=PASS (34 warnings, 0 errors)
+WORKSPACE_TEST_STATUS=PASS (315 passed, 0 failed)
 PARITY_STATUS=PASS
 CONTINUITY_STATUS=PASS
 GIT_DIFF_CHECK_STATUS=PASS
+
+## v0.1.1 Bug Fix Run (Platform Review Lead)
+FIX_RUN_DATE=2026-05-13
+BUGS_FIXED=3
+
+### Bug 1: audit run ENOENT in fresh projects
+ROOT_CAUSE=FlockGuard::try_lock_exclusive called File::create on .aiplus/agent-team/.audit.lock, but agent_team_init only created .aiplus/agents/ — never .aiplus/agent-team/
+FIX_SUMMARY=
+  - gate.rs:64-67: Added fs::create_dir_all(lock_path.parent()) before FlockGuard::try_lock_exclusive
+  - main.rs:5758-5760: Added std::fs::create_dir_all(root.join(".aiplus").join("agent-team")) in agent_team_init
+  - main.rs:9351: Added ".aiplus/agent-team" to known_aiplus_entries() for clean uninstall
+VERIFICATION=
+  - Unit test: test_gate_creates_lock_parent_directory (PASS)
+  - Real-world: fresh git repo + aiplus install + aiplus agent audit run → AUDIT_BLOCKED: OwnershipUnverified (no crash)
+
+### Bug 2: {project_name} placeholder in agent status
+ROOT_CAUSE=load_team_config() in core.rs returned raw TOML string without substituting {project_name}
+FIX_SUMMARY=
+  - core.rs: Substitute {project_name} with actual project name in load_team_config()
+  - doctor.rs: Ensure consistency across all output paths
+VERIFICATION=
+  - Unit test: status_no_placeholder.rs (PASS)
+  - Real-world: aiplus agent status | grep -c '{project_name}' → 0
+
+### Bug 3: Thin cross-runtime install evidence
+ROOT_CAUSE=Original evidence only showed JSON structure, not actual cross-runtime verification
+FIX_SUMMARY=
+  - Verified codex/claude-code/opencode stub agents (all 19 agents)
+  - All stubs return exit code 2 with STUB_NOT_INVITABLE message
+VERIFICATION=
+  - Cross-runtime install evidence collected and verified
 
 ## Safety
 SECRET_PRIVATE_BOUNDARY_STATUS=PASS

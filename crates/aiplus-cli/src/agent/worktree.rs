@@ -272,7 +272,10 @@ pub fn create_worktree(project_root: &Path, role: &str, template: Option<&str>) 
         // If the resolved path would also be in a sync folder, use fallback
         if detect_sync_folder(&path).is_some() {
             path = get_fallback_worktree_path(project_root, role)?;
-            eprintln!("Using fallback location outside sync folder: {}", path.display());
+            eprintln!(
+                "Using fallback location outside sync folder: {}",
+                path.display()
+            );
         } else {
             eprintln!("Using sibling path: {}", path.display());
         }
@@ -336,10 +339,13 @@ fn create_worktree_at_path(project_root: &Path, role: &str, path: &Path) -> Resu
     }
 
     // Return canonical path for consistent comparisons with git output
-    let canonical_path = std::fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 
-    println!("Created worktree for {} at {}", role, canonical_path.display());
+    println!(
+        "Created worktree for {} at {}",
+        role,
+        canonical_path.display()
+    );
     println!("  (Branch: {})", branch);
 
     Ok(canonical_path)
@@ -678,7 +684,10 @@ mod tests {
         fs::create_dir(&collision_path).unwrap();
 
         let result = create_worktree(&repo, "engineer-a", None);
-        assert!(result.is_err(), "Should error on untracked directory collision");
+        assert!(
+            result.is_err(),
+            "Should error on untracked directory collision"
+        );
         let err = result.unwrap_err().to_string();
         assert!(
             err.contains("not tracked by git worktree"),
@@ -736,10 +745,7 @@ mod tests {
         );
 
         let icloud_path = PathBuf::from("/Users/steve/iCloud Drive/test");
-        assert_eq!(
-            detect_sync_folder(&icloud_path),
-            Some("iCloud".to_string())
-        );
+        assert_eq!(detect_sync_folder(&icloud_path), Some("iCloud".to_string()));
 
         let normal_path = PathBuf::from("/Users/steve/projects/test");
         assert_eq!(detect_sync_folder(&normal_path), None);

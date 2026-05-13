@@ -1,3 +1,4 @@
+use crate::agent::worktree::get_repo_name;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -211,9 +212,11 @@ pub fn load_team_config(project_root: &Path) -> Result<TeamState> {
                 state.stub_roles.push(config.role.clone());
             }
             if let Some(ref wt) = config.worktree_path {
+                let repo_name = get_repo_name(project_root).unwrap_or_default();
+                let resolved = wt.replace("{project_name}", &repo_name);
                 state
                     .worktree_paths
-                    .insert(config.role.clone(), PathBuf::from(wt));
+                    .insert(config.role.clone(), PathBuf::from(resolved));
             }
             state.agents.insert(config.role.clone(), config);
         }
@@ -236,9 +239,11 @@ pub fn load_team_config(project_root: &Path) -> Result<TeamState> {
                     state.stub_roles.push(config.role.clone());
                 }
                 if let Some(ref wt) = config.worktree_path {
+                    let repo_name = get_repo_name(project_root).unwrap_or_default();
+                    let resolved = wt.replace("{project_name}", &repo_name);
                     state
                         .worktree_paths
-                        .insert(config.role.clone(), PathBuf::from(wt));
+                        .insert(config.role.clone(), PathBuf::from(resolved));
                 }
                 state.agents.insert(config.role.clone(), config);
             }

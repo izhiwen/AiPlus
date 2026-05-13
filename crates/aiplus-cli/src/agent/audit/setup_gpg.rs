@@ -182,9 +182,7 @@ fn generate_key(gpg: &str, sentinel: &Sentinel, passphrase: &str, gnupg_home: &P
             .context("failed to send passphrase to gpg")?;
     }
 
-    let output = child
-        .wait_with_output()
-        .context("gpg process failed")?;
+    let output = child.wait_with_output().context("gpg process failed")?;
 
     fs::remove_file(&batch_path).ok();
 
@@ -243,9 +241,7 @@ fn generate_key_rsa(
             .context("failed to send passphrase to gpg")?;
     }
 
-    let output = child
-        .wait_with_output()
-        .context("gpg RSA process failed")?;
+    let output = child.wait_with_output().context("gpg RSA process failed")?;
 
     fs::remove_file(&batch_path).ok();
 
@@ -396,7 +392,11 @@ mod tests {
         std::env::set_current_dir(&temp).unwrap();
 
         fs::create_dir_all(".aiplus/agent-team").unwrap();
-        fs::write(SENTINEL_PATH, "name: Alice Developer\nemail: alice@example.com\n").unwrap();
+        fs::write(
+            SENTINEL_PATH,
+            "name: Alice Developer\nemail: alice@example.com\n",
+        )
+        .unwrap();
 
         let sentinel = verify_sentinel().unwrap();
         assert_eq!(sentinel.name, "Alice Developer");
@@ -440,7 +440,10 @@ mod tests {
 
         // Create a fake gpg binary that prints the mock output
         let fake_gpg = temp.path().join("gpg");
-        let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", gpg_output.replace('\\', "\\\\").replace('\'', "'\\''"));
+        let script = format!(
+            "#!/bin/sh\nprintf '%s' '{}'\n",
+            gpg_output.replace('\\', "\\\\").replace('\'', "'\\''")
+        );
         fs::write(&fake_gpg, script).unwrap();
         {
             use std::os::unix::fs::PermissionsExt;
@@ -464,7 +467,10 @@ mod tests {
         fs::create_dir_all(&gnupg).unwrap();
 
         let fake_gpg = temp.path().join("gpg");
-        let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", gpg_output.replace('\\', "\\\\").replace('\'', "'\\''"));
+        let script = format!(
+            "#!/bin/sh\nprintf '%s' '{}'\n",
+            gpg_output.replace('\\', "\\\\").replace('\'', "'\\''")
+        );
         fs::write(&fake_gpg, script).unwrap();
         {
             use std::os::unix::fs::PermissionsExt;
@@ -475,6 +481,9 @@ mod tests {
 
         let result = capture_fingerprint(fake_gpg.to_str().unwrap(), &gnupg);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("could not find key fingerprint"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("could not find key fingerprint"));
     }
 }

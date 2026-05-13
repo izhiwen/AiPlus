@@ -59,11 +59,7 @@ impl BinAliases {
             Platform::Linux => &cmd.linux,
             Platform::MacOS => {
                 let tokens = shell_words::split(&cmd.macos).map_err(|e| {
-                    anyhow!(
-                        "Failed to tokenize macos command for '{}': {}",
-                        alias,
-                        e
-                    )
+                    anyhow!("Failed to tokenize macos command for '{}': {}", alias, e)
                 })?;
                 if let Some(program) = tokens.first() {
                     if !command_exists(program) {
@@ -184,7 +180,10 @@ mod tests {
         let aliases = test_aliases();
         let result = aliases.resolve("unknown", Platform::Linux);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown bin alias"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown bin alias"));
     }
 
     #[test]
@@ -201,7 +200,9 @@ mod tests {
     #[test]
     fn test_substitute_spaces_in_path() {
         let aliases = test_aliases();
-        let cmd = aliases.substitute("{sha256} \"name with spaces.txt\"").unwrap();
+        let cmd = aliases
+            .substitute("{sha256} \"name with spaces.txt\"")
+            .unwrap();
         if current_platform() == Platform::MacOS {
             assert_eq!(cmd, "shasum -a 256 \"name with spaces.txt\"");
         } else {
@@ -212,7 +213,9 @@ mod tests {
     #[test]
     fn test_substitute_multiple_aliases() {
         let aliases = test_aliases();
-        let cmd = aliases.substitute("{sha256} file.txt && {md5} file.txt").unwrap();
+        let cmd = aliases
+            .substitute("{sha256} file.txt && {md5} file.txt")
+            .unwrap();
         if current_platform() == Platform::MacOS {
             assert_eq!(cmd, "shasum -a 256 file.txt && md5 file.txt");
         } else {

@@ -5,17 +5,19 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use aiplus_core::agent_team::types::{
-    AuditMetrics, AuditReport, AuditRun, BlockedDeliverable, Check,
-    CheckCombiner, CheckKind, CheckReport, Deliverable, DeliverableReport,
-    AuditorVerdict,
+    AuditMetrics, AuditReport, AuditRun, AuditorVerdict, BlockedDeliverable, Check, CheckCombiner,
+    CheckKind, CheckReport, Deliverable, DeliverableReport,
 };
-use aiplus_core::auditor::gate::{GateResult, PreAuditGate};
-use aiplus_core::auditor::evidence_collector::{CheckEvidence, EvidenceCollector};
 use aiplus_core::auditor::drift::{DriftDetector, DriftThresholds};
+use aiplus_core::auditor::evidence_collector::{CheckEvidence, EvidenceCollector};
+use aiplus_core::auditor::gate::{GateResult, PreAuditGate};
 
-const SCHEMA_PATH: &str = ".aiplus/agent-team/acceptance/v0.1.4/schema.yaml";
+const EMBEDDED_SCHEMA_PATH: &str = "aiplus-agent-team/core/schemas/acceptance-v0.1.4.yaml";
+const SCHEMA_SHA256: &str = "06ee2b35466f6bd2019dbed3bf70384f98428f5eacd6cc117ba2e74fcaf5b526";
+const LEGACY_SCHEMA_PATH: &str = ".aiplus/agent-team/acceptance/v0.1.4/schema.yaml";
 const AUDIT_TRAIL_DIR: &str = ".aiplus/agent-team/audit-trail";
 const RELEASE_MANIFEST_PATH: &str = ".aiplus/agent-team/release-manifest.yaml";
 const FINGERPRINT_PATH: &str = ".aiplus/agent-team/owner-key-fingerprint";
@@ -31,9 +33,12 @@ struct SchemaFile {
 }
 
 /// Entry point for `audit run`.
-pub fn handle_run(deliverable_filter: Option<&str>, _mode: &str) -> Result<()> {
+pub fn handle_run(
+    deliverable_filter: Option<&str>,
+    _mode: &str,
+    schema_path_override: Option<&str>,
+) -> Result<()> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
-    let schema_path = cwd.join(SCHEMA_PATH);
     let manifest_path = cwd.join(RELEASE_MANIFEST_PATH);
     let lock_path = cwd.join(".aiplus/agent-team/.audit.lock");
     let fingerprint_path = cwd.join(FINGERPRINT_PATH);
@@ -41,7 +46,12 @@ pub fn handle_run(deliverable_filter: Option<&str>, _mode: &str) -> Result<()> {
     let audit_trail = cwd.join(AUDIT_TRAIL_DIR);
 
     // Run pre-audit gate
-    let gate = PreAuditGate::new(&manifest_path, &lock_path, &fingerprint_path, &sentinel_path);
+    let gate = PreAuditGate::new(
+        &manifest_path,
+        &lock_path,
+        &fingerprint_path,
+        &sentinel_path,
+    );
     let gate_result = gate.run().context("pre-audit gate failed")?;
 
     let run_id = format!("audit-run-{}", aiplus_core::epoch_millis());
@@ -61,8 +71,8 @@ pub fn handle_run(deliverable_filter: Option<&str>, _mode: &str) -> Result<()> {
 
     match gate_result {
         GateResult::Passed => {
-            // Load schema
-            let schema = load_schema(&schema_path)?;
+            // Load schema (embedded by default, overridden via --schema-path)
+            let schema = load_schema(schema_path_override)?;
             let deliverables = filter_deliverables(schema.deliverables, deliverable_filter);
 
             for deliverable in deliverables {
@@ -143,18 +153,29 @@ pub fn handle_run(deliverable_filter: Option<&str>, _mode: &str) -> Result<()> {
     Ok(())
 }
 
-fn load_schema(path: &Path) -> Result<SchemaFile> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read schema at {}", path.display()))?;
-    let schema: SchemaFile = serde_yaml_ng::from_str(&content)
-        .with_context(|| "failed to parse acceptance schema")?;
+fn load_schema(schema_path_override: Option<&str>) -> Result<SchemaFile> {
+    let content = if let Some(path) = schema_path_override {
+        fs::read_to_string(path)
+            .with_context(|| format!("failed to read schema override at {path}"))?
+    } else {
+        let embedded = aiplus_core::embedded_asset_text(EMBEDDED_SCHEMA_PATH)
+            .with_context(|| "embedded acceptance schema not found")?;
+        // Verify SHA256 of embedded asset matches expected
+        let mut hasher = Sha256::new();
+        hasher.update(&embedded);
+        let computed = hex::encode(hasher.finalize());
+        anyhow::ensure!(
+            computed == SCHEMA_SHA256,
+            "embedded schema SHA256 mismatch: expected {SCHEMA_SHA256}, got {computed}"
+        );
+        embedded
+    };
+    let schema: SchemaFile =
+        serde_yaml_ng::from_str(&content).with_context(|| "failed to parse acceptance schema")?;
     Ok(schema)
 }
 
-fn filter_deliverables(
-    all: Vec<Deliverable>,
-    filter: Option<&str>,
-) -> Vec<Deliverable> {
+fn filter_deliverables(all: Vec<Deliverable>, filter: Option<&str>) -> Vec<Deliverable> {
     match filter {
         Some(id) => all.into_iter().filter(|d| d.deliverable_id == id).collect(),
         None => all,
@@ -264,7 +285,12 @@ fn execute_check(check: &Check) -> Result<(bool, Option<i32>, Option<String>, Op
             let passed = stdout.contains(needle);
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let error = if passed { None } else { Some(stderr) };
-            Ok((passed, output.status.code(), Some(stdout.to_string()), error))
+            Ok((
+                passed,
+                output.status.code(),
+                Some(stdout.to_string()),
+                error,
+            ))
         }
     }
 }
@@ -290,11 +316,39 @@ fn compute_overall_verdict(
     if deliverables.is_empty() {
         return AuditorVerdict::NeedsFix;
     }
-    if deliverables.iter().all(|d| d.verdict == AuditorVerdict::Pass) {
+    if deliverables
+        .iter()
+        .all(|d| d.verdict == AuditorVerdict::Pass)
+    {
         AuditorVerdict::Pass
-    } else if deliverables.iter().any(|d| d.verdict == AuditorVerdict::Fail) {
+    } else if deliverables
+        .iter()
+        .any(|d| d.verdict == AuditorVerdict::Fail)
+    {
         AuditorVerdict::Fail
     } else {
         AuditorVerdict::NeedsFix
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_override_loads_from_filesystem() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("override.yaml");
+        fs::write(
+            &path,
+            r#"schema_version: "0.1.4"
+deliverables: []
+"#,
+        )
+        .unwrap();
+        let schema =
+            load_schema(Some(path.to_str().unwrap())).expect("override schema should load");
+        assert_eq!(schema.schema_version, "0.1.4");
+        assert!(schema.deliverables.is_empty());
     }
 }

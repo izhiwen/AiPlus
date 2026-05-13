@@ -131,7 +131,8 @@ impl DriftDetector {
             }
 
             // Check baseline staleness
-            if Self::days_between(&base.timestamp, &new_run.timestamp) > self.baseline_max_age_days {
+            if Self::days_between(&base.timestamp, &new_run.timestamp) > self.baseline_max_age_days
+            {
                 findings.push(DriftFinding {
                     drift_type: DriftType::BaselineStale,
                     deliverable_id: new_run.deliverable_id.clone(),
@@ -343,8 +344,20 @@ mod tests {
         };
         let mut detector = DriftDetector::new(thresholds);
 
-        detector.record_run(make_run("r1", "del-a", Tier::Light, AuditorVerdict::Pass, "h1"));
-        detector.record_run(make_run("r2", "del-a", Tier::Light, AuditorVerdict::Pass, "h2"));
+        detector.record_run(make_run(
+            "r1",
+            "del-a",
+            Tier::Light,
+            AuditorVerdict::Pass,
+            "h1",
+        ));
+        detector.record_run(make_run(
+            "r2",
+            "del-a",
+            Tier::Light,
+            AuditorVerdict::Pass,
+            "h2",
+        ));
 
         let new_run = make_run("r3", "del-a", Tier::Light, AuditorVerdict::Pass, "h3");
         let findings = detector.detect_drift(&new_run);
@@ -384,9 +397,27 @@ mod tests {
         let thresholds = DriftThresholds::default();
         let mut detector = DriftDetector::new(thresholds);
 
-        detector.record_run(make_run("r1", "del-a", Tier::Light, AuditorVerdict::Pass, "h1"));
-        detector.record_run(make_run("r2", "del-a", Tier::Medium, AuditorVerdict::Pass, "h2"));
-        detector.record_run(make_run("r3", "del-b", Tier::Light, AuditorVerdict::Pass, "h3"));
+        detector.record_run(make_run(
+            "r1",
+            "del-a",
+            Tier::Light,
+            AuditorVerdict::Pass,
+            "h1",
+        ));
+        detector.record_run(make_run(
+            "r2",
+            "del-a",
+            Tier::Medium,
+            AuditorVerdict::Pass,
+            "h2",
+        ));
+        detector.record_run(make_run(
+            "r3",
+            "del-b",
+            Tier::Light,
+            AuditorVerdict::Pass,
+            "h3",
+        ));
 
         assert_eq!(detector.count_for("del-a", Tier::Light), 1);
         assert_eq!(detector.count_for("del-a", Tier::Medium), 1);
@@ -428,16 +459,14 @@ mod tests {
         let thresholds = DriftThresholds::default();
         let detector = DriftDetector::new(thresholds);
 
-        let findings = vec![
-            DriftFinding {
-                drift_type: DriftType::ThresholdExceeded,
-                deliverable_id: "del-a".to_string(),
-                run_id: "run-1".to_string(),
-                baseline_run_id: None,
-                message: "Too many audits".to_string(),
-                priority: "HIGH".to_string(),
-            },
-        ];
+        let findings = vec![DriftFinding {
+            drift_type: DriftType::ThresholdExceeded,
+            deliverable_id: "del-a".to_string(),
+            run_id: "run-1".to_string(),
+            baseline_run_id: None,
+            message: "Too many audits".to_string(),
+            priority: "HIGH".to_string(),
+        }];
 
         let entries = detector.enqueue_findings(&findings);
         assert_eq!(entries.len(), 1);

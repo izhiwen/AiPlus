@@ -39,8 +39,8 @@ fn read_last_audit_run(path: &Path) -> Result<Option<String>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut last_ts = None;
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
@@ -56,12 +56,15 @@ fn count_pending_spot_checks(path: &Path) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut pending = 0;
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
-            let retracted = value.get("retracted").and_then(|v| v.as_bool()).unwrap_or(false);
+            let retracted = value
+                .get("retracted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let has_owner = value.get("owner_verdict").is_some();
             if !retracted && !has_owner {
                 pending += 1;
@@ -75,14 +78,17 @@ fn read_canary_state(path: &Path) -> Result<String> {
     if !path.exists() {
         return Ok("not initialized".to_string());
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     // Read the last line (most recent state)
     let last_line = content.lines().filter(|l| !l.trim().is_empty()).last();
     match last_line {
         Some(line) => {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
-                let count = value.get("audit_run_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                let count = value
+                    .get("audit_run_count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 let drops = value
                     .get("consecutive_drop_runs")
                     .and_then(|v| v.as_u64())
@@ -100,7 +106,7 @@ fn count_drift_findings(path: &Path) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok(content.lines().filter(|l| !l.trim().is_empty()).count())
 }

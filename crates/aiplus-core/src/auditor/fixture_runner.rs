@@ -1,8 +1,8 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 
 /// Fail modes for fixture categorization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -119,8 +119,14 @@ impl FixtureRunner {
             .with_context(|| format!("Failed to read {:?}", test_sh_path))?;
 
         let fixtures = Self::parse_fixtures(&content);
-        let pass_count = fixtures.iter().filter(|f| f.kind == FixtureKind::Pass).count();
-        let fail_fixtures: Vec<_> = fixtures.iter().filter(|f| f.kind == FixtureKind::Fail).collect();
+        let pass_count = fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::Pass)
+            .count();
+        let fail_fixtures: Vec<_> = fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::Fail)
+            .collect();
         let fail_count = fail_fixtures.len();
 
         let mut fail_modes = HashSet::new();
@@ -337,8 +343,20 @@ mod tests {
 "#;
         let fixtures = FixtureRunner::parse_fixtures(content);
         assert_eq!(fixtures.len(), 5);
-        assert_eq!(fixtures.iter().filter(|f| f.kind == FixtureKind::Pass).count(), 1);
-        assert_eq!(fixtures.iter().filter(|f| f.kind == FixtureKind::Fail).count(), 4);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|f| f.kind == FixtureKind::Pass)
+                .count(),
+            1
+        );
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter(|f| f.kind == FixtureKind::Fail)
+                .count(),
+            4
+        );
     }
 
     #[test]

@@ -9,11 +9,7 @@ const AUDIT_RUNS_PATH: &str = ".aiplus/agent-team/audit-trail/audit-runs.jsonl";
 const OWNER_FEEDBACK_PATH: &str = ".aiplus/agent-team/audit-trail/owner-feedback.jsonl";
 
 /// Entry point for `audit owner-feedback`.
-pub fn handle_owner_feedback(
-    run_id: &str,
-    actual_verdict: &str,
-    note: Option<&str>,
-) -> Result<()> {
+pub fn handle_owner_feedback(run_id: &str, actual_verdict: &str, note: Option<&str>) -> Result<()> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
     let audit_runs_path = cwd.join(AUDIT_RUNS_PATH);
     let feedback_path = cwd.join(OWNER_FEEDBACK_PATH);
@@ -31,10 +27,8 @@ pub fn handle_owner_feedback(
         "timestamp": aiplus_core::now_iso(),
     });
 
-    aiplus_core::append_jsonl_atomic(&feedback_path,
-        &feedback.to_string(),
-    )
-    .with_context(|| "failed to write owner-feedback.jsonl")?;
+    aiplus_core::append_jsonl_atomic(&feedback_path, &feedback.to_string())
+        .with_context(|| "failed to write owner-feedback.jsonl")?;
 
     println!("Owner feedback recorded for run {}", run_id);
     Ok(())
@@ -44,8 +38,8 @@ fn find_audit_run(path: &Path, run_id: &str) -> Result<Option<AuditRun>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         let run: AuditRun = serde_json::from_str(line)
             .with_context(|| format!("failed to parse audit run line: {line}"))?;

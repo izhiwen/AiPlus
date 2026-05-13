@@ -46,12 +46,7 @@ fn setup_gpg_sentinel_absent_exits_3() {
     fs::create_dir(target.join("fake-codex-home")).unwrap();
     fs::create_dir(target.join("fake-xdg")).unwrap();
 
-    let output = run(
-        target,
-        &["agent", "audit", "setup-gpg"],
-        3,
-        &[],
-    );
+    let output = run(target, &["agent", "audit", "setup-gpg"], 3, &[]);
     let err = stderr(&output);
     assert!(err.contains("First-run GPG setup requires Owner authorization"));
     assert!(err.contains("cat > .aiplus/agent-team/.owner-setup-authorized"));
@@ -73,12 +68,7 @@ fn setup_gpg_sentinel_malformed_exits_3() {
     )
     .unwrap();
 
-    let output = run(
-        target,
-        &["agent", "audit", "setup-gpg"],
-        3,
-        &[],
-    );
+    let output = run(target, &["agent", "audit", "setup-gpg"], 3, &[]);
     let err = stderr(&output);
     assert!(err.contains("First-run GPG setup requires Owner authorization"));
 }
@@ -145,7 +135,11 @@ exit 0
         ],
     );
     let out = stdout(&output);
-    assert!(out.contains("MANIFEST_SIGNING=gpg_ephemeral_dev"), "got: {}", out);
+    assert!(
+        out.contains("MANIFEST_SIGNING=gpg_ephemeral_dev"),
+        "got: {}",
+        out
+    );
     assert!(out.contains("SETUP_GPG_STATUS=PASS"), "got: {}", out);
 
     // Sentinel should be deleted
@@ -157,5 +151,8 @@ exit 0
     let fingerprint_path = target.join(".aiplus/agent-team/owner-key-fingerprint");
     assert!(fingerprint_path.exists());
     let fingerprint = fs::read_to_string(&fingerprint_path).unwrap();
-    assert_eq!(fingerprint.trim(), "A1B2C3D4E5F678901234567890ABCDEF12345678");
+    assert_eq!(
+        fingerprint.trim(),
+        "A1B2C3D4E5F678901234567890ABCDEF12345678"
+    );
 }

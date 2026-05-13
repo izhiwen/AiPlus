@@ -3388,17 +3388,41 @@ fn cli_parity_basic_command_structure() {
     // aiplus agent --help contains expected subcommands
     let help = stdout(&run(target, &["agent", "--help"], 0));
     for subcommand in [
-        "status", "doctor", "list", "talk", "route", "reset", "invite", "dismiss", "disable",
-        "enable", "integrate", "transcript", "prune-worktrees", "audit",
+        "status",
+        "doctor",
+        "list",
+        "talk",
+        "route",
+        "reset",
+        "invite",
+        "dismiss",
+        "disable",
+        "enable",
+        "integrate",
+        "transcript",
+        "prune-worktrees",
+        "audit",
     ] {
-        assert!(help.contains(subcommand), "help missing subcommand: {}", subcommand);
+        assert!(
+            help.contains(subcommand),
+            "help missing subcommand: {}",
+            subcommand
+        );
     }
 
     // aiplus agent audit --help contains 9 audit subcommands
     let audit_help = stdout(&run(target, &["agent", "audit", "--help"], 0));
     let audit_subcommands = [
-        "run", "canary", "replay", "owner-feedback", "owner-feedback-retract", "force-skip",
-        "re-sign-manifest", "setup-gpg", "weekly-spot-check", "status",
+        "run",
+        "canary",
+        "replay",
+        "owner-feedback",
+        "owner-feedback-retract",
+        "force-skip",
+        "re-sign-manifest",
+        "setup-gpg",
+        "weekly-spot-check",
+        "status",
     ];
     let mut found = 0;
     for sub in &audit_subcommands {
@@ -3423,7 +3447,11 @@ fn chinese_aliases_parity() {
 
     // aiplus 团队 works (top-level alias → agent status)
     let team = stdout(&run(target, &["团队"], 0));
-    assert!(team.contains("AiPlus Agent Team v0.1"), "团队 alias failed:\n{}", team);
+    assert!(
+        team.contains("AiPlus Agent Team v0.1"),
+        "团队 alias failed:\n{}",
+        team
+    );
     assert!(team.contains("Team Roster:"));
 
     // aiplus 审计 状态 works (top-level alias → agent audit status)
@@ -3601,7 +3629,11 @@ fn worktree_lifecycle_parity() {
 
     // Verify no agent worktrees remain
     let remaining = list_agent_worktrees(target);
-    assert!(remaining.is_empty(), "Expected no remaining agent worktrees, found: {:?}", remaining);
+    assert!(
+        remaining.is_empty(),
+        "Expected no remaining agent worktrees, found: {:?}",
+        remaining
+    );
 }
 
 #[test]
@@ -3646,7 +3678,8 @@ fn warm_bench_cache_parity() {
     // After dismiss, route should still reuse worktree (git-level cache), but warm-bench cache was invalidated
     let route_after_dismiss = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
     assert!(
-        route_after_dismiss.contains("Using existing worktree:") || route_after_dismiss.contains("Creating worktree for engineer-a"),
+        route_after_dismiss.contains("Using existing worktree:")
+            || route_after_dismiss.contains("Creating worktree for engineer-a"),
         "route after dismiss should succeed:\n{}",
         route_after_dismiss
     );
@@ -3683,7 +3716,8 @@ fn acceptance_scenario_parity() {
     // Step 1: Route engineer-a
     let route_a = stdout(&run(target, &["agent", "route", "engineer-a"], 0));
     assert!(
-        route_a.contains("Creating worktree for engineer-a") || route_a.contains("Worktree created:"),
+        route_a.contains("Creating worktree for engineer-a")
+            || route_a.contains("Worktree created:"),
         "step 1 route engineer-a failed:\n{}",
         route_a
     );
@@ -3691,7 +3725,8 @@ fn acceptance_scenario_parity() {
     // Step 2: Route engineer-b
     let route_b = stdout(&run(target, &["agent", "route", "engineer-b"], 0));
     assert!(
-        route_b.contains("Creating worktree for engineer-b") || route_b.contains("Worktree created:"),
+        route_b.contains("Creating worktree for engineer-b")
+            || route_b.contains("Worktree created:"),
         "step 2 route engineer-b failed:\n{}",
         route_b
     );
@@ -3705,7 +3740,8 @@ fn acceptance_scenario_parity() {
     );
 
     // Step 4: Integrate engineer-a (after making a commit in its worktree)
-    let worktree_a = get_worktree_path(target, "engineer-a").expect("engineer-a worktree should exist");
+    let worktree_a =
+        get_worktree_path(target, "engineer-a").expect("engineer-a worktree should exist");
     fs::write(worktree_a.join("feature-a.txt"), "feature a\n").unwrap();
     Command::new("git")
         .args(["add", "feature-a.txt"])

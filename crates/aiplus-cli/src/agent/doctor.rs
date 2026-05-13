@@ -28,8 +28,7 @@ pub fn handle_doctor() -> Result<()> {
         }
         println!();
 
-        if let Some(ref wt) = config.worktree_path {
-            let path = std::path::PathBuf::from(wt);
+        if let Some(path) = state.worktree_paths.get(role) {
             if !path.exists() && config.needs_worktree {
                 println!("    WARNING: worktree {} does not exist", path.display());
             }

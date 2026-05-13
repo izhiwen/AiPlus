@@ -5758,6 +5758,7 @@ fn install_base(
 fn agent_team_init(root: &Path) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir)?;
+    std::fs::create_dir_all(root.join(".aiplus").join("agent-team"))?;
     std::fs::create_dir_all(agents_dir.join("personas"))?;
     std::fs::create_dir_all(agents_dir.join("personas").join("_stubs"))?;
     std::fs::create_dir_all(agents_dir.join("experts"))?;
@@ -9348,6 +9349,7 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/restore".to_string(),
         ".aiplus/consultant-team.toml".to_string(),
         ".aiplus/agents".to_string(),
+        ".aiplus/agent-team".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());

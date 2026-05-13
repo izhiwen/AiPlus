@@ -5,8 +5,8 @@ pub mod canary;
 pub mod force_skip;
 pub mod owner_feedback;
 pub mod owner_feedback_retract;
-pub mod replay;
 pub mod re_sign_manifest;
+pub mod replay;
 pub mod run;
 pub mod setup_gpg;
 pub mod status;
@@ -27,6 +27,8 @@ pub enum AuditSub {
         deliverable: Option<String>,
         #[arg(long, default_value = "deterministic")]
         mode: String,
+        #[arg(long, value_name = "PATH", hide = true)]
+        schema_path: Option<String>,
     },
 
     /// Trigger canary replay
@@ -35,9 +37,7 @@ pub enum AuditSub {
 
     /// Replay a specific audit run
     #[command(visible_aliases = ["重放", "回放"])]
-    Replay {
-        run_id: String,
-    },
+    Replay { run_id: String },
 
     /// Owner feedback on audit results
     #[command(visible_aliases = ["反馈", "评价"])]
@@ -51,9 +51,7 @@ pub enum AuditSub {
 
     /// Retract owner feedback
     #[command(visible_aliases = ["撤回", "取消"])]
-    OwnerFeedbackRetract {
-        run_id: String,
-    },
+    OwnerFeedbackRetract { run_id: String },
 
     /// Force skip an audit step
     #[command(visible_aliases = ["跳过", "强跳"])]
@@ -82,7 +80,11 @@ pub enum AuditSub {
 
 pub fn dispatch(args: AuditArgs) -> anyhow::Result<()> {
     match args.subcommand {
-        AuditSub::Run { deliverable, mode } => run::handle_run(deliverable.as_deref(), &mode),
+        AuditSub::Run {
+            deliverable,
+            mode,
+            schema_path,
+        } => run::handle_run(deliverable.as_deref(), &mode, schema_path.as_deref()),
         AuditSub::Canary => {
             println!("Canary command not yet implemented in v0.1");
             Ok(())

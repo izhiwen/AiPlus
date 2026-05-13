@@ -22,6 +22,9 @@ pub fn handle_force_skip(gate_id: &str, reason: &str) -> Result<()> {
     aiplus_core::append_jsonl_atomic(&skips_path, &entry.to_string())
         .with_context(|| "failed to write force-skips.jsonl")?;
 
-    println!("Force-skip recorded for gate {} (flagged in report)", gate_id);
+    println!(
+        "Force-skip recorded for gate {} (flagged in report)",
+        gate_id
+    );
     Ok(())
 }

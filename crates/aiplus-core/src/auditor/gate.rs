@@ -62,6 +62,9 @@ impl PreAuditGate {
     /// Returns `GateResult::Passed` only if **all** steps pass.
     pub fn run(&self) -> Result<GateResult> {
         // Step 0 (concurrency): Acquire exclusive flock on audit lock.
+        if let Some(parent) = self.lock_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let _guard = match FlockGuard::try_lock_exclusive(&self.lock_path)? {
             Some(guard) => guard,
             None => return Ok(GateResult::AuditInProgress),
@@ -171,7 +174,10 @@ impl PreAuditGate {
     // Step 2: Manifest clean in git
     // ------------------------------------------------------------------
     fn step2_manifest_clean(&self) -> Result<StepResult> {
-        let cwd = self.manifest_path.parent().unwrap_or_else(|| Path::new("."));
+        let cwd = self
+            .manifest_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
         let output = Command::new("git")
             .current_dir(cwd)
             .args([
@@ -198,7 +204,10 @@ impl PreAuditGate {
     // Step 3: GPG signature + fingerprint match
     // ------------------------------------------------------------------
     fn step3_manifest_signature(&self) -> Result<StepResult> {
-        let cwd = self.manifest_path.parent().unwrap_or_else(|| Path::new("."));
+        let cwd = self
+            .manifest_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
         let output = Command::new("git")
             .current_dir(cwd)
             .args([
@@ -230,8 +239,12 @@ impl PreAuditGate {
             return Ok(StepResult::Fail(BlockedReason::ManifestUnsignedOrWrongKey));
         }
 
-        let recorded = fs::read_to_string(&self.fingerprint_path)
-            .with_context(|| format!("failed to read fingerprint at {}", self.fingerprint_path.display()))?;
+        let recorded = fs::read_to_string(&self.fingerprint_path).with_context(|| {
+            format!(
+                "failed to read fingerprint at {}",
+                self.fingerprint_path.display()
+            )
+        })?;
 
         if commit_fingerprint != recorded.trim() {
             return Ok(StepResult::Fail(BlockedReason::ManifestUnsignedOrWrongKey));
@@ -244,8 +257,12 @@ impl PreAuditGate {
     // Manifest loader
     // ------------------------------------------------------------------
     fn load_manifest(&self) -> Result<ReleaseManifest> {
-        let content = fs::read_to_string(&self.manifest_path)
-            .with_context(|| format!("failed to read manifest at {}", self.manifest_path.display()))?;
+        let content = fs::read_to_string(&self.manifest_path).with_context(|| {
+            format!(
+                "failed to read manifest at {}",
+                self.manifest_path.display()
+            )
+        })?;
         let manifest: ReleaseManifest = serde_yaml_ng::from_str(&content)
             .with_context(|| "failed to parse release manifest")?;
         Ok(manifest)
@@ -254,7 +271,11 @@ impl PreAuditGate {
     // ------------------------------------------------------------------
     // Steps 4-8: Hash chain verification
     // ------------------------------------------------------------------
-    fn step4_bin_aliases(&self, manifest: &ReleaseManifest, cache: &mut FileCache) -> Result<HashVerdict> {
+    fn step4_bin_aliases(
+        &self,
+        manifest: &ReleaseManifest,
+        cache: &mut FileCache,
+    ) -> Result<HashVerdict> {
         let paths = self.resolve_paths(&manifest.bin_aliases)?;
         let actual = compute_list_hash(&paths, cache)?;
         Ok(if actual == manifest.bin_aliases_hash {
@@ -264,7 +285,11 @@ impl PreAuditGate {
         })
     }
 
-    fn step5_acceptance_schema(&self, manifest: &ReleaseManifest, cache: &mut FileCache) -> Result<HashVerdict> {
+    fn step5_acceptance_schema(
+        &self,
+        manifest: &ReleaseManifest,
+        cache: &mut FileCache,
+    ) -> Result<HashVerdict> {
         let paths = self.resolve_paths(&manifest.acceptance_files)?;
         let actual = compute_list_hash(&paths, cache)?;
         Ok(if actual == manifest.acceptance_schema_hash {
@@ -274,7 +299,11 @@ impl PreAuditGate {
         })
     }
 
-    fn step6_audit_scripts(&self, manifest: &ReleaseManifest, cache: &mut FileCache) -> Result<HashVerdict> {
+    fn step6_audit_scripts(
+        &self,
+        manifest: &ReleaseManifest,
+        cache: &mut FileCache,
+    ) -> Result<HashVerdict> {
         let paths = self.resolve_paths(&manifest.audit_scripts)?;
         let actual = compute_list_hash(&paths, cache)?;
         Ok(if actual == manifest.audit_scripts_hash {
@@ -284,7 +313,11 @@ impl PreAuditGate {
         })
     }
 
-    fn step7_audit_self_tests(&self, manifest: &ReleaseManifest, cache: &mut FileCache) -> Result<HashVerdict> {
+    fn step7_audit_self_tests(
+        &self,
+        manifest: &ReleaseManifest,
+        cache: &mut FileCache,
+    ) -> Result<HashVerdict> {
         let paths = self.resolve_paths(&manifest.audit_script_self_tests)?;
         let actual = compute_list_hash(&paths, cache)?;
         Ok(if actual == manifest.audit_script_self_tests_hash {
@@ -294,7 +327,11 @@ impl PreAuditGate {
         })
     }
 
-    fn step8_synthetic_fixtures(&self, manifest: &ReleaseManifest, cache: &mut FileCache) -> Result<HashVerdict> {
+    fn step8_synthetic_fixtures(
+        &self,
+        manifest: &ReleaseManifest,
+        cache: &mut FileCache,
+    ) -> Result<HashVerdict> {
         let paths = self.resolve_paths(&manifest.synthetic_fixtures)?;
         let actual = compute_list_hash(&paths, cache)?;
         Ok(if actual == manifest.synthetic_fixtures_hash {
@@ -305,7 +342,10 @@ impl PreAuditGate {
     }
 
     fn resolve_paths(&self, rel_paths: &[String]) -> Result<Vec<PathBuf>> {
-        let base = self.manifest_path.parent().unwrap_or_else(|| Path::new("."));
+        let base = self
+            .manifest_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
         Ok(rel_paths.iter().map(|p| base.join(p)).collect())
     }
 }
@@ -326,8 +366,7 @@ fn compute_file_hash_cached(path: &Path, cache: &mut FileCache) -> Result<String
         return Ok(hash.clone());
     }
 
-    let content = fs::read(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     let hash = sha256_bytes(&content);
     cache.insert(key, hash.clone());
     Ok(hash)
@@ -337,15 +376,17 @@ fn compute_file_hash_cached(path: &Path, cache: &mut FileCache) -> Result<String
 /// and compare the combined hash against the recorded value.
 fn compute_list_hash(paths: &[PathBuf], cache: &mut FileCache) -> Result<String> {
     let mut entries: Vec<(PathBuf, String)> = Vec::with_capacity(paths.len());
-    let mut threaded_results: Vec<(PathBuf, String, u64, SystemTime)> = Vec::with_capacity(paths.len());
+    let mut threaded_results: Vec<(PathBuf, String, u64, SystemTime)> =
+        Vec::with_capacity(paths.len());
 
     std::thread::scope(|s| {
         let handles: Vec<_> = paths
             .iter()
             .map(|path| {
                 s.spawn(move || -> Result<(PathBuf, String, u64, SystemTime)> {
-                    let metadata = fs::metadata(path)
-                        .with_context(|| format!("failed to read metadata for {}", path.display()))?;
+                    let metadata = fs::metadata(path).with_context(|| {
+                        format!("failed to read metadata for {}", path.display())
+                    })?;
                     let size = metadata.len();
                     let mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
                     let content = fs::read(path)
@@ -492,7 +533,10 @@ mod tests {
             &sentinel_path,
         );
         let result = gate.step1_sentinel().unwrap();
-        assert!(matches!(result, StepResult::Fail(BlockedReason::OwnershipUnverified)));
+        assert!(matches!(
+            result,
+            StepResult::Fail(BlockedReason::OwnershipUnverified)
+        ));
     }
 
     #[test]
@@ -508,7 +552,10 @@ mod tests {
             &sentinel_path,
         );
         let result = gate.step1_sentinel().unwrap();
-        assert!(matches!(result, StepResult::Fail(BlockedReason::OwnershipUnverified)));
+        assert!(matches!(
+            result,
+            StepResult::Fail(BlockedReason::OwnershipUnverified)
+        ));
     }
 
     #[test]
@@ -549,7 +596,10 @@ mod tests {
             tmp.path().join("sentinel"),
         );
         let result = gate.step2_manifest_clean().unwrap();
-        assert!(matches!(result, StepResult::Fail(BlockedReason::ManifestDirty)));
+        assert!(matches!(
+            result,
+            StepResult::Fail(BlockedReason::ManifestDirty)
+        ));
     }
 
     #[test]
@@ -718,6 +768,27 @@ mod tests {
     }
 
     #[test]
+    fn test_gate_creates_lock_parent_directory() {
+        let tmp = TempDir::new().unwrap();
+        let lock_path = tmp.path().join("deep").join("nested").join(".audit.lock");
+        let sentinel_path = tmp.path().join("sentinel");
+        write_file(&sentinel_path,
+            "name: Test\nemail: test@example.com\n",
+        );
+
+        let gate = PreAuditGate::new(
+            tmp.path().join("manifest.yaml"),
+            &lock_path,
+            tmp.path().join("fingerprint"),
+            &sentinel_path,
+        );
+        let result = gate.run().unwrap();
+        // Will fail at step2 (no git repo), but should NOT crash on missing parent dir
+        assert_ne!(result, GateResult::AuditInProgress);
+        assert!(lock_path.parent().unwrap().exists());
+    }
+
+    #[test]
     fn test_lock_released_on_drop_allows_next_run() {
         let tmp = TempDir::new().unwrap();
         let lock_path = tmp.path().join(".audit.lock");
@@ -804,7 +875,8 @@ mod tests {
         let mut cache = HashMap::new();
         let bin_aliases_hash = compute_list_hash(&[bin_aliases_path.clone()], &mut cache).unwrap();
         let acceptance_hash = compute_list_hash(&[acceptance_path.clone()], &mut cache).unwrap();
-        let audit_scripts_hash = compute_list_hash(&[audit_script_path.clone()], &mut cache).unwrap();
+        let audit_scripts_hash =
+            compute_list_hash(&[audit_script_path.clone()], &mut cache).unwrap();
         let self_tests_hash = compute_list_hash(&[self_test_path.clone()], &mut cache).unwrap();
         let fixtures_hash = compute_list_hash(&[fixture_path.clone()], &mut cache).unwrap();
 
@@ -847,14 +919,32 @@ mod tests {
         );
 
         assert!(matches!(gate.step1_sentinel().unwrap(), StepResult::Pass));
-        assert!(matches!(gate.step2_manifest_clean().unwrap(), StepResult::Pass));
+        assert!(matches!(
+            gate.step2_manifest_clean().unwrap(),
+            StepResult::Pass
+        ));
 
         let m = gate.load_manifest().unwrap();
         let mut cache = HashMap::new();
-        assert_eq!(gate.step4_bin_aliases(&m, &mut cache).unwrap(), HashVerdict::HASH_MATCH);
-        assert_eq!(gate.step5_acceptance_schema(&m, &mut cache).unwrap(), HashVerdict::HASH_MATCH);
-        assert_eq!(gate.step6_audit_scripts(&m, &mut cache).unwrap(), HashVerdict::HASH_MATCH);
-        assert_eq!(gate.step7_audit_self_tests(&m, &mut cache).unwrap(), HashVerdict::HASH_MATCH);
-        assert_eq!(gate.step8_synthetic_fixtures(&m, &mut cache).unwrap(), HashVerdict::HASH_MATCH);
+        assert_eq!(
+            gate.step4_bin_aliases(&m, &mut cache).unwrap(),
+            HashVerdict::HASH_MATCH
+        );
+        assert_eq!(
+            gate.step5_acceptance_schema(&m, &mut cache).unwrap(),
+            HashVerdict::HASH_MATCH
+        );
+        assert_eq!(
+            gate.step6_audit_scripts(&m, &mut cache).unwrap(),
+            HashVerdict::HASH_MATCH
+        );
+        assert_eq!(
+            gate.step7_audit_self_tests(&m, &mut cache).unwrap(),
+            HashVerdict::HASH_MATCH
+        );
+        assert_eq!(
+            gate.step8_synthetic_fixtures(&m, &mut cache).unwrap(),
+            HashVerdict::HASH_MATCH
+        );
     }
 }

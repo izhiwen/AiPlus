@@ -1,10 +1,10 @@
+use aiplus_core::agent_team::RoleId;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use aiplus_core::agent_team::RoleId;
 
 /// Cached state payload for a role.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,14 +101,12 @@ impl WarmBenchCache {
     }
 
     fn default_audit_log_path() -> Option<PathBuf> {
-        std::env::current_dir()
-            .ok()
-            .map(|root| {
-                root.join(".aiplus")
-                    .join("agent-team")
-                    .join("audit-trail")
-                    .join("cache-invalidations.log")
-            })
+        std::env::current_dir().ok().map(|root| {
+            root.join(".aiplus")
+                .join("agent-team")
+                .join("audit-trail")
+                .join("cache-invalidations.log")
+        })
     }
 
     fn log_invalidation(role: Option<&str>, reason: InvalidationReason, path: Option<&Path>) {
@@ -301,7 +299,10 @@ mod tests {
     #[test]
     fn invalidate_removes_entry() {
         let cache = WarmBenchCache::new_without_bg(3600);
-        cache.set("pm".to_string(), CachedState::new(r#"{"state":"planning"}"#.to_string()));
+        cache.set(
+            "pm".to_string(),
+            CachedState::new(r#"{"state":"planning"}"#.to_string()),
+        );
         assert!(cache.get("pm").is_some());
         cache.invalidate("pm", InvalidationReason::RoleDismissed);
         assert!(cache.get("pm").is_none());
@@ -310,8 +311,14 @@ mod tests {
     #[test]
     fn clear_removes_all_entries() {
         let cache = WarmBenchCache::new_without_bg(3600);
-        cache.set("ceo".to_string(), CachedState::new(r#"{"state":"reviewing"}"#.to_string()));
-        cache.set("architect".to_string(), CachedState::new(r#"{"state":"designing"}"#.to_string()));
+        cache.set(
+            "ceo".to_string(),
+            CachedState::new(r#"{"state":"reviewing"}"#.to_string()),
+        );
+        cache.set(
+            "architect".to_string(),
+            CachedState::new(r#"{"state":"designing"}"#.to_string()),
+        );
         cache.clear(InvalidationReason::CacheExplicitlyCleared);
         assert!(cache.get("ceo").is_none());
         assert!(cache.get("architect").is_none());
@@ -326,7 +333,10 @@ mod tests {
         for i in 0..5 {
             let cache = Arc::clone(&cache);
             handles.push(thread::spawn(move || {
-                cache.set(format!("role-{}", i), CachedState::new(format!("state-{}", i)));
+                cache.set(
+                    format!("role-{}", i),
+                    CachedState::new(format!("state-{}", i)),
+                );
             }));
         }
 
@@ -344,7 +354,10 @@ mod tests {
         for i in 0..5 {
             let cache = Arc::clone(&cache);
             handles.push(thread::spawn(move || {
-                cache.invalidate(&format!("role-{}", i), InvalidationReason::CacheExplicitlyCleared);
+                cache.invalidate(
+                    &format!("role-{}", i),
+                    InvalidationReason::CacheExplicitlyCleared,
+                );
             }));
         }
 
@@ -356,7 +369,10 @@ mod tests {
     #[test]
     fn background_thread_purges_expired() {
         let cache = WarmBenchCache::new(0); // TTL=0, bg thread will purge quickly
-        cache.set("test-role".to_string(), CachedState::new("data".to_string()));
+        cache.set(
+            "test-role".to_string(),
+            CachedState::new("data".to_string()),
+        );
 
         // Wait for background thread to run at least once
         thread::sleep(Duration::from_millis(300));
@@ -368,9 +384,15 @@ mod tests {
     #[test]
     fn sweep_expired_removes_stale_entries() {
         let cache = WarmBenchCache::new_without_bg(0);
-        cache.set("engineer-a".to_string(), CachedState::new(r#"{"state":"coding"}"#.to_string()));
+        cache.set(
+            "engineer-a".to_string(),
+            CachedState::new(r#"{"state":"coding"}"#.to_string()),
+        );
         thread::sleep(Duration::from_millis(10));
-        cache.set("engineer-b".to_string(), CachedState::new(r#"{"state":"reviewing"}"#.to_string()));
+        cache.set(
+            "engineer-b".to_string(),
+            CachedState::new(r#"{"state":"reviewing"}"#.to_string()),
+        );
         // With TTL=0, everything is expired immediately
         cache.sweep_expired();
         assert!(cache.get("engineer-a").is_none());
@@ -380,7 +402,10 @@ mod tests {
     #[test]
     fn invalidation_reason_is_tracked() {
         let cache = WarmBenchCache::new_without_bg(3600);
-        cache.set("reviewer".to_string(), CachedState::new(r#"{"state":"idle"}"#.to_string()));
+        cache.set(
+            "reviewer".to_string(),
+            CachedState::new(r#"{"state":"idle"}"#.to_string()),
+        );
         cache.invalidate("reviewer", InvalidationReason::RoleRouteCalled);
         // Should be gone regardless of reason
         assert!(cache.get("reviewer").is_none());

@@ -146,12 +146,7 @@ pub fn compute_dropped_count(deliverables: &[Deliverable], sample: &[Deliverable
 }
 
 /// Update canary state after an audit/canary run.
-pub fn update_canary_state(
-    state: &mut CanaryState,
-    triggered: bool,
-    dropped: u32,
-    now_iso: &str,
-) {
+pub fn update_canary_state(state: &mut CanaryState, triggered: bool, dropped: u32, now_iso: &str) {
     if triggered {
         state.last_canary_trigger = Some(now_iso.to_string());
     }
@@ -182,8 +177,7 @@ pub fn read_canary_state(path: &Path) -> Result<CanaryState> {
 
 /// Write canary state to a JSONL file (append mode).
 pub fn write_canary_state(path: &Path, state: &CanaryState) -> Result<()> {
-    let line =
-        serde_json::to_string(state).context("failed to serialize canary state")?;
+    let line = serde_json::to_string(state).context("failed to serialize canary state")?;
     std::fs::create_dir_all(path.parent().unwrap_or_else(|| Path::new(".")))?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -620,7 +614,10 @@ mod tests {
         write_canary_state(&path, &state).unwrap();
         let read = read_canary_state(&path).unwrap();
         assert_eq!(read.audit_run_count, 42);
-        assert_eq!(read.last_canary_trigger, Some("2024-03-01T00:00:00Z".to_string()));
+        assert_eq!(
+            read.last_canary_trigger,
+            Some("2024-03-01T00:00:00Z".to_string())
+        );
         assert_eq!(read.canary_dropped_this_run, 3);
         assert_eq!(read.consecutive_drop_runs, 2);
     }
@@ -640,13 +637,19 @@ mod tests {
         update_canary_state(&mut state, true, 2, "2024-01-01T00:00:00Z");
         assert_eq!(state.canary_dropped_this_run, 2);
         assert_eq!(state.consecutive_drop_runs, 1);
-        assert_eq!(state.last_canary_trigger, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(
+            state.last_canary_trigger,
+            Some("2024-01-01T00:00:00Z".to_string())
+        );
 
         update_canary_state(&mut state, false, 0, "2024-01-02T00:00:00Z");
         assert_eq!(state.canary_dropped_this_run, 0);
         assert_eq!(state.consecutive_drop_runs, 0);
         // Trigger false => last_canary_trigger unchanged
-        assert_eq!(state.last_canary_trigger, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(
+            state.last_canary_trigger,
+            Some("2024-01-01T00:00:00Z".to_string())
+        );
     }
 
     // ================================================================

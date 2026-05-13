@@ -63,7 +63,11 @@ pub fn handle_replay(run_id: &str) -> Result<()> {
         deliverables: baseline.deliverables.clone(),
         blocked_deliverables: baseline.blocked_deliverables.clone(),
         metrics: aiplus_core::agent_team::types::AuditMetrics {
-            total_checks: baseline.deliverables.iter().map(|d| d.checks.len() as u32).sum(),
+            total_checks: baseline
+                .deliverables
+                .iter()
+                .map(|d| d.checks.len() as u32)
+                .sum(),
             passed_checks: baseline
                 .deliverables
                 .iter()
@@ -77,15 +81,17 @@ pub fn handle_replay(run_id: &str) -> Result<()> {
                 .filter(|c| !c.passed)
                 .count() as u32,
             blocked_checks: baseline.blocked_deliverables.len() as u32,
-            total_execution_time_ms: baseline.deliverables.iter().map(|d| d.execution_time_ms).sum(),
+            total_execution_time_ms: baseline
+                .deliverables
+                .iter()
+                .map(|d| d.execution_time_ms)
+                .sum(),
             canary_dropped_this_run: 0,
         },
         owner_feedback_prompt: String::new(),
     };
 
-    let has_drift = super::canary::detect_drift(&baseline_report,
-        &replay_report,
-    );
+    let has_drift = super::canary::detect_drift(&baseline_report, &replay_report);
 
     if has_drift {
         println!("DRIFT_DETECTED: true");
@@ -103,14 +109,14 @@ pub fn handle_replay(run_id: &str) -> Result<()> {
             priority: "HIGH".to_string(),
         };
         let line = serde_json::to_string(&finding).context("failed to serialize drift finding")?;
-        aiplus_core::append_jsonl_atomic(
-            &drift_path, &line)
+        aiplus_core::append_jsonl_atomic(&drift_path, &line)
             .with_context(|| "failed to write drift-findings.jsonl")?;
     } else {
         println!("DRIFT_DETECTED: false");
     }
 
-    let yaml = serde_yaml_ng::to_string(&replay_report).context("failed to serialize replay report")?;
+    let yaml =
+        serde_yaml_ng::to_string(&replay_report).context("failed to serialize replay report")?;
     println!("{yaml}");
 
     Ok(())
@@ -120,8 +126,8 @@ fn find_audit_run(path: &Path, run_id: &str) -> Result<Option<AuditRun>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     for line in content.lines().filter(|l| !l.trim().is_empty()) {
         let run: AuditRun = serde_json::from_str(line)
             .with_context(|| format!("failed to parse audit run line: {line}"))?;
@@ -166,9 +172,15 @@ fn compute_overall_verdict(deliverables: &[DeliverableReport]) -> AuditorVerdict
     if deliverables.is_empty() {
         return AuditorVerdict::NeedsFix;
     }
-    if deliverables.iter().all(|d| d.verdict == AuditorVerdict::Pass) {
+    if deliverables
+        .iter()
+        .all(|d| d.verdict == AuditorVerdict::Pass)
+    {
         AuditorVerdict::Pass
-    } else if deliverables.iter().any(|d| d.verdict == AuditorVerdict::Fail) {
+    } else if deliverables
+        .iter()
+        .any(|d| d.verdict == AuditorVerdict::Fail)
+    {
         AuditorVerdict::Fail
     } else {
         AuditorVerdict::NeedsFix
