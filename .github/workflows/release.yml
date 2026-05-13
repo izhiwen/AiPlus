@@ -27,6 +27,9 @@ jobs:
             os: ubuntu-latest
             ext: tar.gz
             cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: zip
 
     steps:
       - uses: actions/checkout@v4
@@ -74,12 +77,35 @@ jobs:
           fi
           cat "${ASSET}.sha256"
 
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "target\${{ matrix.target }}\release\aiplus.exe"
+          $asset = "aiplus-${{ matrix.target }}.zip"
+          Compress-Archive -Path $bin -DestinationPath $asset -Force
+          Get-Item $asset
+          $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLower()
+          "$hash  $asset" | Out-File -Encoding ASCII -NoNewline "$asset.sha256"
+          Get-Content "$asset.sha256"
+
       - uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
         with:
           name: aiplus-${{ matrix.target }}
           path: |
             aiplus-${{ matrix.target }}.tar.gz
             aiplus-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: aiplus-${{ matrix.target }}
+          path: |
+            aiplus-${{ matrix.target }}.zip
+            aiplus-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -103,7 +129,8 @@ jobs:
           cd dist
           ls -la
           {
-            for f in aiplus-*.tar.gz; do
+            for f in aiplus-*.tar.gz aiplus-*.zip; do
+              [ -f "$f" ] || continue
               if command -v shasum >/dev/null 2>&1; then
                 shasum -a 256 "$f"
               else
@@ -113,8 +140,8 @@ jobs:
           } > checksums.txt
           echo "=== checksums.txt ==="
           cat checksums.txt
-          # Remove per-asset .sha256 files (we consolidated into checksums.txt)
-          rm -f aiplus-*.tar.gz.sha256
+          # Remove per-asset .sha256 files (consolidated into checksums.txt)
+          rm -f aiplus-*.tar.gz.sha256 aiplus-*.zip.sha256
 
       - name: Create or update GitHub Release
         env:
@@ -125,9 +152,10 @@ jobs:
           # Create a draft release so the Owner can review notes/assets before
           # making it visible to consumers. Owner promotes from draft via
           # GitHub UI or `gh release edit "${TAG}" --draft=false`.
+          ASSETS=$(ls dist/aiplus-*.tar.gz dist/aiplus-*.zip 2>/dev/null || true)
           gh release create "${TAG}" \
             --title "AiPlus ${TAG}" \
             --draft \
             --generate-notes \
-            dist/aiplus-*.tar.gz \
+            ${ASSETS} \
             dist/checksums.txt

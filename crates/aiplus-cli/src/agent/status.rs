@@ -43,9 +43,9 @@ pub fn handle_status(json_output: bool) -> Result<()> {
                 _ => None,
             };
             match other {
-                Some(other) => println!(
-                    "Active team: {team}  (switch with `aiplus agent set-team {other}`)"
-                ),
+                Some(other) => {
+                    println!("Active team: {team}  (switch with `aiplus agent set-team {other}`)")
+                }
                 None => println!("Active team: {team}"),
             }
         }

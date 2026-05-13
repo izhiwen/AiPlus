@@ -1360,8 +1360,8 @@ fn command_add_from_git(
         )
         .into());
     }
-    let manifest_text = std::fs::read_to_string(&manifest_path)
-        .context("read external module manifest")?;
+    let manifest_text =
+        std::fs::read_to_string(&manifest_path).context("read external module manifest")?;
     let manifest = aiplus_core::parse_module_manifest(&manifest_text)
         .with_context(|| format!("parse manifest from {normalized_url} (@{resolved_ref})"))?;
 
@@ -1423,7 +1423,9 @@ fn command_add_from_git(
     )?;
 
     if dry_run {
-        println!("AiPlus external module add plan: {module_name} from {normalized_url} @ {resolved_ref}");
+        println!(
+            "AiPlus external module add plan: {module_name} from {normalized_url} @ {resolved_ref}"
+        );
         println!("No files were changed.");
         if verbose {
             plan_printer(&plan);
@@ -1512,11 +1514,7 @@ fn confirm_external_source(url: &str, requested_ref: Option<&str>) -> Result<boo
     Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
-fn clone_module_repo(
-    url: &str,
-    requested_ref: Option<&str>,
-    target: &Path,
-) -> Result<String> {
+fn clone_module_repo(url: &str, requested_ref: Option<&str>, target: &Path) -> Result<String> {
     use std::process::Command;
     let mut cmd = Command::new("git");
     cmd.arg("clone").arg("--depth").arg("1");
@@ -5369,77 +5367,87 @@ fn token_delete() -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Cross-platform keyring access for the BWS access token.
+//
+// Phase 2 of the multi-platform rollout: replaces the previous
+// `Command::new("security")` shell-out (macOS-only) with the `keyring`
+// crate, which transparently maps to macOS Keychain, Linux Secret Service
+// (D-Bus / gnome-keyring / kwallet via `secret-service` backend), and
+// Windows Credential Manager.
+//
+// On platforms with no available backend (e.g. a Linux box without a
+// running Secret Service daemon), `keyring::Entry::new` succeeds but
+// `set_password` / `get_password` return `keyring::Error::NoStorageAccess`.
+// We treat that as "keychain unavailable, use BWS_ACCESS_TOKEN env var
+// instead" for read; we surface a concrete error message for write.
+// ---------------------------------------------------------------------------
+
+fn keyring_entry() -> Result<keyring::Entry> {
+    keyring::Entry::new(SECRET_BROKER_SERVICE, SECRET_BROKER_ACCOUNT)
+        .context("create OS keyring entry")
+}
+
 fn read_keychain_token() -> Result<Option<String>> {
-    if !cfg!(target_os = "macos") {
-        return Ok(None);
-    }
-    let output = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-            "-w",
-        ])
-        .output()
-        .context("read macOS keychain")?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if token.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(token))
+    let entry = match keyring_entry() {
+        Ok(e) => e,
+        // If the platform has no keyring backend at all, treat as
+        // "no stored token" so callers fall back to BWS_ACCESS_TOKEN.
+        Err(_) => return Ok(None),
+    };
+    match entry.get_password() {
+        Ok(token) => {
+            let trimmed = token.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        // NoEntry = nothing stored yet; not an error path.
+        Err(keyring::Error::NoEntry) => Ok(None),
+        // Platform has no usable backend (e.g. no Secret Service daemon).
+        // Quietly fall back to "no token" so BWS_ACCESS_TOKEN can take over.
+        Err(keyring::Error::NoStorageAccess(_)) | Err(keyring::Error::PlatformFailure(_)) => {
+            Ok(None)
+        }
+        Err(e) => Err(anyhow!("read OS keyring: {e}")),
     }
 }
 
 fn write_keychain_token(token: &str) -> Result<()> {
-    if !cfg!(target_os = "macos") {
-        return Err(CliError::new(
+    let entry = keyring_entry()?;
+    match entry.set_password(token) {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoStorageAccess(detail)) => Err(CliError::new(
             1,
-            "ERROR keychain token storage is only implemented on macOS",
+            &format!(
+                "TOKEN_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}\n\
+                 No OS keyring backend is available on this system. On Linux this usually \
+                 means no Secret Service daemon (gnome-keyring / kwallet) is running. \
+                 As a workaround set BWS_ACCESS_TOKEN as an environment variable instead."
+            ),
         )
-        .into());
+        .into()),
+        Err(e) => Err(CliError::new(
+            1,
+            &format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}"),
+        )
+        .into()),
     }
-    let status = Command::new("security")
-        .args([
-            "add-generic-password",
-            "-U",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-            "-w",
-            token,
-        ])
-        .status()
-        .context("write macOS keychain")?;
-    if !status.success() {
-        return Err(CliError::new(1, "TOKEN_SET_STATUS=FAIL reason=keychain_write_failed").into());
-    }
-    Ok(())
 }
 
 fn delete_keychain_token() -> Result<()> {
-    if !cfg!(target_os = "macos") {
-        return Err(CliError::new(
-            1,
-            "ERROR keychain token storage is only implemented on macOS",
-        )
-        .into());
+    let entry = match keyring_entry() {
+        Ok(e) => e,
+        // No backend at all → nothing to delete; treat as no-op success.
+        Err(_) => return Ok(()),
+    };
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(keyring::Error::NoStorageAccess(_)) | Err(keyring::Error::PlatformFailure(_)) => Ok(()),
+        Err(e) => Err(anyhow!("delete OS keyring entry: {e}")),
     }
-    let _ = Command::new("security")
-        .args([
-            "delete-generic-password",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-        ])
-        .status();
-    Ok(())
 }
 
 fn command_available(name: &str) -> bool {
@@ -6190,9 +6198,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         let persona_asset = format!("aieconlab/core/templates/personas/{expert}.md");
         let persona_content = embedded_asset_text(&persona_asset)?;
         write_file_atomic(
-            &agents_dir
-                .join("personas")
-                .join(format!("{expert}.md")),
+            &agents_dir.join("personas").join(format!("{expert}.md")),
             persona_content.as_bytes(),
         )?;
     }
@@ -6235,11 +6241,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // Advertise the team in AGENTS.aiplus.md so any runtime that reads it
     // (codex, claude-code, opencode) discovers AEL roles without the user
     // having to mention them explicitly. Idempotent — runs once per module.
-    append_team_section_to_agents_aiplus(
-        root,
-        "AIECONLAB_TEAM",
-        AIECONLAB_TEAM_SECTION,
-    )?;
+    append_team_section_to_agents_aiplus(root, "AIECONLAB_TEAM", AIECONLAB_TEAM_SECTION)?;
 
     // Snapshot AEL's active layout into _teams/aieconlab/ for fast switching,
     // and mark AEL as the currently active team. Phase D v1: this is the
@@ -6391,11 +6393,7 @@ fn agent_team_init(root: &Path) -> Result<()> {
     }
 
     // Advertise the agent-team in AGENTS.aiplus.md so runtimes discover it.
-    append_team_section_to_agents_aiplus(
-        root,
-        "AGENT_TEAM_TEAM",
-        AGENT_TEAM_SECTION,
-    )?;
+    append_team_section_to_agents_aiplus(root, "AGENT_TEAM_TEAM", AGENT_TEAM_SECTION)?;
 
     // Snapshot + activate. See aieconlab_init for rationale.
     crate::agent::set_team::snapshot_active_team(root, "agent-team")?;
@@ -6496,11 +6494,7 @@ STOP-gates always escalate to the Owner.
 /// that reads the AiPlus project context (codex, claude-code, opencode)
 /// discovers the installed virtual team. Idempotent — the marker comment
 /// prevents duplicate appends across reinstalls.
-fn append_team_section_to_agents_aiplus(
-    root: &Path,
-    marker: &str,
-    section: &str,
-) -> Result<()> {
+fn append_team_section_to_agents_aiplus(root: &Path, marker: &str, section: &str) -> Result<()> {
     let path = root.join(".aiplus").join("AGENTS.aiplus.md");
     if !path.exists() {
         // No AiPlus AGENTS file yet — shouldn't happen post-install, but
@@ -6509,8 +6503,8 @@ fn append_team_section_to_agents_aiplus(
     }
     let begin = format!("<!-- BEGIN {marker} -->");
     let end = format!("<!-- END {marker} -->");
-    let current = std::fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
+    let current =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let block = format!("\n{begin}\n{}\n{end}\n", section.trim_end());
     let next = if let Some(start_idx) = current.find(&begin) {
         // Replace existing block (idempotent rewrite).

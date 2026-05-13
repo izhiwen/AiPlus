@@ -44,11 +44,9 @@ Supported platforms (auto-detected by uname):
   Darwin x86_64                    macOS Intel
   Linux x86_64                     Linux x86_64 (most CI runners, most servers)
   Linux aarch64 / arm64            Linux ARM64 (newer cloud, Docker on Apple Silicon)
-
-Windows binary (x86_64-pc-windows-msvc) lands in v0.6.x. Until then,
-Windows users have two options:
-  - Run inside WSL2 (which is Linux x86_64; this installer works).
-  - Build from source with `cargo build --release -p aiplus-cli`.
+  Windows x86_64                   Use install.ps1 instead of this script:
+                                     iwr -useb https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.ps1 | iex
+                                   (or run install.sh under WSL2, which is Linux x86_64).
 USAGE
 }
 

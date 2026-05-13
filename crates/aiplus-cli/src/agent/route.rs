@@ -32,19 +32,12 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                         Ok(None) => {
                             println!("  Creating worktree for {}...", candidate);
                             let template = config.worktree_path.as_deref();
-                            match worktree::create_worktree(
-                                &project_root,
-                                candidate,
-                                template,
-                            ) {
+                            match worktree::create_worktree(&project_root, candidate, template) {
                                 Ok(path) => {
                                     println!("  Worktree created: {}", path.display());
                                 }
                                 Err(e) => {
-                                    eprintln!(
-                                        "  ERROR: Failed to create worktree: {}",
-                                        e
-                                    );
+                                    eprintln!("  ERROR: Failed to create worktree: {}", e);
                                     return Err(e);
                                 }
                             }
