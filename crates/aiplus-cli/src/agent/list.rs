@@ -30,7 +30,12 @@ pub fn handle_list(functional_only: bool) -> Result<()> {
         }
     } else {
         println!("All roles:");
-        for config in list_roles(&state, false) {
+        let mut roles: Vec<_> = list_roles(&state, false).into_iter().collect();
+        // Sort alphabetically by role slug for deterministic output —
+        // previously printed in hashmap iteration order, which varied
+        // run-to-run and made the output unscriptable.
+        roles.sort_by(|a, b| a.role.cmp(&b.role));
+        for config in roles {
             let status = if config.stub {
                 "v0.2 stub"
             } else if state.active_roles.contains(&config.role) {

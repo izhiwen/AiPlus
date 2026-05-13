@@ -40,6 +40,12 @@ pub struct DispatchLogEntry {
     pub task: String,
     pub reversibility: String,
     pub source: String,
+    /// Tier scored from the task description at dispatch time
+    /// ("LIGHT" / "MEDIUM" / "HEAVY"). Older log entries that pre-date
+    /// this field will deserialize with `tier = None`; the transcript
+    /// renderer displays "unscored" for those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
 }
 
 const ACTIVE_ROLES_PATH: &str = ".aiplus/agents/active-roles.json";
@@ -67,8 +73,18 @@ pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str
     let timestamp = aiplus_core::now_iso();
 
     // 1) Append a dispatch-log line.
+    // Score the task tier at dispatch time so the audit log captures
+    // the same MEDIUM/HEAVY signal that the route command shows on
+    // stdout. Empty task → no tier scoring.
+    let tier = if task.is_empty() {
+        None
+    } else {
+        let (t, _why) = score_task_tier(task);
+        Some(t.to_string())
+    };
+
     let entry = DispatchLogEntry {
-        schema_version: "0.1.0".to_string(),
+        schema_version: "0.1.1".to_string(),
         timestamp: timestamp.clone(),
         role: role.to_string(),
         task: task.to_string(),
@@ -77,6 +93,7 @@ pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str
         // reversible/semi/irreversible and the CLI surfaces it here.
         reversibility: "unspecified".to_string(),
         source: source.to_string(),
+        tier,
     };
     let line = serde_json::to_string(&entry)?;
     let log_path = project_root.join(DISPATCH_LOG_PATH);
@@ -154,6 +171,52 @@ pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
         "audit",
         "rebuttal",
         "regression",
+        // AEL / research-tuned: LLM-as-measurement and validity work
+        // were missing from the original SWE-tuned set, so AEL tasks
+        // like "design validity protocol for scoring documents across
+        // 5 LLMs" were silently scored LIGHT. Adding these here keeps
+        // the tier detection in sync with the AEL consultant team's
+        // ai_integration seat triggers.
+        "llm",
+        "gpt",
+        "claude",
+        "gemini",
+        "qwen",
+        "deepseek",
+        "validity",
+        "validate",
+        "multi-llm",
+        "inter-rater",
+        "held-out",
+        "prompt-version",
+        "scoring archival",
+        "text-as-data",
+        // AEL day-1 reproducibility seat triggers
+        "archive",
+        "gazetteer",
+        "ocr",
+        "pipeline",
+        "makefile",
+        "replication package",
+        "aea data editor",
+        // AEL IRB / disclosure gate seat triggers
+        "irb",
+        "consent",
+        "restricted data",
+        "dua",
+        "small-cell",
+        "re-identification",
+        "anonymization",
+        "pii",
+        // AEL contribution framing seat triggers
+        "intro",
+        "abstract",
+        "contribution",
+        "placement",
+        "target-journal",
+        "comparable",
+        "lit-gap",
+        "differential",
     ];
     let heavy_hits = heavy_signals
         .iter()

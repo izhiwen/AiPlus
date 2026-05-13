@@ -30,7 +30,13 @@ pub fn handle_doctor() -> Result<()> {
 
         if let Some(path) = state.worktree_paths.get(role) {
             if !path.exists() && config.needs_worktree {
-                println!("    WARNING: worktree {} does not exist", path.display());
+                // Lazy worktree creation is by design — worktrees are
+                // only provisioned when the PI/CEO dispatches a task
+                // to the role. Demote WARNING → INFO so the output is
+                // not noisy by default. Users who *have* dispatched
+                // and find the worktree gone will still see this line,
+                // but it won't drown out real issues.
+                println!("    INFO: worktree {} not yet provisioned (lazy)", path.display());
             }
         }
     }
