@@ -2,15 +2,23 @@
 set -eu
 
 REPO="izhiwen/aiplus"
-if [ -z "${AIPLUS_VERSION:-}" ]; then
+# Pre-initialize VERSION so `set -eu` does not bomb when the `gh` branch
+# is skipped (fresh Linux box without GitHub CLI). Fixes upstream issue
+# izhiwen/AiPlus#1.
+VERSION=""
+if [ -n "${AIPLUS_VERSION:-}" ]; then
+  VERSION="$AIPLUS_VERSION"
+else
   if command -v gh >/dev/null 2>&1; then
     VERSION=$(gh api repos/izhiwen/aiplus/releases/latest --jq .tag_name 2>/dev/null || echo "")
   fi
-  if [ -z "$VERSION" ]; then
-    VERSION=$(curl -fsSL https://api.github.com/repos/izhiwen/aiplus/releases/latest \
-      | grep -m1 '"tag_name"' | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/')
+  if [ -z "$VERSION" ] && command -v curl >/dev/null 2>&1; then
+    VERSION=$(curl -fsSL https://api.github.com/repos/izhiwen/aiplus/releases/latest 2>/dev/null \
+      | grep -m1 '"tag_name"' \
+      | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/' \
+      || echo "")
   fi
-  VERSION="${VERSION:-v0.5.1}"  # fallback if both fail
+  VERSION="${VERSION:-v0.5.8}"  # fallback if both lookups fail
 fi
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
@@ -31,9 +39,16 @@ installs only the aiplus binary. It does not edit shell profiles, require sudo,
 install project modules, upload data, collect telemetry, or modify global
 Codex/Claude Code/OpenCode config.
 
-AiPlus publishes a verified macOS Apple Silicon asset first. Other
-platforms should use the Developer Build instructions until their assets are
-published and verified.
+Supported platforms (auto-detected by uname):
+  Darwin arm64 / aarch64           macOS Apple Silicon
+  Darwin x86_64                    macOS Intel
+  Linux x86_64                     Linux x86_64 (most CI runners, most servers)
+  Linux aarch64 / arm64            Linux ARM64 (newer cloud, Docker on Apple Silicon)
+
+Windows binary (x86_64-pc-windows-msvc) lands in v0.6.x. Until then,
+Windows users have two options:
+  - Run inside WSL2 (which is Linux x86_64; this installer works).
+  - Build from source with `cargo build --release -p aiplus-cli`.
 USAGE
 }
 
@@ -69,9 +84,20 @@ detect_asset() {
     Darwin:arm64|Darwin:aarch64)
       echo "aiplus-aarch64-apple-darwin.tar.gz"
       ;;
+    Darwin:x86_64)
+      echo "aiplus-x86_64-apple-darwin.tar.gz"
+      ;;
+    Linux:x86_64)
+      echo "aiplus-x86_64-unknown-linux-gnu.tar.gz"
+      ;;
+    Linux:aarch64|Linux:arm64)
+      echo "aiplus-aarch64-unknown-linux-gnu.tar.gz"
+      ;;
     *)
-      echo "ERROR no verified AiPlus v0.5.1 binary asset for: $os $arch" >&2
-      echo "Use the Developer Build instructions until this platform is published." >&2
+      echo "ERROR no verified AiPlus $VERSION binary asset for: $os $arch" >&2
+      echo "Supported platforms (v0.5.8+): Darwin arm64/x86_64, Linux x86_64/aarch64." >&2
+      echo "Windows users: see Developer Build instructions until the Windows binary lands in v0.6.x." >&2
+      echo "Source build fallback: clone https://github.com/$REPO and run 'cargo build --release -p aiplus-cli'." >&2
       exit 1
       ;;
   esac
