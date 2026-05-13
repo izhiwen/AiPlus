@@ -1360,8 +1360,8 @@ fn command_add_from_git(
         )
         .into());
     }
-    let manifest_text = std::fs::read_to_string(&manifest_path)
-        .context("read external module manifest")?;
+    let manifest_text =
+        std::fs::read_to_string(&manifest_path).context("read external module manifest")?;
     let manifest = aiplus_core::parse_module_manifest(&manifest_text)
         .with_context(|| format!("parse manifest from {normalized_url} (@{resolved_ref})"))?;
 
@@ -1423,7 +1423,9 @@ fn command_add_from_git(
     )?;
 
     if dry_run {
-        println!("AiPlus external module add plan: {module_name} from {normalized_url} @ {resolved_ref}");
+        println!(
+            "AiPlus external module add plan: {module_name} from {normalized_url} @ {resolved_ref}"
+        );
         println!("No files were changed.");
         if verbose {
             plan_printer(&plan);
@@ -1512,11 +1514,7 @@ fn confirm_external_source(url: &str, requested_ref: Option<&str>) -> Result<boo
     Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
-fn clone_module_repo(
-    url: &str,
-    requested_ref: Option<&str>,
-    target: &Path,
-) -> Result<String> {
+fn clone_module_repo(url: &str, requested_ref: Option<&str>, target: &Path) -> Result<String> {
     use std::process::Command;
     let mut cmd = Command::new("git");
     cmd.arg("clone").arg("--depth").arg("1");
@@ -5410,8 +5408,9 @@ fn read_keychain_token() -> Result<Option<String>> {
         Err(keyring::Error::NoEntry) => Ok(None),
         // Platform has no usable backend (e.g. no Secret Service daemon).
         // Quietly fall back to "no token" so BWS_ACCESS_TOKEN can take over.
-        Err(keyring::Error::NoStorageAccess(_))
-        | Err(keyring::Error::PlatformFailure(_)) => Ok(None),
+        Err(keyring::Error::NoStorageAccess(_)) | Err(keyring::Error::PlatformFailure(_)) => {
+            Ok(None)
+        }
         Err(e) => Err(anyhow!("read OS keyring: {e}")),
     }
 }
@@ -5430,9 +5429,11 @@ fn write_keychain_token(token: &str) -> Result<()> {
             ),
         )
         .into()),
-        Err(e) => {
-            Err(CliError::new(1, &format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}")).into())
-        }
+        Err(e) => Err(CliError::new(
+            1,
+            &format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}"),
+        )
+        .into()),
     }
 }
 
@@ -5444,8 +5445,7 @@ fn delete_keychain_token() -> Result<()> {
     };
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(keyring::Error::NoStorageAccess(_))
-        | Err(keyring::Error::PlatformFailure(_)) => Ok(()),
+        Err(keyring::Error::NoStorageAccess(_)) | Err(keyring::Error::PlatformFailure(_)) => Ok(()),
         Err(e) => Err(anyhow!("delete OS keyring entry: {e}")),
     }
 }
@@ -6198,9 +6198,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         let persona_asset = format!("aieconlab/core/templates/personas/{expert}.md");
         let persona_content = embedded_asset_text(&persona_asset)?;
         write_file_atomic(
-            &agents_dir
-                .join("personas")
-                .join(format!("{expert}.md")),
+            &agents_dir.join("personas").join(format!("{expert}.md")),
             persona_content.as_bytes(),
         )?;
     }
@@ -6243,11 +6241,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // Advertise the team in AGENTS.aiplus.md so any runtime that reads it
     // (codex, claude-code, opencode) discovers AEL roles without the user
     // having to mention them explicitly. Idempotent — runs once per module.
-    append_team_section_to_agents_aiplus(
-        root,
-        "AIECONLAB_TEAM",
-        AIECONLAB_TEAM_SECTION,
-    )?;
+    append_team_section_to_agents_aiplus(root, "AIECONLAB_TEAM", AIECONLAB_TEAM_SECTION)?;
 
     // Snapshot AEL's active layout into _teams/aieconlab/ for fast switching,
     // and mark AEL as the currently active team. Phase D v1: this is the
@@ -6399,11 +6393,7 @@ fn agent_team_init(root: &Path) -> Result<()> {
     }
 
     // Advertise the agent-team in AGENTS.aiplus.md so runtimes discover it.
-    append_team_section_to_agents_aiplus(
-        root,
-        "AGENT_TEAM_TEAM",
-        AGENT_TEAM_SECTION,
-    )?;
+    append_team_section_to_agents_aiplus(root, "AGENT_TEAM_TEAM", AGENT_TEAM_SECTION)?;
 
     // Snapshot + activate. See aieconlab_init for rationale.
     crate::agent::set_team::snapshot_active_team(root, "agent-team")?;
@@ -6504,11 +6494,7 @@ STOP-gates always escalate to the Owner.
 /// that reads the AiPlus project context (codex, claude-code, opencode)
 /// discovers the installed virtual team. Idempotent — the marker comment
 /// prevents duplicate appends across reinstalls.
-fn append_team_section_to_agents_aiplus(
-    root: &Path,
-    marker: &str,
-    section: &str,
-) -> Result<()> {
+fn append_team_section_to_agents_aiplus(root: &Path, marker: &str, section: &str) -> Result<()> {
     let path = root.join(".aiplus").join("AGENTS.aiplus.md");
     if !path.exists() {
         // No AiPlus AGENTS file yet — shouldn't happen post-install, but
@@ -6517,8 +6503,8 @@ fn append_team_section_to_agents_aiplus(
     }
     let begin = format!("<!-- BEGIN {marker} -->");
     let end = format!("<!-- END {marker} -->");
-    let current = std::fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
+    let current =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let block = format!("\n{begin}\n{}\n{end}\n", section.trim_end());
     let next = if let Some(start_idx) = current.find(&begin) {
         // Replace existing block (idempotent rewrite).

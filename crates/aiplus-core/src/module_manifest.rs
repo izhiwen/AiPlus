@@ -172,7 +172,12 @@ pub fn normalize_module(value: Option<&str>) -> Option<&'static str> {
         }
         "agent-memory" | "aiplus-agent-memory" | "memory" => Some("agent-memory"),
         "agent-team" | "aiplus-agent-team" => Some("agent-team"),
-        "aieconlab" | "AiEconLab" | "ael" | "AEL" | "econ-team" | "econ-agent-team"
+        "aieconlab"
+        | "AiEconLab"
+        | "ael"
+        | "AEL"
+        | "econ-team"
+        | "econ-agent-team"
         | "aiplus-econ-agent-team" => Some("aieconlab"),
         _ => None,
     }

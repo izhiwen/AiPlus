@@ -53,19 +53,14 @@ pub fn load_active_roles(project_root: &Path) -> Result<ActiveRolesState> {
             active_roles: BTreeSet::new(),
         });
     }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     Ok(serde_json::from_str(&text).unwrap_or_default())
 }
 
 /// Mark `role` active and append a dispatch-log entry. Called from
 /// `aiplus agent route <role>` whenever a known role is dispatched.
-pub fn record_dispatch(
-    project_root: &Path,
-    role: &str,
-    task: &str,
-    source: &str,
-) -> Result<()> {
+pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str) -> Result<()> {
     let agents_dir = project_root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir).context("ensure .aiplus/agents/")?;
 
@@ -160,7 +155,10 @@ pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
         "rebuttal",
         "regression",
     ];
-    let heavy_hits = heavy_signals.iter().filter(|kw| lower.contains(*kw)).count();
+    let heavy_hits = heavy_signals
+        .iter()
+        .filter(|kw| lower.contains(*kw))
+        .count();
     let medium_hits = medium_signals
         .iter()
         .filter(|kw| lower.contains(*kw))
