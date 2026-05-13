@@ -4,6 +4,19 @@
 
 [中文 README](README.zh-CN.md)
 
+I've been pair-programming with AI coding agents full-time for the better
+part of a year — Codex one day, Claude Code the next, OpenCode for the
+long-running stuff. About four months in, I caught myself explaining the
+same architectural decision to the same agent for the fourth time that
+week, and I realized I was losing hours every day to the same six
+coordination failures: cross-session amnesia, post-compact context loss,
+agents racing to lead the same task, estimates anchored to human-engineer
+hours, plans that skipped security until release week, and one agent
+wearing every hat in one context window. AiPlus is the five small Rust
+modules I built to treat all six. The honest meta-frame: **I used AI agents
+to build the toolchain that manages AI agents.** What's here works for my
+workflow today; what isn't yet is in `docs/roadmap/`.
+
 ## The pains we are tired of
 
 If you spend your days driving AI coding agents, these probably feel familiar:

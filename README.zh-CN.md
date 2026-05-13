@@ -4,6 +4,8 @@
 
 [English README](README.md)
 
+我用 AI coding agent 全职写代码已经有大半年 —— 一天 Codex，一天 Claude Code，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍，然后意识到每天都在烧时间的是这六件事：跨 session 失忆、compact 之后丢上下文、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子。AiPlus 就是我为治这六件事写的五个小 Rust 模块。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
+
 ## 我们受够的几个痛点
 
 如果你每天都在带 AI coding agent，下面这些可能很熟：
