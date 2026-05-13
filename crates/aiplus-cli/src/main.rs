@@ -75,8 +75,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.2";
-const RELEASE_TAG: &str = "v0.5.2";
+const VERSION: &str = "0.5.3";
+const RELEASE_TAG: &str = "v0.5.3";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -1863,12 +1863,22 @@ fn command_doctor() -> Result<()> {
     println!("refreshPrompt={REFRESH_PROMPT}");
     println!("globalConfig=untouched");
     println!("target={}", root.display());
+    let failing: Vec<&str> = checks
+        .iter()
+        .filter(|c| !c.ok)
+        .map(|c| c.label.as_str())
+        .collect();
     println!(
         "next={}",
         if pass {
             "send AiPlus 刷新, 刷新 AiPlus, aiplus refresh, or aiplus status to the current agent session".to_string()
+        } else if !manifest_diag.exists {
+            "run `aiplus install <runtime>` first (no manifest found in this project)".to_string()
         } else {
-            "run install, then rerun doctor".to_string()
+            format!(
+                "see the NEEDS_FIX items below ({}) and run the suggested fix command for each",
+                failing.len()
+            )
         }
     );
     println!();
@@ -9197,6 +9207,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.0"
             | "0.5.1"
             | "0.5.2"
+            | "0.5.3"
     )
 }
 

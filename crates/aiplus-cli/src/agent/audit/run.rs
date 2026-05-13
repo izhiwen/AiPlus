@@ -99,6 +99,7 @@ pub fn handle_run(
         }
         GateResult::Blocked(reason) => {
             let detail = format!("{:?}", reason);
+            let is_first_run = detail.contains("OwnershipUnverified");
             blocked_deliverables.push(BlockedDeliverable {
                 deliverable_id: deliverable_filter.unwrap_or("*").to_string(),
                 reason,
@@ -106,6 +107,11 @@ pub fn handle_run(
             });
             metrics.blocked_checks = 1;
             println!("AUDIT_BLOCKED: {}", detail);
+            if is_first_run {
+                println!(
+                    "next=run `aiplus agent audit setup-gpg` to register Owner ownership (one-time first-run wizard)"
+                );
+            }
         }
         GateResult::AuditInProgress => {
             println!("AUDIT_BLOCKED: Another audit is currently in progress");
