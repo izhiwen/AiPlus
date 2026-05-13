@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "viz-specialist"
+display_name = "Visualization Specialist"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/viz-specialist.md"
+voice = "specialist"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/viz-specialist"
+worktree_path = "../{project_name}.viz-specialist"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/viz-specialist"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["可视化", "作图", "figure", "plot", "map", "ggplot", "tikz"]
+english_aliases = ["viz", "visualization", "figure", "plot", "map", "ggplot", "tikz"]

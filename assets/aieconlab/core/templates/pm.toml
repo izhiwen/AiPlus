@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "pm"
+display_name = "Project Manager"
+tier = "internal_core"
+default_specialty = "scope-and-deadline"
+warm_bench_ttl_seconds = 3600
+
+[persona]
+system_prompt_file = "personas/pm.md"
+voice = "pm"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = false
+worktree_branch = "agent/pm"
+worktree_path = "../{project_name}.pm"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/pm"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = true
+
+[invocation]
+chinese_aliases = ["PM", "项目经理", "进度", "deadline"]
+english_aliases = ["pm", "project-manager", "scope", "deadline", "milestone"]

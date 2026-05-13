@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "computation"
+display_name = "Computation Specialist"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/_stubs/computation.md"
+voice = "engineer"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/computation"
+worktree_path = "../{project_name}.computation"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/computation"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["HPC", "集群", "parallel", "big data", "bootstrap", "simulation"]
+english_aliases = ["computation", "hpc", "cluster", "parallel", "big-data", "simulation"]

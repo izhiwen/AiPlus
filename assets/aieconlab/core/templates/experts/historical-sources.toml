@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "historical-sources"
+display_name = "Historical Sources Specialist"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/historical-sources.md"
+voice = "specialist"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/historical-sources"
+worktree_path = "../{project_name}.historical-sources"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/historical-sources"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["史料", "档案", "gazetteer", "通商口岸", "OCR", "历史文献"]
+english_aliases = ["historical-sources", "archive", "gazetteer", "treaty-port", "ocr", "historical", "manuscript"]

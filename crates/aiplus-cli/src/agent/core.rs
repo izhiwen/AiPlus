@@ -198,8 +198,10 @@ pub fn load_team_config(project_root: &Path) -> Result<TeamState> {
         let entry = entry?;
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            // Skip team-wide config (agent-team.toml) which has different schema
-            if path.file_name().and_then(|s| s.to_str()) == Some("agent-team.toml") {
+            // Skip team-wide configs (different schema): agent-team.toml from
+            // aiplus-agent-team, econ-team.toml from aieconlab.
+            let file_name = path.file_name().and_then(|s| s.to_str());
+            if matches!(file_name, Some("agent-team.toml" | "econ-team.toml")) {
                 continue;
             }
             let content =

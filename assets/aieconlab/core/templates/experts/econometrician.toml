@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "econometrician"
+display_name = "Econometrician (Deep)"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/econometrician.md"
+voice = "econometrician"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/econometrician"
+worktree_path = "../{project_name}.econometrician"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/econometrician"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["计量", "Econometrician", "DID frontier", "弱工具变量", "inference"]
+english_aliases = ["econometrician", "deep-id", "weak-iv", "did-frontier", "inference", "se-theory"]

@@ -1,0 +1,39 @@
+schema_version = "1.0"
+
+[team]
+project_name = "<your-research-project>"
+core_roles = [
+  "advisor", "pi",
+  "theorist", "pm",
+  "ra-stata", "ra-python",
+  "referee", "replicator",
+]
+active_experts = []
+toolchain = ["python", "stata", "latex"]
+
+[coordinator.light]
+complexity_max = 2
+fire_consultant = false
+
+[coordinator.medium]
+complexity_min = 3
+complexity_max = 4
+fire_consultant = true
+
+[coordinator.heavy]
+complexity_min = 5
+risk_threshold = 0.7
+fire_consultant = true
+
+[owner_interface]
+default_visible = ["advisor", "pi"]
+allow_direct_talk_to_others = true
+
+[research_artifacts]
+paper_dir = "paper/"
+slides_dir = "slides/"
+tables_dir = "output/tables/"
+figures_dir = "output/figures/"
+data_dir = "data/"
+code_dir = "code/"
+bib_file = "paper/references.bib"

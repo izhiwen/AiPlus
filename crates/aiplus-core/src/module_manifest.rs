@@ -61,11 +61,24 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/personas/advisor.md",
         ],
     },
+    ModuleSpec {
+        name: "aieconlab",
+        vendor_name: "aieconlab",
+        version: "0.1.0",
+        path: ".aiplus/modules/aieconlab",
+        required_files: &[
+            "core/templates/advisor.toml",
+            "core/templates/pi.toml",
+            "core/templates/econ-team.toml",
+            "core/templates/personas/advisor.md",
+        ],
+    },
 ];
 
 pub const MODULE_SLUG_COMPACT_REMINDER: &str = "compact-reminder";
 pub const MODULE_SLUG_COMPACT_REMINDER_LEGACY_ALIAS: &str = "auto-compact";
 pub const MODULE_SLUG_AGENT_TEAM: &str = "agent-team";
+pub const MODULE_SLUG_AIECONLAB: &str = "aieconlab";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -78,6 +91,10 @@ pub struct ModuleManifest {
     pub version: String,
     pub source: String,
     pub license: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abbreviation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<ModuleRequires>,
     pub required_files: Vec<String>,
     pub managed_files: Vec<String>,
     pub runtime_adapters: Vec<String>,
@@ -86,6 +103,16 @@ pub struct ModuleManifest {
     pub public_private_boundary: Boundary,
     pub secret_boundary: Boundary,
     pub legacy_status: Option<LegacyStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "snake_case")]
+pub struct ModuleRequires {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aiplus_min_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub substrate_modules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -129,6 +156,8 @@ pub fn normalize_module(value: Option<&str>) -> Option<&'static str> {
         }
         "agent-memory" | "aiplus-agent-memory" | "memory" => Some("agent-memory"),
         "agent-team" | "aiplus-agent-team" => Some("agent-team"),
+        "aieconlab" | "AiEconLab" | "ael" | "AEL" | "econ-team" | "econ-agent-team"
+        | "aiplus-econ-agent-team" => Some("aieconlab"),
         _ => None,
     }
 }
@@ -324,6 +353,9 @@ mod tests {
         assert!(manifests
             .iter()
             .any(|manifest| manifest.name == "agent-team"));
+        assert!(manifests
+            .iter()
+            .any(|manifest| manifest.name == "aieconlab"));
     }
 
     #[test]
@@ -396,6 +428,16 @@ mod tests {
         assert_eq!(
             normalize_module(Some("aiplus-agent-team")),
             Some("agent-team")
+        );
+        assert_eq!(normalize_module(Some("aieconlab")), Some("aieconlab"));
+        assert_eq!(normalize_module(Some("AiEconLab")), Some("aieconlab"));
+        assert_eq!(normalize_module(Some("ael")), Some("aieconlab"));
+        assert_eq!(normalize_module(Some("AEL")), Some("aieconlab"));
+        assert_eq!(normalize_module(Some("econ-team")), Some("aieconlab"));
+        assert_eq!(normalize_module(Some("econ-agent-team")), Some("aieconlab"));
+        assert_eq!(
+            normalize_module(Some("aiplus-econ-agent-team")),
+            Some("aieconlab")
         );
         assert_eq!(normalize_module(Some("unknown")), None);
     }

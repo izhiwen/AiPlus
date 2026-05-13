@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "ra-stata"
+display_name = "RA-Stata"
+tier = "internal_core"
+default_specialty = "main-regressions-and-tables"
+warm_bench_ttl_seconds = 1800
+
+[persona]
+system_prompt_file = "personas/ra-stata.md"
+voice = "ra"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/ra-stata"
+worktree_path = "../{project_name}.ra-stata"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/ra-stata"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["RA", "Stata", "回归", "ra-stata"]
+english_aliases = ["ra-stata", "stata", "regression", "main-spec"]

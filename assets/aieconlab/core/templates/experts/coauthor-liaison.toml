@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "coauthor-liaison"
+display_name = "Co-Author Liaison"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/_stubs/coauthor-liaison.md"
+voice = "coordinator"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = false
+worktree_branch = "agent/coauthor-liaison"
+worktree_path = "../{project_name}.coauthor-liaison"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/coauthor-liaison"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["合作者", "co-author", "authorship", "attribution", "分工"]
+english_aliases = ["coauthor-liaison", "co-author", "authorship", "attribution", "joint-work"]

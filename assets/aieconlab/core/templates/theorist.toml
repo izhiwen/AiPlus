@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "theorist"
+display_name = "Theorist"
+tier = "internal_core"
+default_specialty = "identification-and-theory"
+warm_bench_ttl_seconds = 3600
+
+[persona]
+system_prompt_file = "personas/theorist.md"
+voice = "theorist"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/theorist"
+worktree_path = "../{project_name}.theorist"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/theorist"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["理论", "建模", "Theorist", "识别策略"]
+english_aliases = ["theorist", "theory", "identification", "model", "framework"]

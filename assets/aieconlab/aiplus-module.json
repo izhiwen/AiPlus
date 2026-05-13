@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "aieconlab",
+  "displayName": "AiEconLab",
+  "version": "0.1.0",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "abbreviation": "AEL",
+  "requires": {
+    "aiplus_min_version": "0.5.2",
+    "substrate_modules": [
+      "aiplus-agent-memory",
+      "aiplus-compact-reminder",
+      "aiplus-auto-team-consultant"
+    ]
+  },
+  "requiredFiles": [
+    "core/templates/advisor.toml",
+    "core/templates/pi.toml",
+    "core/templates/theorist.toml",
+    "core/templates/pm.toml",
+    "core/templates/ra-stata.toml",
+    "core/templates/ra-python.toml",
+    "core/templates/referee.toml",
+    "core/templates/replicator.toml",
+    "core/templates/econ-team.toml",
+    "core/templates/personas/advisor.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aieconlab",
+    ".aiplus/agents",
+    ".aiplus/agent-memory",
+    ".aiplus/agent-workspaces"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles and expert directory.",
+    "Default toolchain: Python + Stata + LaTeX. Requires git for worktree provisioning.",
+    "Depends on aiplus >= 0.5.2 (which already provides the velocity subcommand built-in) and the three substrate modules listed in `requires.substrate_modules`.",
+    "Sibling to aiplus-agent-team; the two can be installed in the same project."
+  ],
+  "doctorChecks": [
+    {
+      "id": "agent-configs",
+      "path": "core/templates/econ-team.toml",
+      "description": "Econ team configuration file is present."
+    },
+    {
+      "id": "personas",
+      "path": "core/templates/personas/advisor.md",
+      "description": "Default persona file is present."
+    },
+    {
+      "id": "worktree-readiness",
+      "path": "core/templates/pi.toml",
+      "description": "PI agent config is present for worktree readiness."
+    },
+    {
+      "id": "team-config",
+      "path": "core/templates/pm.toml",
+      "description": "PM agent config is present for team coordination."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Private research data, restricted archives, and unpublished drafts MUST live outside any path managed by this module.",
+      "Private profiles may consume the econ team engine, but private profile content is not bundled."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "Agent configurations must not contain secret values, API keys, credentials, IRB-protected data paths, or private archive paths."
+    ]
+  },
+  "legacyStatus": {
+    "status": "new-aieconlab-foundation",
+    "notes": [
+      "AiEconLab (abbreviation: AEL) introduced as a sibling to aiplus-agent-team for applied-economics research workflows.",
+      "Core 8 roles mirror agent-team's tier structure but are renamed for academic research.",
+      "Brand-decoupled from AiPlus but functionally depends on the AiPlus substrate."
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "ra-python"
+display_name = "RA-Python"
+tier = "internal_core"
+default_specialty = "data-cleaning-and-pipelines"
+warm_bench_ttl_seconds = 1800
+
+[persona]
+system_prompt_file = "personas/ra-python.md"
+voice = "ra"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/ra-python"
+worktree_path = "../{project_name}.ra-python"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/ra-python"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["Python", "数据清洗", "scrape", "merge", "ra-python"]
+english_aliases = ["ra-python", "python", "data-cleaning", "scrape", "merge", "gis"]

@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "referee"
+display_name = "Referee"
+tier = "internal_core"
+default_specialty = "internal-pre-review"
+warm_bench_ttl_seconds = 1800
+
+[persona]
+system_prompt_file = "personas/referee.md"
+voice = "referee"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = false
+worktree_branch = "agent/referee"
+worktree_path = "../{project_name}.referee"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/referee"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["Referee", "审稿人", "内部审稿", "挑刺"]
+english_aliases = ["referee", "reviewer", "pre-review", "devil-advocate"]

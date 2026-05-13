@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "lit-reviewer"
+display_name = "Lit Reviewer"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/lit-reviewer.md"
+voice = "reviewer"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/lit-reviewer"
+worktree_path = "../{project_name}.lit-reviewer"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/lit-reviewer"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["文献综述", "文献", "lit", "literature", "lit map"]
+english_aliases = ["lit-reviewer", "literature", "lit-map", "prior-work", "placement"]

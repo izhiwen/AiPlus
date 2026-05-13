@@ -75,8 +75,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.1";
-const RELEASE_TAG: &str = "v0.5.1";
+const VERSION: &str = "0.5.2";
+const RELEASE_TAG: &str = "v0.5.2";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -861,7 +861,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -5752,6 +5752,111 @@ fn install_base(
     if module_names.iter().any(|name| name == "agent-team") && !plan.dry_run {
         agent_team_init(root)?;
     }
+    if module_names.iter().any(|name| name == "aieconlab") && !plan.dry_run {
+        aieconlab_init(root)?;
+    }
+    Ok(())
+}
+
+fn aieconlab_init(root: &Path) -> Result<()> {
+    // AiEconLab (AEL) populates the same `.aiplus/agents/` namespace that
+    // agent-team uses. If both modules are installed, the most recent
+    // init wins ("current active team" model). Users switch by re-running
+    // `aiplus add agent-team` or `aiplus add aieconlab`.
+    let agents_dir = root.join(".aiplus").join("agents");
+    std::fs::create_dir_all(&agents_dir)?;
+    std::fs::create_dir_all(root.join(".aiplus").join("aieconlab"))?;
+    std::fs::create_dir_all(agents_dir.join("personas"))?;
+    std::fs::create_dir_all(agents_dir.join("personas").join("_stubs"))?;
+    std::fs::create_dir_all(agents_dir.join("experts"))?;
+
+    // Copy core role configs (8 roles)
+    for role in [
+        "advisor",
+        "pi",
+        "theorist",
+        "pm",
+        "ra-stata",
+        "ra-python",
+        "referee",
+        "replicator",
+    ] {
+        let asset = format!("aieconlab/core/templates/{role}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(&agents_dir.join(format!("{role}.toml")), content.as_bytes())?;
+    }
+
+    // Copy team config
+    let team_content = embedded_asset_text("aieconlab/core/templates/econ-team.toml")?;
+    write_file_atomic(&agents_dir.join("econ-team.toml"), team_content.as_bytes())?;
+
+    // Copy core personas (8 roles)
+    for role in [
+        "advisor",
+        "pi",
+        "theorist",
+        "pm",
+        "ra-stata",
+        "ra-python",
+        "referee",
+        "replicator",
+    ] {
+        let asset = format!("aieconlab/core/templates/personas/{role}.md");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(
+            &agents_dir.join("personas").join(format!("{role}.md")),
+            content.as_bytes(),
+        )?;
+    }
+
+    // Copy shipped expert configs (8 of 11)
+    for expert in [
+        "lit-reviewer",
+        "writer",
+        "econometrician",
+        "reproducibility",
+        "historical-sources",
+        "job-talk-coach",
+        "viz-specialist",
+        "ethics-irb",
+    ] {
+        let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(
+            &agents_dir.join("experts").join(format!("{expert}.toml")),
+            content.as_bytes(),
+        )?;
+
+        let persona_asset = format!("aieconlab/core/templates/personas/{expert}.md");
+        let persona_content = embedded_asset_text(&persona_asset)?;
+        write_file_atomic(
+            &agents_dir
+                .join("personas")
+                .join(format!("{expert}.md")),
+            persona_content.as_bytes(),
+        )?;
+    }
+
+    // Copy stub expert configs and stub personas (3 of 11)
+    for expert in ["survey-experiment", "computation", "coauthor-liaison"] {
+        let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
+        let content = embedded_asset_text(&asset)?;
+        write_file_atomic(
+            &agents_dir.join("experts").join(format!("{expert}.toml")),
+            content.as_bytes(),
+        )?;
+
+        let stub_asset = format!("aieconlab/core/templates/personas/_stubs/{expert}.md");
+        let stub_content = embedded_asset_text(&stub_asset)?;
+        write_file_atomic(
+            &agents_dir
+                .join("personas")
+                .join("_stubs")
+                .join(format!("{expert}.md")),
+            stub_content.as_bytes(),
+        )?;
+    }
+
     Ok(())
 }
 
@@ -9091,6 +9196,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.4.8"
             | "0.5.0"
             | "0.5.1"
+            | "0.5.2"
     )
 }
 
@@ -9383,6 +9489,7 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/consultant-team.toml".to_string(),
         ".aiplus/agents".to_string(),
         ".aiplus/agent-team".to_string(),
+        ".aiplus/aieconlab".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());

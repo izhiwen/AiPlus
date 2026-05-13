@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "job-talk-coach"
+display_name = "Job Talk Coach"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/job-talk-coach.md"
+voice = "coach"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/job-talk-coach"
+worktree_path = "../{project_name}.job-talk-coach"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/job-talk-coach"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["job talk", "seminar", "talk", "求职演讲", "市场演讲"]
+english_aliases = ["job-talk-coach", "job-talk", "seminar", "talk-prep", "job-market"]

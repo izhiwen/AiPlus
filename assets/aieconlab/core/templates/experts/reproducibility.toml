@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "reproducibility"
+display_name = "Reproducibility Engineer"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/reproducibility.md"
+voice = "engineer"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/reproducibility"
+worktree_path = "../{project_name}.reproducibility"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/reproducibility"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["复现工程", "docker", "Makefile", "dvc", "seed", "pin"]
+english_aliases = ["reproducibility", "docker", "makefile", "dvc", "ci", "pin", "env"]

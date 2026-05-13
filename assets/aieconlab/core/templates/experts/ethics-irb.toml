@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "ethics-irb"
+display_name = "Ethics / IRB Reviewer"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/ethics-irb.md"
+voice = "reviewer"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = false
+worktree_branch = "agent/ethics-irb"
+worktree_path = "../{project_name}.ethics-irb"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/ethics-irb"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["伦理", "IRB", "consent", "anonymization", "restricted data", "PII"]
+english_aliases = ["ethics-irb", "irb", "consent", "pii", "anonymization", "dua", "restricted"]

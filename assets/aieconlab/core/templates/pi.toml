@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "pi"
+display_name = "PI"
+tier = "owner_facing"
+default_specialty = ""
+warm_bench_ttl_seconds = 3600
+
+[persona]
+system_prompt_file = "personas/pi.md"
+voice = "pi"
+escalation_target = "owner"
+
+[workspace]
+needs_worktree = false
+worktree_branch = "agent/pi"
+worktree_path = "../{project_name}.pi"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/pi"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = true
+
+[invocation]
+chinese_aliases = ["PI", "主作者", "课题负责人", "lead author"]
+english_aliases = ["pi", "principal-investigator", "lead", "lead-author", "orchestrator"]

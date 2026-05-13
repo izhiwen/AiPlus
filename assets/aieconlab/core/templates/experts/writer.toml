@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "writer"
+display_name = "Writer / Editor"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/writer.md"
+voice = "writer"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/writer"
+worktree_path = "../{project_name}.writer"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/writer"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["写作", "编辑", "Writer", "rebuttal", "introduction"]
+english_aliases = ["writer", "editor", "rewrite", "intro", "abstract", "rebuttal", "copy-edit"]

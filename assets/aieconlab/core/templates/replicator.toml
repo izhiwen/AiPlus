@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "replicator"
+display_name = "Replicator"
+tier = "internal_core"
+default_specialty = "clean-room-reproducibility"
+warm_bench_ttl_seconds = 1800
+
+[persona]
+system_prompt_file = "personas/replicator.md"
+voice = "replicator"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/replicator"
+worktree_path = "../{project_name}.replicator"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/replicator"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["复现", "Replicator", "重跑", "reproducibility"]
+english_aliases = ["replicator", "reproducibility", "rerun", "clean-room", "qa"]
