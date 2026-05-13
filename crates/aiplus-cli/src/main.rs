@@ -6002,8 +6002,7 @@ fn opencode_config_is_preservable(value: &serde_json::Value) -> bool {
 
 fn opencode_config_is_legacy_aiplus_only(value: &serde_json::Value) -> bool {
     value.as_object().is_some_and(|object| {
-        object.contains_key("aiplus")
-            && object.keys().all(|k| k == "aiplus" || k == "$schema")
+        object.contains_key("aiplus") && object.keys().all(|k| k == "aiplus" || k == "$schema")
     })
 }
 
