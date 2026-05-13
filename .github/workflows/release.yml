@@ -42,16 +42,44 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      # libdbus-1-dev is required by `keyring` crate's `linux-native-sync-persistent`
+      # feature (Phase 2 of multi-platform rollout). Native Linux builds need
+      # the host package; aarch64 cross-build needs the arm64-flavor.
+      - name: Install Linux native build deps
+        if: runner.os == 'Linux' && !matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Install Linux aarch64 cross-compile toolchain
         if: matrix.cross
         run: |
+          sudo dpkg --add-architecture arm64
+          # Restrict the default Ubuntu mirror to amd64/i386 so the arm64
+          # repositories can be added separately pointing at ports.ubuntu.com
+          # (the amd64 mirror does not carry arm64 packages and causes 404s).
+          sudo sed -i 's|^deb http|deb [arch=amd64,i386] http|g' /etc/apt/sources.list || true
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i 's|^Architectures: .*|Architectures: amd64 i386|' /etc/apt/sources.list.d/ubuntu.sources || true
+          fi
+          # Add arm64 ports.
+          codename=$(lsb_release -cs)
+          sudo tee /etc/apt/sources.list.d/arm64.list >/dev/null <<EOF
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename} main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename}-updates main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename}-security main universe
+          EOF
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu libdbus-1-dev:arm64 pkg-config
           mkdir -p .cargo
           cat >> .cargo/config.toml <<'EOF'
           [target.aarch64-unknown-linux-gnu]
           linker = "aarch64-linux-gnu-gcc"
           EOF
+          # Tell pkg-config to look for the arm64 .pc files when cross-building.
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} -p aiplus-cli --locked
