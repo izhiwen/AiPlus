@@ -202,6 +202,29 @@ chmod 755 "$INSTALL_DIR/aiplus"
 echo "INSTALL_STATUS=PASS"
 echo "installed=$INSTALL_DIR/aiplus"
 
+# Runtime dependency check (Linux only). The aiplus binary links against
+# libdbus-1.so.3 because the `keyring` crate uses Linux Secret Service for
+# secret-broker token persistence. Most desktop Linux systems already
+# have it; minimal containers (e.g. ubuntu:22.04 base) do not. Warn the
+# user instead of failing — install completed successfully either way.
+if [ "$(uname -s)" = "Linux" ]; then
+  has_libdbus=0
+  if command -v ldconfig >/dev/null 2>&1; then
+    if ldconfig -p 2>/dev/null | grep -q 'libdbus-1\.so\.3'; then
+      has_libdbus=1
+    fi
+  fi
+  if [ "$has_libdbus" -eq 0 ]; then
+    echo ""
+    echo "RUNTIME_DEP_NOTICE=libdbus-1.so.3 not found"
+    echo "aiplus needs the libdbus-1 runtime library on Linux for secret storage."
+    echo "Install it before running aiplus:"
+    echo "  Debian/Ubuntu: sudo apt-get install -y libdbus-1-3"
+    echo "  Fedora/RHEL:   sudo dnf install -y dbus-libs"
+    echo "  Alpine:        sudo apk add dbus-libs"
+  fi
+fi
+
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)
     ;;

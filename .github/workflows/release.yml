@@ -20,9 +20,14 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-14         # Apple Silicon runner cross-compiles to x86_64
             ext: tar.gz
+          # Both Linux targets build via cross-rs (Ubuntu 20.04 base, glibc 2.31)
+          # so the binaries run on Ubuntu 20.04+, Debian 11+, CentOS 8+, etc.
+          # Native ubuntu-latest builds (Ubuntu 24.04 = glibc 2.39) break on
+          # users running anything older than Ubuntu 24.04 LTS.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             ext: tar.gz
+            cross: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             ext: tar.gz
@@ -59,15 +64,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}-${{ matrix.cross && 'cross' || 'native' }}-v2
-
-      # libdbus-1-dev is required by `keyring` crate's `linux-native-sync-persistent`
-      # feature (Phase 2 of multi-platform rollout). Native Linux builds need
-      # the host package; aarch64 cross-build needs the arm64-flavor.
-      - name: Install Linux native build deps
-        if: runner.os == 'Linux' && !matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
 
       # `cross` (https://github.com/cross-rs/cross) is the Rust-community-
       # standard cross-compile tool. It builds inside an official Docker

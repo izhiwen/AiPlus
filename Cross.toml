@@ -25,3 +25,13 @@ passthrough = [
     # are valid to consume when resolving libdbus-1.
     "PKG_CONFIG_ALLOW_CROSS=1"
 ]
+
+# x86_64-unknown-linux-gnu also builds in the cross-rs Ubuntu 20.04 image
+# (instead of the GitHub `ubuntu-latest` runner = Ubuntu 24.04 = glibc 2.39)
+# so the resulting binary's glibc dependency is 2.31, compatible with
+# Ubuntu 20.04+, Debian 11+, CentOS 8+, etc. No cross-arch dpkg dance is
+# needed since the container is already x86_64.
+[target.x86_64-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install --assume-yes libdbus-1-dev pkg-config"
+]
