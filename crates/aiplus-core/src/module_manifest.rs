@@ -12,6 +12,11 @@ pub struct ModuleSpec {
     pub version: &'static str,
     pub path: &'static str,
     pub required_files: &'static [&'static str],
+    /// `true` = installed by default on `aiplus install`. `false` = opt-in
+    /// only, requires explicit `aiplus add <name>` from the user. Niche
+    /// or audience-specific modules should set this to `false` to avoid
+    /// polluting every AiPlus install with files most users do not need.
+    pub auto_install: bool,
 }
 
 pub const MODULES: &[ModuleSpec] = &[
@@ -25,6 +30,7 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/current-handoff.md",
             "core/templates/compact-policy.json",
         ],
+        auto_install: true,
     },
     ModuleSpec {
         name: "auto-team-consultant",
@@ -36,6 +42,7 @@ pub const MODULES: &[ModuleSpec] = &[
             "adapters/codex/skills/auto-team-consultant/SKILL.md",
             "core/templates/TEMPLATE_INDEX.md",
         ],
+        auto_install: true,
     },
     ModuleSpec {
         name: "agent-memory",
@@ -48,6 +55,7 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/memory-context.md",
             "adapters/codex/skills/agent-memory/SKILL.md",
         ],
+        auto_install: true,
     },
     ModuleSpec {
         name: "agent-team",
@@ -60,6 +68,7 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/agent-team.toml",
             "core/templates/personas/advisor.md",
         ],
+        auto_install: true,
     },
     ModuleSpec {
         name: "aieconlab",
@@ -72,6 +81,13 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/econ-team.toml",
             "core/templates/personas/advisor.md",
         ],
+        // Opt-in by design: AiEconLab is for applied-economics
+        // research, which is a niche audience relative to the
+        // software-engineering majority of AiPlus users. Auto-installing
+        // it would put 32+ research roles into every AiPlus project's
+        // .aiplus/agents/ directory — left-handed scissors in every
+        // kitchen drawer. Users who want AEL run `aiplus add aieconlab`.
+        auto_install: false,
     },
 ];
 
@@ -167,6 +183,16 @@ pub fn module_spec(name: &str) -> Option<ModuleSpec> {
 }
 
 pub fn default_module_names() -> Vec<String> {
+    MODULES
+        .iter()
+        .filter(|spec| spec.auto_install)
+        .map(|spec| spec.name.to_string())
+        .collect()
+}
+
+/// All bundled module names, including opt-in ones. Used by `aiplus add`
+/// to look up modules a user has explicitly requested.
+pub fn all_module_names() -> Vec<String> {
     MODULES.iter().map(|spec| spec.name.to_string()).collect()
 }
 
