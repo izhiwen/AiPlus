@@ -17,6 +17,8 @@ modules I built to treat all six. The honest meta-frame: **I used AI agents
 to build the toolchain that manages AI agents.** What's here works for my
 workflow today; what isn't yet is in `docs/roadmap/`.
 
+![AiPlus 30-second tour](docs/demo.gif)
+
 ## The pains we are tired of
 
 If you spend your days driving AI coding agents, these probably feel familiar:
