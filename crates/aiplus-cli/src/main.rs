@@ -77,8 +77,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.6";
-const RELEASE_TAG: &str = "v0.5.6";
+const VERSION: &str = "0.5.7";
+const RELEASE_TAG: &str = "v0.5.7";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -6249,6 +6249,12 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     crate::agent::set_team::snapshot_active_team(root, "aieconlab")?;
     crate::agent::set_team::set_active_team(root, "aieconlab")?;
 
+    // Phase D v1: mirror personas to per-runtime agent dirs so claude-code
+    // and opencode discover the AEL team within their permission/trust
+    // boundary. Codex already reads `.aiplus/agents/` directly, so the
+    // mirror is purely additive — it doesn't change codex behavior.
+    mirror_personas_to_runtimes(root)?;
+
     Ok(())
 }
 
@@ -6395,7 +6401,75 @@ fn agent_team_init(root: &Path) -> Result<()> {
     crate::agent::set_team::snapshot_active_team(root, "agent-team")?;
     crate::agent::set_team::set_active_team(root, "agent-team")?;
 
+    // Mirror to per-runtime agent dirs. See aieconlab_init for rationale.
+    mirror_personas_to_runtimes(root)?;
+
     Ok(())
+}
+
+/// Copy the currently-active team's personas from `.aiplus/agents/personas/`
+/// to each installed runtime's agents directory (`.claude/agents/`,
+/// `.opencode/agents/`). Codex reads `.aiplus/` directly so no mirror is
+/// needed for it.
+///
+/// Per-runtime mirrors solve the "OpenCode permission model rejects reading
+/// .aiplus/" problem found in Level 1 testing of v0.5.6: OpenCode treats any
+/// path outside its home dir or `.opencode/` as `external_directory` and
+/// auto-rejects it, which made the AEL/agent-team personas invisible to
+/// OpenCode sessions even though they were installed.
+fn mirror_personas_to_runtimes(root: &Path) -> Result<()> {
+    let source_dir = root.join(".aiplus").join("agents").join("personas");
+    if !source_dir.exists() {
+        return Ok(());
+    }
+    let adapters = read_installed_runtime_adapters(root);
+    let mut targets: Vec<PathBuf> = Vec::new();
+    for adapter in &adapters {
+        match adapter.as_str() {
+            "claude-code" => targets.push(root.join(".claude").join("agents")),
+            "opencode" => targets.push(root.join(".opencode").join("agents")),
+            // codex reads .aiplus/ directly — no mirror.
+            _ => {}
+        }
+    }
+    for target_dir in &targets {
+        std::fs::create_dir_all(target_dir)?;
+        for entry in std::fs::read_dir(&source_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
+                let file_name = path.file_name().unwrap();
+                let target = target_dir.join(file_name);
+                // Skip if it's AiPlus's own platform advisor file (we don't
+                // want to clobber the project-level aiplus-advisor.md).
+                if target.file_name().and_then(|s| s.to_str()) == Some("aiplus-advisor.md") {
+                    continue;
+                }
+                std::fs::copy(&path, &target)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Read the `runtimeAdapters` list from `.aiplus/manifest.json`.
+fn read_installed_runtime_adapters(root: &Path) -> Vec<String> {
+    let manifest_path = root.join(".aiplus").join("manifest.json");
+    let Ok(text) = std::fs::read_to_string(&manifest_path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    value
+        .get("runtimeAdapters")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 const AGENT_TEAM_SECTION: &str = r#"## Virtual Team: AiPlus Agent Team (software-engineering)
@@ -9705,6 +9779,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.4"
             | "0.5.5"
             | "0.5.6"
+            | "0.5.7"
     )
 }
 
