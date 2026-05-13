@@ -4,7 +4,7 @@
 #   iwr -useb https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.ps1 | iex
 #
 # Environment overrides:
-#   $env:AIPLUS_VERSION      Release tag (e.g. "v0.5.9"); default = latest GitHub release
+#   $env:AIPLUS_VERSION      Release tag (e.g. "v0.5.10"); default = latest GitHub release
 #   $env:AIPLUS_INSTALL_DIR  Install directory; default = $HOME\.local\bin
 #
 # Safety boundaries (parity with install.sh):
@@ -35,12 +35,12 @@ if (-not $Version) {
             -Uri "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $latest.tag_name
     } catch {
-        Write-Warning "Could not query latest release; falling back to v0.5.9"
-        $Version = "v0.5.9"
+        Write-Warning "Could not query latest release; falling back to v0.5.10"
+        $Version = "v0.5.10"
     }
 }
 $Version = $Version.Trim()
-if (-not $Version) { $Version = "v0.5.9" }
+if (-not $Version) { $Version = "v0.5.10" }
 
 # --- 2. Resolve install dir ---------------------------------------------------
 $InstallDir = $env:AIPLUS_INSTALL_DIR

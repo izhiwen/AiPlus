@@ -78,8 +78,8 @@ use std::time::SystemTime;
 mod agent;
 mod mcp_server;
 
-const VERSION: &str = "0.5.9";
-const RELEASE_TAG: &str = "v0.5.9";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const RELEASE_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
