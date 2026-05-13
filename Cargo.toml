@@ -22,3 +22,9 @@ fs2 = "0.4"
 sha2 = "0.10"
 hex = "0.4"
 shell-words = "1.1"
+# keyring: cross-platform OS keyring (macOS Keychain / Linux Secret Service /
+# Windows Credential Manager) for secret-broker token storage. Phase 2 of the
+# multi-platform rollout (Phase 1 added Linux + Intel Mac binary distribution
+# but left the keychain code as a macOS-only `Command::new("security")` shell-
+# out; Phase 2 replaces that with a native cross-platform API).
+keyring = { version = "3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }

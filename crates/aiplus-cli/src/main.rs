@@ -5369,77 +5369,85 @@ fn token_delete() -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Cross-platform keyring access for the BWS access token.
+//
+// Phase 2 of the multi-platform rollout: replaces the previous
+// `Command::new("security")` shell-out (macOS-only) with the `keyring`
+// crate, which transparently maps to macOS Keychain, Linux Secret Service
+// (D-Bus / gnome-keyring / kwallet via `secret-service` backend), and
+// Windows Credential Manager.
+//
+// On platforms with no available backend (e.g. a Linux box without a
+// running Secret Service daemon), `keyring::Entry::new` succeeds but
+// `set_password` / `get_password` return `keyring::Error::NoStorageAccess`.
+// We treat that as "keychain unavailable, use BWS_ACCESS_TOKEN env var
+// instead" for read; we surface a concrete error message for write.
+// ---------------------------------------------------------------------------
+
+fn keyring_entry() -> Result<keyring::Entry> {
+    keyring::Entry::new(SECRET_BROKER_SERVICE, SECRET_BROKER_ACCOUNT)
+        .context("create OS keyring entry")
+}
+
 fn read_keychain_token() -> Result<Option<String>> {
-    if !cfg!(target_os = "macos") {
-        return Ok(None);
-    }
-    let output = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-            "-w",
-        ])
-        .output()
-        .context("read macOS keychain")?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if token.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(token))
+    let entry = match keyring_entry() {
+        Ok(e) => e,
+        // If the platform has no keyring backend at all, treat as
+        // "no stored token" so callers fall back to BWS_ACCESS_TOKEN.
+        Err(_) => return Ok(None),
+    };
+    match entry.get_password() {
+        Ok(token) => {
+            let trimmed = token.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        // NoEntry = nothing stored yet; not an error path.
+        Err(keyring::Error::NoEntry) => Ok(None),
+        // Platform has no usable backend (e.g. no Secret Service daemon).
+        // Quietly fall back to "no token" so BWS_ACCESS_TOKEN can take over.
+        Err(keyring::Error::NoStorageAccess(_))
+        | Err(keyring::Error::PlatformFailure(_)) => Ok(None),
+        Err(e) => Err(anyhow!("read OS keyring: {e}")),
     }
 }
 
 fn write_keychain_token(token: &str) -> Result<()> {
-    if !cfg!(target_os = "macos") {
-        return Err(CliError::new(
+    let entry = keyring_entry()?;
+    match entry.set_password(token) {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoStorageAccess(detail)) => Err(CliError::new(
             1,
-            "ERROR keychain token storage is only implemented on macOS",
+            &format!(
+                "TOKEN_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}\n\
+                 No OS keyring backend is available on this system. On Linux this usually \
+                 means no Secret Service daemon (gnome-keyring / kwallet) is running. \
+                 As a workaround set BWS_ACCESS_TOKEN as an environment variable instead."
+            ),
         )
-        .into());
+        .into()),
+        Err(e) => {
+            Err(CliError::new(1, &format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}")).into())
+        }
     }
-    let status = Command::new("security")
-        .args([
-            "add-generic-password",
-            "-U",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-            "-w",
-            token,
-        ])
-        .status()
-        .context("write macOS keychain")?;
-    if !status.success() {
-        return Err(CliError::new(1, "TOKEN_SET_STATUS=FAIL reason=keychain_write_failed").into());
-    }
-    Ok(())
 }
 
 fn delete_keychain_token() -> Result<()> {
-    if !cfg!(target_os = "macos") {
-        return Err(CliError::new(
-            1,
-            "ERROR keychain token storage is only implemented on macOS",
-        )
-        .into());
+    let entry = match keyring_entry() {
+        Ok(e) => e,
+        // No backend at all → nothing to delete; treat as no-op success.
+        Err(_) => return Ok(()),
+    };
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(keyring::Error::NoStorageAccess(_))
+        | Err(keyring::Error::PlatformFailure(_)) => Ok(()),
+        Err(e) => Err(anyhow!("delete OS keyring entry: {e}")),
     }
-    let _ = Command::new("security")
-        .args([
-            "delete-generic-password",
-            "-a",
-            SECRET_BROKER_ACCOUNT,
-            "-s",
-            SECRET_BROKER_SERVICE,
-        ])
-        .status();
-    Ok(())
 }
 
 fn command_available(name: &str) -> bool {

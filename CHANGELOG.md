@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- **Cross-platform keychain (Phase 2 of 3)**: replaces the previous
+  `Command::new("security")` shell-out (macOS-only) with the
+  [`keyring`](https://crates.io/crates/keyring) crate, which maps
+  natively to macOS Keychain, Linux Secret Service (gnome-keyring /
+  kwallet via D-Bus), and Windows Credential Manager. The three
+  affected functions — `read_keychain_token`, `write_keychain_token`,
+  `delete_keychain_token` — are no longer gated on `cfg!(target_os =
+  "macos")`. On Linux boxes without a running Secret Service daemon
+  (e.g. minimal CI containers), `read` returns `Ok(None)` so the
+  caller falls back to the `BWS_ACCESS_TOKEN` env-var path, and
+  `write` returns a clear `TOKEN_SET_STATUS=FAIL
+  reason=keyring_unavailable` error pointing the user at the env-var
+  workaround. Verified on macOS via an isolated `keyring::Entry`
+  write/read/delete/read-after-delete smoke test.
+  / **跨平台 keychain（Phase 2 / 3）**：用 `keyring` crate 替换原来的
+  macOS-only `security` 命令 shell-out。三个函数现在在 macOS / Linux /
+  Windows 都能用。Linux 上若无 Secret Service daemon，读会优雅退回
+  `BWS_ACCESS_TOKEN` env var，写会给出明确错误。
+
+- **Windows binary (Phase 3 of 3)**: adds `x86_64-pc-windows-msvc` to
+  the release workflow matrix, packaged as `aiplus-x86_64-pc-windows-
+  msvc.zip` with a SHA-256 in the unified `checksums.txt`. Adds
+  `install.ps1` for native Windows PowerShell installation, mirroring
+  the safety boundaries of `install.sh` (downloads only release
+  assets, verifies checksum, installs only `aiplus.exe`, never edits
+  PATH automatically, never collects telemetry).
+  / **Windows binary（Phase 3 / 3）**：release workflow 加入 Windows 目标，
+  新增 `install.ps1` 原生 PowerShell 安装脚本，安全边界和 `install.sh`
+  一致。
+
 - **Multi-platform release pipeline (Phase 1 of 3)**: new
   `.github/workflows/release.yml` builds AiPlus on tag push for four
   targets — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
