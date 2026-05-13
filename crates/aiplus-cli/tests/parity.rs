@@ -566,6 +566,42 @@ fn install_opencode_preserves_existing_valid_user_config() {
 }
 
 #[test]
+fn install_opencode_auto_migrates_legacy_aiplus_only_file() {
+    // Regression: AiPlus versions before 0.5.1+ wrote a top-level "aiplus" key
+    // into .opencode/opencode.json. OpenCode 1.14+ rejects that key as
+    // "Unrecognized key: aiplus" and refuses to start. The install/refresh path
+    // must auto-migrate these legacy files without requiring --force, because
+    // stripping our own legacy key is not destructive to user config.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    fs::create_dir(target.join(".opencode")).unwrap();
+    fs::write(
+        target.join(".opencode/opencode.json"),
+        r#"{"aiplus":{"localOnly":true,"refreshKeywords":["AiPlus 刷新","刷新"]}}"#,
+    )
+    .unwrap();
+
+    let install = stdout(&run(target, &["install", "opencode"], 0));
+    assert!(install.contains("INSTALL_STATUS=PASS"), "{install}");
+
+    let config = fs::read_to_string(target.join(".opencode/opencode.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&config).unwrap();
+    assert!(
+        parsed.get("aiplus").is_none(),
+        "aiplus key must be stripped after migration"
+    );
+    assert_eq!(
+        parsed.get("$schema").and_then(|value| value.as_str()),
+        Some("https://opencode.ai/config.json"),
+        "migrated file must carry the OpenCode $schema"
+    );
+
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(doctor.contains("DOCTOR_STATUS=PASS"), "{doctor}");
+}
+
+#[test]
 fn doctor_validates_codex_managed_block_and_claude_adapter_content() {
     let codex = tempfile::tempdir().unwrap();
     setup_fake_env(codex.path());

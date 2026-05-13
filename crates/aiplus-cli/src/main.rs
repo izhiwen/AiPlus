@@ -5941,6 +5941,33 @@ fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> R
                 return Ok(());
             }
 
+            // Legacy AiPlus-only files (versions before 0.5.1+ wrote the top-level
+            // "aiplus" key that OpenCode 1.14+ now rejects). Auto-migrate when the
+            // file contains nothing but our own legacy key (optionally with $schema)
+            // — no --force required, because stripping our own legacy data isn't
+            // destructive to user config.
+            if opencode_config_is_legacy_aiplus_only(&value) {
+                if let Some(mut object) = value.as_object().cloned() {
+                    object.remove("aiplus");
+                    object
+                        .entry("$schema".to_string())
+                        .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
+                    let content =
+                        serde_json::to_string_pretty(&serde_json::Value::Object(object))? + "\n";
+                    if let Some(parent) = target.parent() {
+                        ensure_dir(root, parent, plan)?;
+                    }
+                    if !plan.dry_run {
+                        fs::write(&target, content.as_bytes())?;
+                    }
+                    plan.items.push(PlanItem {
+                        action: "migrate-legacy-aiplus-key".to_string(),
+                        path: rel.to_string(),
+                    });
+                    return Ok(());
+                }
+            }
+
             if options.force {
                 if let Some(mut object) = value.as_object().cloned() {
                     object.remove("aiplus");
@@ -5970,6 +5997,13 @@ fn opencode_config_is_preservable(value: &serde_json::Value) -> bool {
             && object
                 .get("$schema")
                 .is_none_or(|schema| schema.is_string())
+    })
+}
+
+fn opencode_config_is_legacy_aiplus_only(value: &serde_json::Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object.contains_key("aiplus")
+            && object.keys().all(|k| k == "aiplus" || k == "$schema")
     })
 }
 
