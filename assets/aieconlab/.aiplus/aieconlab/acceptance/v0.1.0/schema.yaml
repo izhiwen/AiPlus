@@ -1,0 +1,217 @@
+---
+# =====================================================================
+# AiEconLab — Acceptance Criteria Schema v0.1.0
+# =====================================================================
+# Sibling of agent-team's acceptance schema. This v0.1.0 is intentionally
+# narrower than agent-team's v0.1.4 — it covers the structural invariants
+# that matter for first-release correctness. Behavioral and security
+# audits (Gate-4 style ownership verification, GPG sentinels, canary
+# replay) are deferred to v0.2.
+# =====================================================================
+
+schema_version: "0.1.0"
+
+defaults:
+  check_timeout_seconds: 30
+  total_budget_seconds: 180
+
+variables:
+  project_name: "$(basename $PWD)"
+  project_root: "$PWD"
+  econ_team_root: ".aiplus/agent-team"
+  module_manifest_path: "aiplus-module.json"
+  core_templates_dir: "core/templates"
+  personas_dir: "core/templates/personas"
+  experts_dir: "core/templates/experts"
+
+# ---------------------------------------------------------------------
+# core invariants
+# ---------------------------------------------------------------------
+core_invariants:
+
+  - id: core_roles_present
+    description: "All 8 core role TOML files exist and parse."
+    files_required:
+      - "{core_templates_dir}/advisor.toml"
+      - "{core_templates_dir}/pi.toml"
+      - "{core_templates_dir}/theorist.toml"
+      - "{core_templates_dir}/pm.toml"
+      - "{core_templates_dir}/ra-stata.toml"
+      - "{core_templates_dir}/ra-python.toml"
+      - "{core_templates_dir}/referee.toml"
+      - "{core_templates_dir}/replicator.toml"
+    parse_as: toml
+
+  - id: team_config_present
+    description: "Team-wide econ-team.toml exists and declares the 8 core roles."
+    files_required:
+      - "{core_templates_dir}/econ-team.toml"
+    parse_as: toml
+    must_contain_roles:
+      - advisor
+      - pi
+      - theorist
+      - pm
+      - ra-stata
+      - ra-python
+      - referee
+      - replicator
+
+  - id: personas_present
+    description: "All 8 core role persona files exist and are non-empty."
+    files_required:
+      - "{personas_dir}/advisor.md"
+      - "{personas_dir}/pi.md"
+      - "{personas_dir}/theorist.md"
+      - "{personas_dir}/pm.md"
+      - "{personas_dir}/ra-stata.md"
+      - "{personas_dir}/ra-python.md"
+      - "{personas_dir}/referee.md"
+      - "{personas_dir}/replicator.md"
+    parse_as: markdown
+    min_size_bytes: 500
+
+  - id: experts_present
+    description: "All 12 expert TOML files exist and parse."
+    files_required:
+      - "{experts_dir}/lit-reviewer.toml"
+      - "{experts_dir}/writer.toml"
+      - "{experts_dir}/econometrician.toml"
+      - "{experts_dir}/reproducibility.toml"
+      - "{experts_dir}/historical-sources.toml"
+      - "{experts_dir}/job-talk-coach.toml"
+      - "{experts_dir}/viz-specialist.toml"
+      - "{experts_dir}/survey-experiment.toml"
+      - "{experts_dir}/computation.toml"
+      - "{experts_dir}/ethics-irb.toml"
+      - "{experts_dir}/coauthor-liaison.toml"
+      - "{experts_dir}/llm-measurement.toml"
+    parse_as: toml
+
+  - id: shipped_expert_personas_present
+    description: "All 9 shipped expert personas exist and are non-empty."
+    files_required:
+      - "{personas_dir}/lit-reviewer.md"
+      - "{personas_dir}/writer.md"
+      - "{personas_dir}/econometrician.md"
+      - "{personas_dir}/reproducibility.md"
+      - "{personas_dir}/historical-sources.md"
+      - "{personas_dir}/job-talk-coach.md"
+      - "{personas_dir}/viz-specialist.md"
+      - "{personas_dir}/ethics-irb.md"
+      - "{personas_dir}/llm-measurement.md"
+    parse_as: markdown
+    min_size_bytes: 500
+
+  - id: stub_expert_personas_present
+    description: "All 3 stub expert personas exist."
+    files_required:
+      - "{personas_dir}/_stubs/survey-experiment.md"
+      - "{personas_dir}/_stubs/computation.md"
+      - "{personas_dir}/_stubs/coauthor-liaison.md"
+    parse_as: markdown
+
+  - id: consultant_team_present
+    description: "AEL research-tuned consultant team TOML exists and declares all 5 expert seats (members), 3 user personas ([user_evidence.personas]), and 5 owner gates."
+    files_required:
+      - "{core_templates_dir}/consultant-team.aieconlab.toml"
+    parse_as: toml
+    must_contain_member_ids:
+      - coordinator
+      - design
+      - contribution
+      - reproducibility
+      - irb
+      - ai_integration
+    must_contain_user_evidence_persona_ids:
+      - top_tier_referee
+      - jmp_audience
+      - external_replicator
+    must_contain_owner_gates:
+      - submission
+      - working-paper-post
+      - referee-response-send
+      - data-share
+      - authorship-change
+    must_set_light_review_mode: "skip"
+
+  - id: module_manifest_present
+    description: "aiplus-module.json exists, parses as JSON, declares all 3 runtime adapters."
+    files_required:
+      - "{module_manifest_path}"
+    parse_as: json
+    must_declare_adapters:
+      - codex
+      - claude-code
+      - opencode
+
+  - id: adapters_present
+    description: "All 3 runtime adapters have at least a README."
+    files_required:
+      - "adapters/codex/README.md"
+      - "adapters/claude-code/README.md"
+      - "adapters/opencode/README.md"
+
+  - id: license_present
+    description: "Apache-2.0 LICENSE present."
+    files_required:
+      - "LICENSE"
+
+  - id: design_doc_present
+    description: "DESIGN.md present and substantive."
+    files_required:
+      - "DESIGN.md"
+    parse_as: markdown
+    min_size_bytes: 5000
+
+  - id: readme_present
+    description: "English + Chinese READMEs present."
+    files_required:
+      - "README.md"
+      - "README.zh-CN.md"
+
+# ---------------------------------------------------------------------
+# persona structural invariants
+# ---------------------------------------------------------------------
+persona_invariants:
+
+  - id: core_personas_have_forbidden_section
+    description: "Each core persona must declare a Forbidden Actions section."
+    applies_to:
+      - "{personas_dir}/advisor.md"
+      - "{personas_dir}/pi.md"
+      - "{personas_dir}/theorist.md"
+      - "{personas_dir}/pm.md"
+      - "{personas_dir}/ra-stata.md"
+      - "{personas_dir}/ra-python.md"
+      - "{personas_dir}/referee.md"
+      - "{personas_dir}/replicator.md"
+    must_contain_pattern: "Forbidden Actions"
+
+  - id: core_personas_have_examples
+    description: "Each core persona must have at least 3 examples."
+    applies_to:
+      - "{personas_dir}/advisor.md"
+      - "{personas_dir}/pi.md"
+      - "{personas_dir}/theorist.md"
+      - "{personas_dir}/pm.md"
+      - "{personas_dir}/ra-stata.md"
+      - "{personas_dir}/ra-python.md"
+      - "{personas_dir}/referee.md"
+      - "{personas_dir}/replicator.md"
+    must_contain_pattern: "### Example"
+    min_occurrences: 3
+
+  - id: stop_gates_present_in_pi
+    description: "PI persona references STOP-gate or external-facing escalation."
+    applies_to:
+      - "{personas_dir}/pi.md"
+    must_contain_pattern: "STOP-gate"
+
+# ---------------------------------------------------------------------
+# pass criteria
+# ---------------------------------------------------------------------
+pass_criteria:
+  all_core_invariants: true
+  all_persona_invariants: true
+  total_budget_respected: true

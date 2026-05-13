@@ -6209,6 +6209,21 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         )?;
     }
 
+    // Replace the default SWE consultant team config with the AEL
+    // research-tuned consultant team (5 expert seats designed from
+    // first principles for applied-econ research at plan time, 3 user
+    // personas, 5 owner gates, LIGHT tier skips consult). See AEL
+    // DESIGN.md §9 for the rationale.
+    //
+    // Coexistence of `consultant-team.swe.toml` and
+    // `consultant-team.aieconlab.toml` in the same project is on the
+    // v0.2 roadmap; v0.1 takes the simpler stance that the most
+    // recent `aiplus add <agent-team|aieconlab>` wins.
+    let consultant_path = root.join(".aiplus").join("consultant-team.toml");
+    let consultant_content =
+        embedded_asset_text("aieconlab/core/templates/consultant-team.aieconlab.toml")?;
+    write_file_atomic(&consultant_path, consultant_content.as_bytes())?;
+
     Ok(())
 }
 

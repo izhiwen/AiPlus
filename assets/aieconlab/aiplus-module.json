@@ -24,7 +24,10 @@
     "core/templates/referee.toml",
     "core/templates/replicator.toml",
     "core/templates/econ-team.toml",
-    "core/templates/personas/advisor.md"
+    "core/templates/consultant-team.aieconlab.toml",
+    "core/templates/experts/llm-measurement.toml",
+    "core/templates/personas/advisor.md",
+    "core/templates/personas/llm-measurement.md"
   ],
   "managedFiles": [
     ".aiplus/modules/aieconlab",
@@ -34,10 +37,11 @@
   ],
   "runtimeAdapters": ["codex", "claude-code", "opencode"],
   "installHints": [
-    "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles and expert directory.",
+    "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles, 12-specialist expert directory, and a research-tuned consultant team.",
     "Default toolchain: Python + Stata + LaTeX. Requires git for worktree provisioning.",
     "Depends on aiplus >= 0.5.2 (which already provides the velocity subcommand built-in) and the three substrate modules listed in `requires.substrate_modules`.",
-    "Sibling to aiplus-agent-team; the two can be installed in the same project."
+    "Install replaces the default SWE consultant team (`.aiplus/consultant-team.toml`) with the research-tuned `consultant-team.aieconlab.toml` (5 expert seats + 3 personas + 5 owner gates, LIGHT tier skips consult).",
+    "Sibling to aiplus-agent-team; the two can be installed in the same project (consultant-team coexistence deferred to v0.2)."
   ],
   "doctorChecks": [
     {
@@ -59,6 +63,16 @@
       "id": "team-config",
       "path": "core/templates/pm.toml",
       "description": "PM agent config is present for team coordination."
+    },
+    {
+      "id": "consultant-team",
+      "path": "core/templates/consultant-team.aieconlab.toml",
+      "description": "AEL research-tuned consultant team config is present."
+    },
+    {
+      "id": "llm-measurement-expert",
+      "path": "core/templates/experts/llm-measurement.toml",
+      "description": "LLM-as-Measurement Specialist expert is present (paired with consultant seat 5)."
     }
   ],
   "publicPrivateBoundary": {

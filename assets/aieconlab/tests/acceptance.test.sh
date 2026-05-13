@@ -83,19 +83,19 @@ pass "personas_present (8 core personas, all >=500B)"
 # ---------------------------------------------------------------------
 # core invariant: experts_present
 # ---------------------------------------------------------------------
-experts=(lit-reviewer writer econometrician reproducibility historical-sources job-talk-coach viz-specialist survey-experiment computation ethics-irb coauthor-liaison)
+experts=(lit-reviewer writer econometrician reproducibility historical-sources job-talk-coach viz-specialist survey-experiment computation ethics-irb coauthor-liaison llm-measurement)
 for expert in "${experts[@]}"; do
   f="core/templates/experts/${expert}.toml"
   [ -f "$f" ] || fail "missing expert TOML: $f"
   toml_parse "$f" \
     || fail "TOML parse failure: $f"
 done
-pass "experts_present (11 expert TOMLs, all parse)"
+pass "experts_present (12 expert TOMLs, all parse)"
 
 # ---------------------------------------------------------------------
 # core invariant: shipped_expert_personas_present
 # ---------------------------------------------------------------------
-shipped_experts=(lit-reviewer writer econometrician reproducibility historical-sources job-talk-coach viz-specialist ethics-irb)
+shipped_experts=(lit-reviewer writer econometrician reproducibility historical-sources job-talk-coach viz-specialist ethics-irb llm-measurement)
 for expert in "${shipped_experts[@]}"; do
   f="core/templates/personas/${expert}.md"
   [ -f "$f" ] || fail "missing shipped expert persona: $f"
@@ -103,7 +103,7 @@ for expert in "${shipped_experts[@]}"; do
   [ "$size" -ge 500 ] \
     || fail "shipped expert persona too small (<500B): $f ($size bytes)"
 done
-pass "shipped_expert_personas_present (8 shipped, all >=500B)"
+pass "shipped_expert_personas_present (9 shipped, all >=500B)"
 
 # ---------------------------------------------------------------------
 # core invariant: stub_expert_personas_present
@@ -181,6 +181,35 @@ pass "core_personas_have_examples (>=3 each)"
 grep -q "STOP-gate" "core/templates/personas/pi.md" \
   || fail "PI persona missing 'STOP-gate' reference"
 pass "stop_gates_present_in_pi"
+
+# ---------------------------------------------------------------------
+# core invariant: consultant_team_present
+# AEL research-tuned consultant team TOML exists, parses, and declares
+# all 5 expert seats + 3 user personas + 5 owner gates.
+# ---------------------------------------------------------------------
+ct="core/templates/consultant-team.aieconlab.toml"
+[ -f "$ct" ] || fail "missing consultant team TOML: $ct"
+toml_parse "$ct" || fail "TOML parse failure: $ct"
+required_member_ids=(coordinator design contribution reproducibility irb ai_integration)
+for mid in "${required_member_ids[@]}"; do
+  grep -q "id = \"${mid}\"" "$ct" \
+    || fail "consultant team missing member id: $mid"
+done
+required_persona_ids=(top_tier_referee jmp_audience external_replicator)
+for pid in "${required_persona_ids[@]}"; do
+  grep -q "id = \"${pid}\"" "$ct" \
+    || fail "consultant team missing user_evidence persona: $pid"
+done
+grep -q '^\[user_evidence\]' "$ct" \
+  || fail "consultant team missing [user_evidence] section"
+required_gates=(submission working-paper-post referee-response-send data-share authorship-change)
+for gate in "${required_gates[@]}"; do
+  grep -q "id = \"${gate}\"" "$ct" \
+    || fail "consultant team missing owner_gate: $gate"
+done
+grep -q 'light.review_mode.*=.*"skip"' "$ct" \
+  || fail "consultant team LIGHT tier must skip consult (light.review_mode = \"skip\")"
+pass "consultant_team_present (5 seats + [user_evidence] with 3 personas + 5 gates, LIGHT skips)"
 
 # ---------------------------------------------------------------------
 # done

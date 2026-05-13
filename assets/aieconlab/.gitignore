@@ -1,0 +1,20 @@
+.DS_Store
+target/
+node_modules/
+*.log
+.aiplus/agent-memory/
+.aiplus/agent-workspaces/
+*.tmp
+*.bak
+
+# Empirical artifacts that should never leak into the repo
+data/raw/
+data/restricted/
+output/tables/*.tex
+output/figures/*.pdf
+output/logs/
+*.dta
+*.csv.gz
+*.parquet
+*.rds
+*.feather

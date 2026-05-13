@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "llm-measurement"
+display_name = "LLM-as-Measurement Specialist"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/llm-measurement.md"
+voice = "specialist"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/llm-measurement"
+worktree_path = "../{project_name}.llm-measurement"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/llm-measurement"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["LLM 测量", "多模型评分", "text-as-data", "LLM 评分", "multi-LLM"]
+english_aliases = ["llm-measurement", "text-as-data", "multi-llm", "llm-scoring", "validity-protocol", "prompt-versioning"]

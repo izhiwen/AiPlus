@@ -1,0 +1,239 @@
+schema_version = "2.1"
+
+# =====================================================================
+# AiEconLab (AEL) Consultant Team — applied-economics research
+# =====================================================================
+# Replaces the default SWE consultant team
+# (`.aiplus/consultant-team.toml` from aiplus-auto-team-consultant)
+# when AEL is installed into a project.
+#
+# Schema conforms to the consultant-team deployed schema (id-based
+# members, separate [user_evidence] section). Five expert seats
+# designed from first principles for applied-econ research plan-time
+# review, each producing a NAMED output_artifact that is distinct
+# from the deeper deliverable the corresponding execution-time role
+# produces later.
+#
+# The consultant is a strategic review board, not a daily team.
+# Expected cadence: 5-15 fires per active paper per year. LIGHT tier
+# explicitly skips consult (`light.review_mode = "skip"`) — everyday
+# tasks (cluster-level change, table caption update, single
+# robustness check) flow through Theorist / Replicator / Referee /
+# PM in execution.
+#
+# `id = "ai_integration"` on the LLM-as-Measurement seat satisfies
+# the deployed schema's doctor check while remaining semantically
+# accurate for AEL: AEL's AI-integration concern at plan time IS
+# LLM-as-measurement validity. The role display name retains
+# "LLM-as-Measurement Specialist".
+# =====================================================================
+
+[project]
+name = "<your-aieconlab-project>"
+domain = "applied-economics-research"
+
+# ─── Coordinator ──────────────────────────────────────────────────────────
+[[members]]
+id = "coordinator"
+name = "Coordinator"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+triggers = ["default"]
+owner_gate = false
+# why: scores every plan-time consult on complexity + risk; staffs the
+# minimum sufficient subset of seats.
+
+# ─── 5 expert team members (econ-research-tuned) ─────────────────────────
+
+[[members]]
+id = "design"
+name = "Design Credibility"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = [
+  "kickoff", "research-question", "identification", "estimator",
+  "IV", "DID", "RD", "event-study", "parallel-trends",
+  "exclusion-restriction", "weak-instrument", "selection",
+  "mechanism", "placebo", "falsification", "external-validity",
+  "structural-estimation",
+]
+owner_gate = false
+output_artifact = "design-credibility-check.md"
+responsibilities = [
+  "yes/no triage on whether data setting supports the question, or whether the question is being bent to fit available data",
+  "is the estimator chosen for credibility, or for convenience?",
+  "is the load-bearing identifying assumption refutable, and is a falsification design in scope?",
+]
+# distinct from Theorist (core role) which writes the full
+# identification note (~2 pages) as a v1.0 execution deliverable.
+
+[[members]]
+id = "contribution"
+name = "Contribution Framing"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = [
+  "intro", "abstract", "contribution", "placement",
+  "target-journal", "lit-gap", "motivation", "differential",
+  "comparable", "tier", "qjp", "aer", "jpe", "restud", "econometrica",
+]
+owner_gate = false
+output_artifact = "contribution-frame.md"
+responsibilities = [
+  "produce a 3-5-paper closest-comparable list",
+  "draft a one-sentence differential claim vs the closest comparables",
+  "recommend a target journal tier (top-5 / field-top / specialty)",
+]
+# distinct from Lit Reviewer (expert) which builds the full
+# literature map and maintains references.bib.
+
+[[members]]
+id = "reproducibility"
+name = "Day-1 Reproducibility"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = [
+  "archive", "gazetteer", "OCR", "raw-data", "merge",
+  "pipeline", "Makefile", "environment.yml", "seed", "version",
+  "pin", "replication-package", "AEA-data-editor", "dvc",
+]
+owner_gate = false
+output_artifact = "day-1-scaffold-checklist.md"
+responsibilities = [
+  "list day-1 scaffold requirements: Makefile / env-pinning / seed convention",
+  "specify archive provenance log and disambiguation tables",
+  "identify version-pinning targets for ado/ and Python packages",
+]
+# distinct from Reproducibility Engineer (expert) and RA-Python (core)
+# which actually BUILD the scaffold; the seat sets the requirement.
+
+[[members]]
+id = "irb"
+name = "IRB / Disclosure Gate"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = [
+  "IRB", "consent", "restricted-data", "DUA", "small-cell",
+  "re-identification", "disclosure", "anonymization", "PII",
+  "protected-attribute", "respondent-data", "human-subjects",
+]
+owner_gate = true
+output_artifact = "irb-gate-check.md"
+responsibilities = [
+  "yes/no on whether the task is in protocol scope",
+  "name the re-identification risk in the planned outputs",
+  "specify the small-cell aggregation rule in advance",
+]
+# distinct from Ethics / IRB Reviewer (expert) which writes per-task
+# authorization memos and replication-redaction memos during
+# execution. The seat surfaces the gate; the expert produces the
+# memos. owner_gate = true because any "no" from this seat is a STOP
+# and escalates to Owner.
+
+[[members]]
+id = "ai_integration"
+name = "LLM-as-Measurement Specialist"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = [
+  "LLM", "GPT", "Claude", "Gemini", "Qwen", "DeepSeek",
+  "embedding", "fine-tune", "prompt-version", "multi-LLM",
+  "inter-rater", "held-out", "text-as-data", "scoring-archival",
+  "validity-protocol",
+]
+owner_gate = false
+output_artifact = "llm-validity-protocol.md"
+responsibilities = [
+  "design the multi-model cross-validation panel before scoring runs",
+  "specify hand-coded subsample size + inter-rater protocol",
+  "specify held-out test set for drift detection",
+  "specify prompt versioning and model-snapshot pinning",
+]
+# AEL's AI-integration concern at plan time IS LLM-as-measurement.
+# `id = "ai_integration"` satisfies the deployed schema's doctor
+# check while the `name` makes the AEL semantics explicit. Distinct
+# from the LLM-as-Measurement Specialist expert (`agents/experts/
+# llm-measurement.toml`) which designs and audits the full validity
+# battery in execution. The seat ensures the work is scoped at plan
+# time, not as a panic add-on. Stays dormant when no LLM-as-
+# measurement work is in scope.
+
+# ─── User evidence personas (HEAVY tier or risk >= 0.7) ──────────────────
+# Per the deployed schema, user personas live in [user_evidence] and
+# [[user_evidence.personas]], not in [[members]]. AEL fires them in
+# HEAVY tier or when risk >= 0.7.
+[user_evidence]
+enabled = true
+default_panel_size = 3
+granularity = "single_persona_or_small_panel_first"
+
+[[user_evidence.personas]]
+id = "top_tier_referee"
+name = "Anonymous Top-Tier Referee"
+focus = "cold-read in 5 minutes — what's the easiest reject reason?"
+triggers = [
+  "submission", "rebuttal", "headline-result", "external-facing",
+  "QJE", "AER", "JPE", "ReStud", "Econometrica",
+]
+
+[[user_evidence.personas]]
+id = "jmp_audience"
+name = "Job-Market Audience"
+focus = "60-minute fly-out audience grasps the contribution in 3 slides?"
+triggers = [
+  "job-talk", "fly-out", "seminar", "talk", "conference",
+  "JEL", "AEA-meeting",
+]
+
+[[user_evidence.personas]]
+id = "external_replicator"
+name = "External Replicator (AEA Data Editor)"
+focus = "clean-machine `make all` reproduces every number? package redactions correct?"
+triggers = [
+  "replication-package", "AEA-data-editor", "submission",
+  "code-review", "JFE-replication", "Restud-replication",
+]
+
+# ─── Owner gates (always escalate to Owner) ──────────────────────────────
+# Mirror AEL DESIGN.md §16 STOP-gates that are plan-time-relevant.
+# When the consultant detects that the plan touches any of these,
+# it surfaces an explicit gate-packet for Owner approval before the
+# plan is dispatched.
+[owner_gates]
+gates = [
+  { id = "submission",            description = "Any journal submission, public preprint, or external archive post" },
+  { id = "working-paper-post",    description = "Posting to NBER / SSRN / institutional working-paper series" },
+  { id = "referee-response-send", description = "Sending an R&R response letter to the editor" },
+  { id = "data-share",            description = "Sharing data or replication package with parties outside the IRB-listed personnel" },
+  { id = "authorship-change",     description = "Adding, removing, or reordering authors" },
+]
+
+# ─── Scaling rules ───────────────────────────────────────────────────────
+[scaling]
+light.complexity_max  = 2
+light.member_count    = 0
+light.review_mode     = "skip"          # LIGHT tier — no consult
+
+medium.complexity_min = 3
+medium.complexity_max = 4
+medium.member_count   = 3
+medium.review_mode    = "sync"
+
+heavy.complexity_min  = 5
+heavy.member_count    = "all"
+heavy.review_mode     = "sync"
+heavy.user_personas   = "always"
+
+# Risk override — pulls user personas into any tier (still skip on LIGHT)
+risk.user_persona_threshold = 0.7
+
+# ─── Econ-specific scoring signals ───────────────────────────────────────
+[scoring.complexity_signals]
+novel_identification        = 1
+new_dataset                 = 1
+restricted_data             = 1
+llm_as_measurement          = 1
+structural_estimation       = 1
+sample_frame_change         = 1
+
+[scoring.risk_signals]
+submission_path             = 1
+binding_deadline_2w         = 1
+rr_revision                 = 1
+working_paper_post_planned  = 1
+first_paper_on_dataset      = 1
+external_coauthor           = 1
