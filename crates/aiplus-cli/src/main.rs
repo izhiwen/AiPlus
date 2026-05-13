@@ -75,8 +75,8 @@ use std::time::SystemTime;
 
 mod agent;
 
-const VERSION: &str = "0.5.3";
-const RELEASE_TAG: &str = "v0.5.3";
+const VERSION: &str = "0.5.4";
+const RELEASE_TAG: &str = "v0.5.4";
 const INSTALLER: &str = "aiplus";
 const REFRESH_PROMPT: &str = "刷新";
 const REFRESH_PROMPT_REL: &str = ".aiplus/REFRESH_PROMPT.txt";
@@ -138,6 +138,20 @@ enum Commands {
         dry_run: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         verbose: bool,
+        /// Install an external AiPlus module from a git repository URL.
+        /// Accepts `github.com/foo/bar`, `https://github.com/foo/bar`, or
+        /// with a pinned ref: `github.com/foo/bar@v1.2.3`. Mutually
+        /// exclusive with positional MODULE arg.
+        #[arg(long = "from-git", value_name = "URL[@REF]")]
+        from_git: Option<String>,
+        /// Trust the external source without an interactive prompt.
+        /// Required (in non-tty contexts) for `--from-git` to proceed.
+        #[arg(long = "trust", action = ArgAction::SetTrue)]
+        trust: bool,
+        /// Allow installing an external module whose name collides with
+        /// a bundled module slug. Off by default for safety.
+        #[arg(long = "override-bundled", action = ArgAction::SetTrue)]
+        override_bundled: bool,
     },
     Doctor,
     Status {
@@ -721,7 +735,23 @@ fn run(command: Commands) -> Result<()> {
             module,
             dry_run,
             verbose,
-        } => command_add(module, dry_run, verbose),
+            from_git,
+            trust,
+            override_bundled,
+        } => {
+            if let Some(url) = from_git {
+                if module.is_some() {
+                    return Err(CliError::new(
+                        1,
+                        "ERROR `aiplus add MODULE` and `aiplus add --from-git URL` are mutually exclusive",
+                    )
+                    .into());
+                }
+                command_add_from_git(&url, dry_run, verbose, trust, override_bundled)
+            } else {
+                command_add(module, dry_run, verbose)
+            }
+        }
         Commands::Doctor => command_doctor(),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
@@ -861,7 +891,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1260,6 +1290,317 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
         println!("GLOBAL_CONFIG_UNTOUCHED");
     }
     println!("ADD_STATUS=PASS");
+    Ok(())
+}
+
+/// `aiplus add --from-git <URL>[@REF]` — install an external AiPlus module
+/// from a git repository. The module is fetched, its manifest validated against
+/// the same rules as bundled modules, and its files copied under
+/// `.aiplus/modules/<module-name>/`. The project manifest records `source =
+/// "external"` plus the origin URL and pinned ref so future updates and the
+/// uninstall path can find it.
+///
+/// Limitations of v0.5.4 MVP (Phase C v0):
+/// - No signature verification. The user is prompted to trust the source
+///   (or `--trust` skips the prompt for scripted installs).
+/// - No auto-discovery hook for `.aiplus/agents/` team templates. External
+///   modules that ship an agent-team-style schema will install correctly
+///   under `.aiplus/modules/<name>/`, but `aiplus agent` will not see their
+///   roles until a follow-up release adds generic team-config discovery.
+///   For the bundled `aiplus-agent-team` and `aieconlab` modules, the
+///   hardcoded init hooks continue to populate `.aiplus/agents/`.
+fn command_add_from_git(
+    url_with_ref: &str,
+    dry_run: bool,
+    verbose: bool,
+    trust: bool,
+    override_bundled: bool,
+) -> Result<()> {
+    let (url, requested_ref) = parse_from_git_target(url_with_ref);
+    let normalized_url = normalize_git_url(&url)?;
+
+    let root = target_root()?;
+    let existing = read_manifest(&root, false)?;
+    if existing.installer.as_deref() != Some(INSTALLER) {
+        return Err(CliError::new(
+            1,
+            "ERROR AiPlus is not installed; run install <runtime> first",
+        )
+        .into());
+    }
+
+    if !trust && !confirm_external_source(&normalized_url, requested_ref.as_deref())? {
+        return Err(CliError::new(
+            1,
+            "ABORTED user did not confirm external source (pass --trust to skip the prompt)",
+        )
+        .into());
+    }
+
+    let temp = tempfile::tempdir().context("failed to allocate temp dir for clone")?;
+    let clone_target = temp.path().join("module");
+    let resolved_ref = clone_module_repo(&normalized_url, requested_ref.as_deref(), &clone_target)?;
+
+    // Read and validate the module manifest from the cloned source.
+    let manifest_path = clone_target.join("aiplus-module.json");
+    if !manifest_path.exists() {
+        return Err(CliError::new(
+            1,
+            format!(
+                "ERROR external module at {normalized_url} (@{resolved_ref}) is missing aiplus-module.json"
+            ),
+        )
+        .into());
+    }
+    let manifest_text = std::fs::read_to_string(&manifest_path)
+        .context("read external module manifest")?;
+    let manifest = aiplus_core::parse_module_manifest(&manifest_text)
+        .with_context(|| format!("parse manifest from {normalized_url} (@{resolved_ref})"))?;
+
+    let module_name = manifest.name.clone();
+    if normalize_module(Some(&module_name)).is_some() && !override_bundled {
+        return Err(CliError::new(
+            1,
+            format!(
+                "ERROR external module name '{module_name}' collides with a bundled slug; rerun with --override-bundled to install over the bundled version"
+            ),
+        )
+        .into());
+    }
+
+    let install_path = format!(".aiplus/modules/{module_name}");
+    let target_dir = rel_to_abs(&root, &install_path)?;
+    let mut plan = Plan {
+        dry_run,
+        ..Plan::default()
+    };
+    if !dry_run {
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir)
+                .with_context(|| format!("remove existing {}", target_dir.display()))?;
+        }
+        copy_external_module_files(&clone_target, &target_dir)?;
+    }
+    plan.items.push(PlanItem {
+        action: "copy".to_string(),
+        path: install_path.clone(),
+    });
+
+    let mut installed = normalize_existing_modules(existing.modules.as_ref());
+    installed.insert(
+        module_name.clone(),
+        aiplus_core::manifest::ProjectManifestModule {
+            version: Some(manifest.version.clone()),
+            source: Some("external".to_string()),
+            path: Some(install_path.clone()),
+            installed_at: None,
+            updated_at: None,
+            source_url: Some(normalized_url.clone()),
+            source_ref: Some(resolved_ref.clone()),
+        },
+    );
+    let modules: Vec<String> = installed.keys().cloned().collect();
+    let adapters = existing.runtime_adapters.unwrap_or_default();
+    write_manifest_with_external(
+        &root,
+        &mut plan,
+        &Options {
+            force: true,
+            backup: false,
+            yes: true,
+        },
+        &adapters,
+        &installed,
+        &[module_name.clone()],
+    )?;
+
+    if dry_run {
+        println!("AiPlus external module add plan: {module_name} from {normalized_url} @ {resolved_ref}");
+        println!("No files were changed.");
+        if verbose {
+            plan_printer(&plan);
+        } else {
+            println!("GLOBAL_CONFIG_UNTOUCHED");
+        }
+        println!("ADD_DRY_RUN=PASS");
+        return Ok(());
+    }
+
+    println!(
+        "AiPlus external module added: {module_name} v{} from {normalized_url} @ {resolved_ref}",
+        manifest.version
+    );
+    println!();
+    println!("Caveats for external modules (Phase C v0.5.4):");
+    println!("- No agent-team auto-init: if this module ships team templates, populate .aiplus/agents/ manually until v0.5.5 adds generic discovery.");
+    println!("- Update flow: rerun `aiplus add --from-git {normalized_url}` (optionally with @ref) to pull a newer version.");
+    println!();
+    println!("Next for already-open agent sessions:");
+    println!("type \"AiPlus 刷新\", \"刷新 AiPlus\", \"aiplus refresh\", or \"aiplus status\"");
+    if verbose {
+        plan_printer(&plan);
+    } else {
+        println!("GLOBAL_CONFIG_UNTOUCHED");
+    }
+    println!("ADD_STATUS=PASS");
+    Ok(())
+}
+
+/// Split a `URL[@REF]` target into its components.
+fn parse_from_git_target(target: &str) -> (String, Option<String>) {
+    // Last `@` after the scheme delimits the ref.
+    if let Some((url, refspec)) = target.rsplit_once('@') {
+        // Ignore the scheme's `://` colon (e.g. https://) — the ref split is
+        // only valid when `@` does not appear inside the URL scheme.
+        if url.contains("://") || !url.contains(':') {
+            return (url.to_string(), Some(refspec.to_string()));
+        }
+    }
+    (target.to_string(), None)
+}
+
+fn normalize_git_url(url: &str) -> Result<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::new(1, "ERROR --from-git URL is empty").into());
+    }
+    if trimmed.starts_with("https://") || trimmed.starts_with("git@") {
+        Ok(trimmed.to_string())
+    } else if trimmed.starts_with("github.com/") || trimmed.contains("/") {
+        Ok(format!("https://{trimmed}"))
+    } else {
+        Err(CliError::new(
+            1,
+            format!("ERROR --from-git URL '{trimmed}' is not a recognized git URL"),
+        )
+        .into())
+    }
+}
+
+fn confirm_external_source(url: &str, requested_ref: Option<&str>) -> Result<bool> {
+    use std::io::IsTerminal;
+    eprintln!();
+    eprintln!("About to install an EXTERNAL AiPlus module from:");
+    eprintln!("  {url}");
+    if let Some(refspec) = requested_ref {
+        eprintln!("  at ref: {refspec}");
+    } else {
+        eprintln!("  at ref: (latest tag)");
+    }
+    eprintln!();
+    eprintln!("External modules run with the same project-local write permissions");
+    eprintln!("as the AiPlus CLI itself. Make sure you trust this source. Pass");
+    eprintln!("--trust to skip this prompt in non-interactive contexts.");
+    eprintln!();
+    if !std::io::stdin().is_terminal() {
+        eprintln!("(non-interactive stdin; refusing without --trust)");
+        return Ok(false);
+    }
+    eprint!("Proceed? [y/N] ");
+    use std::io::Write;
+    std::io::stderr().flush().ok();
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).ok();
+    Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+fn clone_module_repo(
+    url: &str,
+    requested_ref: Option<&str>,
+    target: &Path,
+) -> Result<String> {
+    use std::process::Command;
+    let mut cmd = Command::new("git");
+    cmd.arg("clone").arg("--depth").arg("1");
+    if let Some(refspec) = requested_ref {
+        cmd.arg("--branch").arg(refspec);
+    }
+    cmd.arg(url).arg(target);
+    let output = cmd
+        .output()
+        .context("git clone failed to start (is git installed?)")?;
+    if !output.status.success() {
+        return Err(CliError::new(
+            1,
+            format!(
+                "ERROR git clone failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        )
+        .into());
+    }
+    // Resolve the actual ref we landed on for accurate manifest tracking.
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(target)
+        .arg("rev-parse")
+        .arg("HEAD")
+        .output()
+        .context("git rev-parse HEAD failed")?;
+    let commit = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    Ok(requested_ref.map(str::to_string).unwrap_or(commit))
+}
+
+fn copy_external_module_files(src: &Path, dst: &Path) -> Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        // Skip the cloned .git directory and obvious dotfiles that shouldn't ship.
+        if matches!(
+            file_name.to_str(),
+            Some(".git" | ".DS_Store" | "node_modules" | "target")
+        ) {
+            continue;
+        }
+        let src_path = entry.path();
+        let dst_path = dst.join(&file_name);
+        if src_path.is_dir() {
+            copy_external_module_files(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Write the manifest including external-module entries with `source_url` /
+/// `source_ref` preserved. The standard `write_manifest` path doesn't know
+/// about external modules; this thin wrapper accepts a pre-built `installed`
+/// map and serializes it directly.
+fn write_manifest_with_external(
+    root: &Path,
+    plan: &mut Plan,
+    options: &Options,
+    adapters: &[String],
+    installed: &std::collections::BTreeMap<String, aiplus_core::manifest::ProjectManifestModule>,
+    touched: &[String],
+) -> Result<()> {
+    // First do the normal write so timestamps and the bundled fields are set.
+    let module_names: Vec<String> = installed.keys().cloned().collect();
+    write_manifest(root, plan, options, adapters, &module_names, touched)?;
+    // Then patch in the external-module-specific fields (source_url, source_ref).
+    let path = rel_to_abs(root, ".aiplus/manifest.json")?;
+    let text = std::fs::read_to_string(&path).context("read manifest after write")?;
+    let mut parsed: aiplus_core::manifest::ProjectManifest =
+        serde_json::from_str(&text).context("parse manifest after write")?;
+    if let Some(modules) = parsed.modules.as_mut() {
+        for (name, entry) in installed {
+            if let Some(target) = modules.get_mut(name) {
+                if entry.source.as_deref() == Some("external") {
+                    target.source = Some("external".to_string());
+                    target.source_url = entry.source_url.clone();
+                    target.source_ref = entry.source_ref.clone();
+                }
+            }
+        }
+    }
+    let serialized = serde_json::to_string_pretty(&parsed)?;
+    if !plan.dry_run {
+        std::fs::write(&path, serialized)?;
+    }
     Ok(())
 }
 
@@ -5819,7 +6160,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         )?;
     }
 
-    // Copy shipped expert configs (8 of 11)
+    // Copy shipped expert configs (9 of 12)
     for expert in [
         "lit-reviewer",
         "writer",
@@ -5829,6 +6170,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         "job-talk-coach",
         "viz-specialist",
         "ethics-irb",
+        "llm-measurement",
     ] {
         let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
@@ -5847,7 +6189,7 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         )?;
     }
 
-    // Copy stub expert configs and stub personas (3 of 11)
+    // Copy stub expert configs and stub personas (3 of 12)
     for expert in ["survey-experiment", "computation", "coauthor-liaison"] {
         let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
@@ -6313,6 +6655,8 @@ fn write_manifest(
                             .unwrap_or_else(|| now.clone())
                     },
                 ),
+                source_url: None,
+                source_ref: None,
             },
         );
     }
@@ -9208,6 +9552,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.1"
             | "0.5.2"
             | "0.5.3"
+            | "0.5.4"
     )
 }
 
