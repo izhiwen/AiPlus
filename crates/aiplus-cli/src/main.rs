@@ -6232,50 +6232,8 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         embedded_asset_text("aieconlab/core/templates/consultant-team.aieconlab.toml")?;
     write_file_atomic(&consultant_path, consultant_content.as_bytes())?;
 
-    // Advertise the team in AGENTS.aiplus.md so any runtime that reads it
-    // (codex, claude-code, opencode) discovers AEL roles without the user
-    // having to mention them explicitly. Idempotent — runs once per module.
-    append_team_section_to_agents_aiplus(
-        root,
-        "AIECONLAB_TEAM",
-        AIECONLAB_TEAM_SECTION,
-    )?;
-
     Ok(())
 }
-
-const AIECONLAB_TEAM_SECTION: &str = r#"## Virtual Team: AiEconLab (AEL)
-
-This project has the AiEconLab applied-economics research team installed.
-Role definitions live under `.aiplus/agents/personas/`. Owner talks only
-to Advisor and PI; PI orchestrates the rest.
-
-- Owner-facing (2): `Advisor`, `PI`
-- Internal core (6): `Theorist`, `PM`, `RA-Stata`, `RA-Python`, `Referee`, `Replicator`
-- Experts on-demand (12): `lit-reviewer`, `writer`, `econometrician`,
-  `reproducibility`, `historical-sources`, `job-talk-coach`, `viz-specialist`,
-  `ethics-irb`, `llm-measurement`, `survey-experiment`, `computation`,
-  `coauthor-liaison`
-
-To embody a role in this session, the Owner says:
-
-    Speak as the AEL Advisor — <question>
-    Speak as the AEL PI — <task>
-
-Or, for an interactive session with the persona pre-loaded, run:
-
-    aiplus agent talk advisor          # or pi, theorist, ra-stata, ...
-
-When embodying a role: read `.aiplus/agents/personas/<role>.md` first. The
-persona's Forbidden Actions and Escalation rules are binding. STOP-gated
-actions (journal submission, working-paper posting, referee response send,
-data sharing, authorship change) always escalate to the Owner.
-
-`aiplus agent route <role> "<task>"` records dispatches to
-`.aiplus/agents/dispatch-log.jsonl` and marks the role active. Use it after
-the PI commits to a staffing decision to make the dispatch a real artifact
-rather than narrative.
-"#;
 
 fn agent_team_init(root: &Path) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
