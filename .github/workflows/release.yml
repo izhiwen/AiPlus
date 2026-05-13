@@ -51,38 +51,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdbus-1-dev pkg-config
 
-      - name: Install Linux aarch64 cross-compile toolchain
+      # `cross` (https://github.com/cross-rs/cross) is the Rust-community-
+      # standard cross-compile tool. It builds inside an official Docker
+      # image with the correct toolchain + sysroot pre-installed, which
+      # avoids fighting Ubuntu multi-arch apt sources, dpkg architecture
+      # registration, and pkg-config sysroot config on the runner host.
+      # System dependencies like libdbus-1-dev for the target arch are
+      # configured via the workspace-root `Cross.toml` `pre-build` hook.
+      - name: Install cross
         if: matrix.cross
-        run: |
-          sudo dpkg --add-architecture arm64
-          # Restrict the default Ubuntu mirror to amd64/i386 so the arm64
-          # repositories can be added separately pointing at ports.ubuntu.com
-          # (the amd64 mirror does not carry arm64 packages and causes 404s).
-          sudo sed -i 's|^deb http|deb [arch=amd64,i386] http|g' /etc/apt/sources.list || true
-          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-            sudo sed -i 's|^Architectures: .*|Architectures: amd64 i386|' /etc/apt/sources.list.d/ubuntu.sources || true
-          fi
-          # Add arm64 ports.
-          codename=$(lsb_release -cs)
-          sudo tee /etc/apt/sources.list.d/arm64.list >/dev/null <<EOF
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename} main universe
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename}-updates main universe
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${codename}-security main universe
-          EOF
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libdbus-1-dev:arm64 pkg-config
-          mkdir -p .cargo
-          cat >> .cargo/config.toml <<'EOF'
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
-          EOF
-          # Tell pkg-config to look for the arm64 .pc files when cross-building.
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
-          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
+        run: cargo install cross --git https://github.com/cross-rs/cross --locked
 
-      - name: Build release binary
+      - name: Build release binary (native)
+        if: '!matrix.cross'
         run: cargo build --release --target ${{ matrix.target }} -p aiplus-cli --locked
+
+      - name: Build release binary (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} -p aiplus-cli --locked
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
