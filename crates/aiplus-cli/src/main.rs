@@ -11292,9 +11292,7 @@ fn register_mcp_codex(bin: &str, dry_run: bool) -> Result<bool> {
         }
     };
     if !codex_dir.exists() {
-        println!(
-            "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed (no ~/.codex)"
-        );
+        println!("MCP_REGISTER_CODEX=SKIP reason=codex_not_installed (no ~/.codex)");
         return Ok(false);
     }
     let config_path = codex_dir.join("config.toml");
@@ -11454,10 +11452,7 @@ fn register_mcp_opencode(bin: &str, dry_run: bool) -> Result<bool> {
     } else {
         write_file_atomic(&config_path, format!("{serialized}\n").as_bytes())
             .with_context(|| format!("write {}", config_path.display()))?;
-        println!(
-            "MCP_REGISTER_OPENCODE=WROTE path={}",
-            config_path.display()
-        );
+        println!("MCP_REGISTER_OPENCODE=WROTE path={}", config_path.display());
     }
     Ok(true)
 }
