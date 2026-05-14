@@ -201,6 +201,8 @@ AiPlus 留在你项目里，**不**：
 
 AiPlus 支持可选的用户级私有 profile，存个人偏好和 secret alias 在 `~/.config/aiplus/profiles/`。私有 profile **永远不会**被打包进公共仓库。详细看 `aiplus profile install` 和 `aiplus secret-broker` 文档。
 
+需要一份现成的 "fork → 填占位符 → 一次安装" 模板，解决跨项目 / 跨 session 失忆（让 agent 记住你的协作风格、项目地图、角色身份、工具偏好，不用每个 session 重讲一遍），见 [**AiPlus-Work-With-You**](https://github.com/izhiwen/aiplus-work-with-you)。它 **不会**被 `aiplus install` 自动装上 —— 你 fork 它、填好占位符（USER.md / sync/projects.toml / secret-aliases.tsv），然后跑一次 `aiplus profile install aiplus-work-with-you --user --yes`。
+
 ## 状态
 
 最新发布：见 [Releases](https://github.com/izhiwen/AiPlus/releases/latest)（当前 `v0.5.10`，含 macOS / Linux / Windows 预编译二进制）。`main` 分支活跃开发；下次 cut 前要做的事见 [`docs/roadmap/`](docs/roadmap/)。

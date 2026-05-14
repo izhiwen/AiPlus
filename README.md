@@ -317,6 +317,14 @@ and secret aliases under `~/.config/aiplus/profiles/`. Private profiles are
 never bundled into public repositories. See `aiplus profile install` and
 `aiplus secret-broker` documentation for details.
 
+For a ready-made fork-and-personalize template that solves cross-project /
+cross-session amnesia — your agent remembering your collaboration style,
+project map, role identities, and tooling preferences without you re-stating
+them every session — see [**AiPlus-Work-With-You**](https://github.com/izhiwen/aiplus-work-with-you).
+It is **not** auto-installed by `aiplus install`; you fork it, fill in the
+placeholders (USER.md / sync/projects.toml / secret-aliases.tsv), then run
+`aiplus profile install aiplus-work-with-you --user --yes` once.
+
 ## Status
 
 Latest release: see [Releases](https://github.com/izhiwen/AiPlus/releases/latest)
