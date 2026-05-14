@@ -34,9 +34,7 @@ pub fn handle_transcript() -> Result<()> {
         println!("AGENT_TRANSCRIPT");
         println!("status=empty");
         println!("path={}", log_path.display());
-        println!(
-            "next=run `aiplus agent route <role> \"<task>\"` to record the first dispatch"
-        );
+        println!("next=run `aiplus agent route <role> \"<task>\"` to record the first dispatch");
         return Ok(());
     }
 

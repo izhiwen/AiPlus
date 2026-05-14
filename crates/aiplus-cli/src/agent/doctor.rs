@@ -36,7 +36,10 @@ pub fn handle_doctor() -> Result<()> {
                 // not noisy by default. Users who *have* dispatched
                 // and find the worktree gone will still see this line,
                 // but it won't drown out real issues.
-                println!("    INFO: worktree {} not yet provisioned (lazy)", path.display());
+                println!(
+                    "    INFO: worktree {} not yet provisioned (lazy)",
+                    path.display()
+                );
             }
         }
     }
