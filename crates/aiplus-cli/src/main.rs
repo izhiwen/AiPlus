@@ -2182,6 +2182,46 @@ fn command_doctor() -> Result<()> {
             }
         }
     }
+    // W3: per-role memory namespace coverage. We walk the active
+    // team's role list (whichever team was last installed) and warn
+    // if a namespace dir is missing or empty. Empty == "no .gitkeep
+    // and no README" — that means someone deleted the seed files
+    // manually and the namespace will look invisible to git.
+    if modules.contains_key(MODULE_SLUG_AGENT_TEAM) || modules.contains_key(MODULE_SLUG_AIECONLAB) {
+        let active_team = crate::agent::set_team::read_active_team(&root).unwrap_or_default();
+        let roles: &[&str] = if active_team == "aieconlab" {
+            AIECONLAB_ROLES
+        } else if active_team == "agent-team" {
+            AGENT_TEAM_ROLES
+        } else if modules.contains_key(MODULE_SLUG_AIECONLAB) {
+            AIECONLAB_ROLES
+        } else {
+            AGENT_TEAM_ROLES
+        };
+        let team_dir = root.join(".aiplus/agent-memory/_team");
+        push_check(
+            &mut checks,
+            ".aiplus/agent-memory/_team/ exists".to_string(),
+            team_dir.exists(),
+            Some(format!(
+                "rerun `aiplus add {}` to recreate the namespace",
+                active_team
+            )),
+        );
+        for role in roles {
+            let role_dir = root.join(format!(".aiplus/agent-memory/{role}"));
+            let has_seed = role_dir.join(".gitkeep").exists()
+                || role_dir.join("README.md").exists();
+            push_check(
+                &mut checks,
+                format!(".aiplus/agent-memory/{role}/ exists with seed file"),
+                role_dir.exists() && has_seed,
+                Some(format!(
+                    "rerun `aiplus add {active_team}` to recreate the {role}/ namespace"
+                )),
+            );
+        }
+    }
     let continuity = continuity_state(&root)?;
     push_check(
         &mut checks,
@@ -6342,6 +6382,11 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // mirror is purely additive — it doesn't change codex behavior.
     mirror_personas_to_runtimes(root)?;
 
+    // W3: seed per-role memory namespaces for the 8 AEL core roles.
+    // Experts that get summoned on demand don't get a namespace at
+    // install time — they're added when first invoked.
+    init_memory_namespaces(root, AIECONLAB_ROLES)?;
+
     Ok(())
 }
 
@@ -6378,6 +6423,73 @@ the PI commits to a staffing decision to make the dispatch a real artifact
 rather than narrative.
 "#;
 
+const AGENT_TEAM_ROLES: &[&str] = &[
+    "advisor",
+    "ceo",
+    "architect",
+    "pm",
+    "engineer-a",
+    "engineer-b",
+    "reviewer",
+    "qa",
+];
+
+const AIECONLAB_ROLES: &[&str] = &[
+    "advisor",
+    "pi",
+    "theorist",
+    "pm",
+    "ra-stata",
+    "ra-python",
+    "referee",
+    "replicator",
+];
+
+/// W3: seed per-role memory namespaces.
+///
+/// Creates `.aiplus/agent-memory/<role>/` for each role in the active
+/// team + `.aiplus/agent-memory/_team/` for cross-role records (the
+/// same dir that W1 writes consult JSONL into).
+///
+/// Each namespace gets a `.gitkeep` (so git tracks the empty dir) and
+/// a one-line README explaining the isolation rule. We only write the
+/// README when it's missing so re-installing doesn't clobber a user's
+/// edits.
+fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
+    let base = root.join(".aiplus").join("agent-memory");
+    let team_dir = base.join("_team");
+    std::fs::create_dir_all(&team_dir)
+        .with_context(|| format!("create {}", team_dir.display()))?;
+    let team_readme = "# _team/ — cross-role records\n\
+                       Consult findings and gate-ledger entries written by\n\
+                       `aiplus agent route` land here. Per-role memory dirs\n\
+                       live in siblings and are isolated.\n";
+    write_if_missing(root, ".aiplus/agent-memory/_team/README.md", team_readme.as_bytes())?;
+    write_if_missing(root, ".aiplus/agent-memory/_team/.gitkeep", b"")?;
+    for role in roles {
+        let rdir = base.join(role);
+        std::fs::create_dir_all(&rdir)
+            .with_context(|| format!("create {}", rdir.display()))?;
+        let role_readme = format!(
+            "# agent-memory/{role}/ — per-role records\n\
+             Memory written by the `{role}` role lives here. Other roles\n\
+             do not read this dir by default — isolation prevents the\n\
+             context pollution that single-agent setups suffer from.\n"
+        );
+        write_if_missing(
+            root,
+            &format!(".aiplus/agent-memory/{role}/README.md"),
+            role_readme.as_bytes(),
+        )?;
+        write_if_missing(
+            root,
+            &format!(".aiplus/agent-memory/{role}/.gitkeep"),
+            b"",
+        )?;
+    }
+    Ok(())
+}
+
 fn agent_team_init(root: &Path) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir)?;
@@ -6387,16 +6499,7 @@ fn agent_team_init(root: &Path) -> Result<()> {
     std::fs::create_dir_all(agents_dir.join("experts"))?;
 
     // Copy core role configs
-    for role in [
-        "advisor",
-        "ceo",
-        "architect",
-        "pm",
-        "engineer-a",
-        "engineer-b",
-        "reviewer",
-        "qa",
-    ] {
+    for role in AGENT_TEAM_ROLES {
         let asset = format!("aiplus-agent-team/core/templates/{role}.toml");
         let content = embedded_asset_text(&asset)?;
         write_file_atomic(&agents_dir.join(format!("{role}.toml")), content.as_bytes())?;
@@ -6486,6 +6589,10 @@ fn agent_team_init(root: &Path) -> Result<()> {
 
     // Mirror to per-runtime agent dirs. See aieconlab_init for rationale.
     mirror_personas_to_runtimes(root)?;
+
+    // W3: seed per-role memory namespaces + the cross-role `_team/`
+    // dir. Idempotent — re-runs leave existing READMEs intact.
+    init_memory_namespaces(root, AGENT_TEAM_ROLES)?;
 
     Ok(())
 }
