@@ -4155,16 +4155,36 @@ fn agent_route_blocks_dispatch_on_unapproved_owner_gate() {
         consult_files
     );
 
-    // Dispatch log must NOT have a release entry — the dispatch was
-    // refused, so the audit log shouldn't claim it happened.
+    // P1.3 (commit b8acc97): dispatch-log.jsonl now ALWAYS records a
+    // dispatch attempt, including refusals — with `outcome="canceled"`
+    // and `errorReason="owner_gate_pending"`. That gives the audit
+    // trail a complete picture (who tried what, who refused). The
+    // old "no entry on refusal" contract is gone.
+    //
+    // Re-stated contract: a refusal entry MAY exist, but if it does
+    // it MUST be tagged canceled with the owner_gate_pending reason —
+    // never a "successful" looking dispatch with outcome=success.
     let dispatch_log = target.join(".aiplus/agents/dispatch-log.jsonl");
     if dispatch_log.exists() {
         let log_body = fs::read_to_string(&dispatch_log).unwrap();
-        assert!(
-            !log_body.contains("\"task\":\"release"),
-            "dispatch log should not record refused dispatch:\n{}",
-            log_body
-        );
+        for line in log_body.lines() {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let task = v.get("task").and_then(|x| x.as_str()).unwrap_or("");
+            if task.starts_with("release") {
+                let outcome = v.get("outcome").and_then(|x| x.as_str()).unwrap_or("");
+                let reason = v.get("errorReason").and_then(|x| x.as_str()).unwrap_or("");
+                assert_eq!(
+                    outcome, "canceled",
+                    "refused dispatch must be tagged outcome=canceled, got {outcome:?} in line:\n{line}"
+                );
+                assert_eq!(
+                    reason, "owner_gate_pending",
+                    "refused dispatch must carry errorReason=owner_gate_pending, got {reason:?} in line:\n{line}"
+                );
+            }
+        }
     }
 }
 
