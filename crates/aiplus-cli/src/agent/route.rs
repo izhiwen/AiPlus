@@ -71,6 +71,22 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                 } else {
                     println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
                 }
+                // S7: surface this role's secret needs so the agent
+                // that receives the dispatch knows which broker
+                // aliases to pull. We do NOT auto-resolve here (that
+                // would require the keyring unlock at every route);
+                // we do print the recommended command. Future v1:
+                // detect a child process arg and wrap automatically.
+                if let Some(ref needs) = config.secret_needs {
+                    if !needs.aliases.is_empty() {
+                        let aliases = needs.aliases.join(",");
+                        println!(
+                            "  Secret needs (broker-required): [{aliases}]. \
+                             Run via: aiplus secret-broker run --aliases {aliases} \
+                             -- <child>"
+                        );
+                    }
+                }
                 if !task.is_empty() {
                     run_consult(&project_root, candidate, task)?;
                 }
