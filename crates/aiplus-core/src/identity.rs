@@ -61,7 +61,7 @@ scope = "project"
 activation = ["advice", "brainstorm"]
 output_contract = "concise options"
 owner_gates = ["publish", "deploy"]
-inherits = ["aiplus-work-with-you when linked and available"]
+inherits = ["aiplus-work-with-me when linked and available"]
 "#;
         fs::write(
             tmp.path().join(".aiplus/identities/advisor.identity.toml"),

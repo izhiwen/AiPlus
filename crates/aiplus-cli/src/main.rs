@@ -7732,7 +7732,7 @@ fn private_profile_installed() -> Result<bool> {
 /// is installed. "Canonical" = the first non-legacy installed profile in
 /// `~/.config/aiplus/profiles/`, alphabetical. Lets the CLI work with any
 /// `aiplus-work-with-<owner>` profile name (including the public
-/// `aiplus-work-with-you` template and personal forks), not just the
+/// `aiplus-work-with-me` template and personal forks), not just the
 /// original `aiplus-work-with-zhiwen` prototype.
 fn canonical_user_profile() -> Result<Option<String>> {
     let profiles_root = match config_home() {
@@ -7747,7 +7747,7 @@ fn canonical_user_profile_or_default() -> String {
     canonical_user_profile()
         .ok()
         .flatten()
-        .unwrap_or_else(|| "aiplus-work-with-you".to_string())
+        .unwrap_or_else(|| "aiplus-work-with-me".to_string())
 }
 
 fn print_continuity_status_lines(state: &ContinuityState) {

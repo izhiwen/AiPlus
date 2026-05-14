@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Public profile template renamed: `aiplus-work-with-you` → `aiplus-work-with-me`
+
+- Semantically clearer: each forked profile bundle is "AiPlus working
+  with me" (the owner), not "with you" (ambiguous referent). GitHub
+  auto-redirects old URLs, so existing fork commands still resolve.
+- `canonical_user_profile_or_default()` fallback string updated to
+  match. `aiplus-agent-memory` identity templates' `inherits` field
+  also flipped (see its main branch).
+- The v0.5.23 entry below intentionally retains the old name as
+  historical truth — it was correct at release time. Use the new name
+  going forward.
+- / **公开 profile 模板更名**：`aiplus-work-with-you` → `aiplus-work-with-me`
+  (每个 fork 都是 "AiPlus 跟我一起工作"，更贴合 owner 视角)。GitHub
+  保留 URL 重定向，旧 fork 命令仍可用。CLI fallback 字符串 +
+  `aiplus-agent-memory` identity 模板 `inherits` 同步更新。下方 v0.5.23
+  条目里的旧名是历史记录，不回改。
+
 ## 0.5.24
 
 ### K8 (#87): NEEDS_ELEVATED status for sandbox-blocked GUI prompts
