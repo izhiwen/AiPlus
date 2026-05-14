@@ -1,13 +1,24 @@
 ---
 # Post-release smoke matrix — exercises the just-published binary on
-# REAL operating systems we can't easily test locally:
-#   - Intel Mac (macos-13)        — real macOS Keychain on x86_64 hardware
-#   - Windows (windows-latest)    — real Windows Credential Manager
-#   - Apple Silicon Mac (macos-14)— sanity check the path we already use
-#   - Linux x86_64 (ubuntu-22.04) — older glibc + gnome-keyring round-trip
+# REAL operating systems we can't easily test locally.
+#
+# macos-13 (Intel hardware) intentionally NOT used: the free-tier
+# runner pool sits queued for >1h with no SLA. Both Apple Silicon
+# (macos-14 native arm64) and Intel (macos-14 + Rosetta 2 executing
+# the x86_64 binary) exercise the same macOS Keychain API — same OS
+# code path, different ISA executor. If real-Intel-hardware signal is
+# ever needed for a specific bug, set `os: macos-13` for the
+# x86_64-apple-darwin matrix entry on a one-off branch and re-run via
+# workflow_dispatch.
+#
+# Runners:
+#   - Apple Silicon Mac (macos-14)   real arm64 path
+#   - Intel Mac (macos-14 + Rosetta) x86_64 binary under Rosetta 2
+#   - Linux x86_64 (ubuntu-22.04)    + gnome-keyring Secret Service
+#   - Windows (windows-latest)       real Windows Credential Manager
 #
 # Triggered automatically when `Release` workflow completes successfully,
-# OR manually via `gh workflow run post-release-smoke.yml -f tag=v0.5.11`.
+# OR manually via `gh workflow run post-release-smoke.yml -f tag=v0.5.X`.
 
 name: post-release-smoke
 
