@@ -4,6 +4,7 @@ pub mod auditor;
 pub mod auto_write;
 pub mod capsule;
 pub mod compact_state;
+pub mod consult;
 pub mod error;
 pub mod identity;
 pub mod install_plan;

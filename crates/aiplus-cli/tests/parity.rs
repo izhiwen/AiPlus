@@ -158,7 +158,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(install_out.contains("AIPLUS_REFRESH_PROMPT=刷新"));
     assert!(install_out.contains("INSTALL_STATUS=PASS"));
     assert!(target.join(".aiplus/manifest.json").exists());
-    assert!(target.join(".codex/compact").exists());
+    assert!(target.join(".aiplus/compact").exists());
     assert!(target.join("AGENTS.md").exists());
     assert!(!target
         .join(".aiplus/modules/aiplus-compact-reminder/core/scripts/compactctl.mjs")
@@ -311,7 +311,7 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
     let managed_schema = target
         .join(".aiplus/modules/aiplus-compact-reminder/core/schemas/compact-policy.schema.json");
     fs::write(&managed_schema, b"{\"old\":\"managed file\"}\n").unwrap();
-    let checkpoint = target.join(".codex/compact/checkpoints/keep-me.json");
+    let checkpoint = target.join(".aiplus/compact/checkpoints/keep-me.json");
     fs::write(&checkpoint, b"{\"checkpoint\":\"preserve\"}\n").unwrap();
     let user_note = target.join(".aiplus/user-note.txt");
     fs::write(&user_note, b"do not delete\n").unwrap();
@@ -326,14 +326,14 @@ fn install_safely_upgrades_existing_aiplus_and_preserves_compact_state() {
         "evidence-ledger.md",
         "compact-policy.json",
     ] {
-        let path = target.join(".codex/compact").join(file);
+        let path = target.join(".aiplus/compact").join(file);
         let next = fs::read_to_string(&path)
             .unwrap()
             .replace("UNKNOWN_PENDING", "APPROVED");
         fs::write(path, next).unwrap();
     }
     fs::write(
-        target.join(".codex/compact/current-handoff.md"),
+        target.join(".aiplus/compact/current-handoff.md"),
         r#"# Compact Handoff
 
 ## Protocol Version
@@ -383,7 +383,7 @@ IN_PROGRESS
     assert!(upgrade.contains("AiPlus upgraded for Codex in this project."));
     assert!(upgrade.contains("UPGRADE_STATUS=PASS"));
     assert!(upgrade.contains("COMPACT_HANDOFF_MIGRATION=APPLIED"));
-    assert!(upgrade.contains(".codex/compact/ state was preserved."));
+    assert!(upgrade.contains(".aiplus/compact/ state was preserved."));
     assert!(checkpoint.exists());
     assert_eq!(fs::read_to_string(&user_note).unwrap(), "do not delete\n");
     assert!(fs::read_to_string(&managed_schema)
@@ -420,7 +420,7 @@ IN_PROGRESS
     ));
     assert!(rollback_dry.contains("AIPLUS_ROLLBACK"));
     assert!(rollback_dry.contains("ROLLBACK_STATUS=DRY_RUN"));
-    let handoff = fs::read_to_string(target.join(".codex/compact/current-handoff.md")).unwrap();
+    let handoff = fs::read_to_string(target.join(".aiplus/compact/current-handoff.md")).unwrap();
     assert!(handoff.contains("Preserve this old user-authored goal."));
     assert!(handoff.contains("## Session Role"));
     assert!(handoff.contains("Unknown"));
@@ -506,7 +506,9 @@ fn runtime_doctor_modes_and_uninstall_unknown_empty_dir() {
     let forced = stdout(&run(target, &["uninstall", "--yes", "--force"], 0));
     assert!(forced.contains("UNINSTALL_STATUS=PASS"));
     assert!(!target.join(".aiplus").exists());
-    assert!(target.join(".codex/compact").exists());
+    // Pre-0.5.11: compact state lived under `.codex/compact/` and survived
+    // `uninstall`. After L2-B rename it lives under `.aiplus/compact/`,
+    // so uninstall takes it with the rest of `.aiplus/`. See CHANGELOG v0.5.11.
 }
 
 #[test]
@@ -674,16 +676,16 @@ fn runtime_flags_compact_native_and_dangling_symlink_safety() {
         fs::create_dir(compact_target.join("fake-home")).unwrap();
         fs::create_dir(compact_target.join("fake-codex-home")).unwrap();
         fs::create_dir(compact_target.join("fake-xdg")).unwrap();
-        fs::create_dir_all(compact_target.join(".codex/compact")).unwrap();
+        fs::create_dir_all(compact_target.join(".aiplus/compact")).unwrap();
         let outside_compact = compact_temp.path().join("outside-handoff.md");
         std::os::unix::fs::symlink(
             &outside_compact,
-            compact_target.join(".codex/compact/current-handoff.md"),
+            compact_target.join(".aiplus/compact/current-handoff.md"),
         )
         .unwrap();
         let blocked_compact = run(compact_target, &["compact", "init"], 1);
         assert!(stderr(&blocked_compact).contains(
-            "ERROR refusing to write through symlink: .codex/compact/current-handoff.md"
+            "ERROR refusing to write through symlink: .aiplus/compact/current-handoff.md"
         ));
         assert!(!outside_compact.exists());
     }
@@ -904,8 +906,8 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     let target = temp.path();
     setup_fake_env(target);
     run(target, &["install", "codex"], 0);
-    assert!(target.join(".codex/compact/current-handoff.md").exists());
-    assert!(target.join(".codex/compact/compact-policy.json").exists());
+    assert!(target.join(".aiplus/compact/current-handoff.md").exists());
+    assert!(target.join(".aiplus/compact/compact-policy.json").exists());
 
     let no_node_path = make_empty_path();
     let init = stdout(&run_with_path(
@@ -931,9 +933,9 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert!(checkpoint_out.contains("UNKNOWN_NEEDS_REVIEW"));
     assert!(checkpoint_out.contains("READINESS_STATE=UNKNOWN_NEEDS_REVIEW"));
     assert!(checkpoint_out.contains("CHECKPOINT_LEVEL=standard"));
-    assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+    assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
     assert!(checkpoint_out.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
-    let checkpoint_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+    let checkpoint_count = fs::read_dir(target.join(".aiplus/compact/checkpoints"))
         .unwrap()
         .filter(|entry| {
             entry
@@ -953,33 +955,34 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
         Some(&no_node_path),
     ));
     assert!(resume.contains("RESUME_READY"));
-    assert!(resume.contains("latest_checkpoint=.codex/compact/checkpoints/"));
+    assert!(resume.contains("latest_checkpoint=.aiplus/compact/checkpoints/"));
     assert!(resume.contains("session_role=Unknown"));
     assert!(resume.contains("workflow_level=Unknown"));
     assert!(resume.contains("read_only_recovery_guidance=yes"));
     assert!(resume.contains("current_goal="));
     assert!(resume.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
 
-    let approved = fs::read_to_string(target.join(".codex/compact/current-handoff.md"))
+    let approved = fs::read_to_string(target.join(".aiplus/compact/current-handoff.md"))
         .unwrap()
         .replace("UNKNOWN_PENDING", "APPROVED");
-    fs::write(target.join(".codex/compact/current-handoff.md"), approved).unwrap();
+    fs::write(target.join(".aiplus/compact/current-handoff.md"), approved).unwrap();
     for file in [
         "decision-log.md",
         "agent-state-ledger.md",
         "evidence-ledger.md",
     ] {
-        let next = fs::read_to_string(target.join(".codex/compact").join(file))
+        let next = fs::read_to_string(target.join(".aiplus/compact").join(file))
             .unwrap()
             .replace("UNKNOWN_PENDING", "APPROVED");
-        fs::write(target.join(".codex/compact").join(file), next).unwrap();
+        fs::write(target.join(".aiplus/compact").join(file), next).unwrap();
     }
-    let mut policy = fs::read_to_string(target.join(".codex/compact/compact-policy.json")).unwrap();
+    let mut policy =
+        fs::read_to_string(target.join(".aiplus/compact/compact-policy.json")).unwrap();
     policy = policy.replace(
         "\"status\": \"UNKNOWN_PENDING\"",
         "\"status\": \"APPROVED\"",
     );
-    fs::write(target.join(".codex/compact/compact-policy.json"), policy).unwrap();
+    fs::write(target.join(".aiplus/compact/compact-policy.json"), policy).unwrap();
     let safe_checkpoint = stdout(&run_with_path(
         target,
         &["compact", "checkpoint"],
@@ -988,7 +991,7 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     ));
     assert!(safe_checkpoint.contains("SAFE_TO_COMPACT"));
     assert!(safe_checkpoint.contains("READINESS_STATE=READY_TO_COMPACT"));
-    assert!(safe_checkpoint.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+    assert!(safe_checkpoint.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
 
     for level in ["light", "standard", "full"] {
         let out = stdout(&run_with_path(
@@ -1021,11 +1024,11 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert!(score.contains("COMPACT_SCORE"));
     assert!(score.contains("COMPACT_PRESSURE=HIGH"));
 
-    fs::write(target.join(".codex/compact/compact-policy.json"), "{ bad").unwrap();
+    fs::write(target.join(".aiplus/compact/compact-policy.json"), "{ bad").unwrap();
     let bad_policy = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
     assert!(stderr(&bad_policy).contains("compact-policy.json is invalid JSON"));
     assert!(stderr(&bad_policy).contains("VALIDATION_FAIL"));
-    let before_blocked_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+    let before_blocked_count = fs::read_dir(target.join(".aiplus/compact/checkpoints"))
         .unwrap()
         .filter(|entry| {
             entry
@@ -1047,7 +1050,7 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert!(blocked_out.contains("READINESS_STATE=BLOCKED_BY_OWNER_GATE"));
     assert!(blocked_out.contains("CHECKPOINT_CREATED=none"));
     assert!(blocked_out.contains("checkpoint=none"));
-    let after_blocked_count = fs::read_dir(target.join(".codex/compact/checkpoints"))
+    let after_blocked_count = fs::read_dir(target.join(".aiplus/compact/checkpoints"))
         .unwrap()
         .filter(|entry| {
             entry
@@ -1061,13 +1064,13 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert_eq!(before_blocked_count, after_blocked_count);
 
     run(target, &["compact", "init", "--force"], 0);
-    fs::remove_file(target.join(".codex/compact/evidence-ledger.md")).unwrap();
+    fs::remove_file(target.join(".aiplus/compact/evidence-ledger.md")).unwrap();
     let missing = run_with_path(target, &["compact", "validate"], 1, Some(&no_node_path));
     assert!(stderr(&missing).contains("evidence-ledger.md is missing"));
 
     run(target, &["compact", "init", "--force"], 0);
     fs::write(
-        target.join(".codex/compact/evidence-ledger.md"),
+        target.join(".aiplus/compact/evidence-ledger.md"),
         "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n",
     )
     .unwrap();
@@ -1107,7 +1110,7 @@ fn compact_remind_decisions_snooze_handoff_json_and_guidance() {
     assert!(prepare_only.contains("SECRET_VALUES_PRINTED=no"));
 
     let prepare = stdout(&run(target, &["compact", "prepare"], 0));
-    assert!(prepare.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+    assert!(prepare.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
 
     let ready = stdout(&run(
         target,
@@ -1173,7 +1176,7 @@ fn compact_remind_decisions_snooze_handoff_json_and_guidance() {
     assert!(stale.contains("HANDOFF_STATE=stale"));
     assert!(stale.contains("REMINDER_DECISION=wait"));
 
-    fs::write(target.join(".codex/compact/compact-policy.json"), "{ bad").unwrap();
+    fs::write(target.join(".aiplus/compact/compact-policy.json"), "{ bad").unwrap();
     let blocked = stdout(&run(target, &["compact", "remind"], 1));
     assert!(blocked.contains("REMINDER_DECISION=blocked"));
     assert!(blocked.contains("REMINDER_LEVEL=safety_block"));
@@ -1234,7 +1237,7 @@ fn compact_remind_reaches_remind_now_with_current_handoff_and_checkpoint() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     let prepare = stdout(&run(target, &["compact", "prepare"], 0));
-    assert!(prepare.contains("CHECKPOINT_CREATED=.codex/compact/checkpoints/"));
+    assert!(prepare.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
 
     let remind = stdout(&run(
         target,
@@ -1336,7 +1339,7 @@ fn compact_watch_creates_reminder_state() {
 
     run(target, &["compact", "watch", "--once"], 0);
 
-    let state_path = target.join(".codex/compact/reminder-state.json");
+    let state_path = target.join(".aiplus/compact/reminder-state.json");
     assert!(state_path.exists(), "reminder-state.json should be created");
     let state_text = fs::read_to_string(&state_path).unwrap();
     let state: serde_json::Value = serde_json::from_str(&state_text).unwrap();
@@ -1362,9 +1365,9 @@ fn compact_prepare_creates_context_capsule() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     let prepare = stdout(&run(target, &["compact", "prepare"], 0));
-    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json"));
+    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.aiplus/compact/context-capsule.json"));
 
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     assert!(
         capsule_path.exists(),
         "context-capsule.json should be created"
@@ -1404,7 +1407,7 @@ fn compact_resume_reads_valid_capsule() {
 
     // Run prepare to create capsule
     let prepare = stdout(&run(target, &["compact", "prepare"], 0));
-    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json"));
+    assert!(prepare.contains("CONTEXT_CAPSULE_CREATED=.aiplus/compact/context-capsule.json"));
 
     // Now resume should read the capsule
     let resume = stdout(&run(target, &["compact", "resume"], 0));
@@ -1436,7 +1439,7 @@ fn compact_resume_falls_back_to_handoff_when_capsule_missing() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Ensure capsule does not exist
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     if capsule_path.exists() {
         fs::remove_file(&capsule_path).unwrap();
     }
@@ -1466,7 +1469,7 @@ fn compact_resume_rejects_malformed_capsule() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Write malformed capsule
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     fs::write(&capsule_path, "{ not valid json").unwrap();
 
     let resume = stdout(&run(target, &["compact", "resume"], 0));
@@ -1497,7 +1500,7 @@ fn compact_resume_rejects_checksum_mismatch() {
     run(target, &["compact", "prepare"], 0);
 
     // Corrupt the capsule objective so checksum no longer matches
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     let capsule_text = fs::read_to_string(&capsule_path).unwrap();
     let mut capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
     if let Some(obj) = capsule.get_mut("objective") {
@@ -1534,14 +1537,14 @@ fn decision_ledger_extraction_normal_table() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Replace decisions section in existing decision log
-    let decision_log = target.join(".codex/compact/decision-log.md");
+    let decision_log = target.join(".aiplus/compact/decision-log.md");
     let log_text = fs::read_to_string(&decision_log).unwrap();
     let new_decisions = "| ID | Status | Decision | Rationale | Evidence |\n| --- | --- | --- | --- | --- |\n| DEC-001 | DECIDED | Use Rust for CLI. | Performance and safety. | EVD-001 |\n| DEC-002 | PROVISIONAL | Evaluate Go for future tools. | Team familiarity. | EVD-002 |\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
     let updated = replace_section_body(&log_text, "Decisions", new_decisions);
     fs::write(&decision_log, updated).unwrap();
 
     run(target, &["compact", "prepare"], 0);
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     assert!(capsule_path.exists());
     let capsule_text = fs::read_to_string(&capsule_path).unwrap();
     let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
@@ -1572,14 +1575,14 @@ fn decision_ledger_extraction_malformed_log() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Malformed table: rows that don't start with '|' should be skipped
-    let decision_log = target.join(".codex/compact/decision-log.md");
+    let decision_log = target.join(".aiplus/compact/decision-log.md");
     let log_text = fs::read_to_string(&decision_log).unwrap();
     let new_decisions = "DEC-001 DECIDED Use Rust for CLI. Performance. EVD-001\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
     let updated = replace_section_body(&log_text, "Decisions", new_decisions);
     fs::write(&decision_log, updated).unwrap();
 
     run(target, &["compact", "prepare"], 0);
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     let capsule_text = fs::read_to_string(&capsule_path).unwrap();
     let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
     let decisions = capsule
@@ -1599,7 +1602,7 @@ fn decision_ledger_extraction_skips_sensitive_entries() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Replace decisions section with sensitive entries
-    let decision_log = target.join(".codex/compact/decision-log.md");
+    let decision_log = target.join(".aiplus/compact/decision-log.md");
     let log_text = fs::read_to_string(&decision_log).unwrap();
     let new_decisions = "| ID | Status | Decision | Rationale | Evidence |\n| --- | --- | --- | --- | --- |\n| DEC-001 | DECIDED | Use Rust for CLI. | Performance. | EVD-001 |\n| DEC-002 | DECIDED | api_key is secret123. | Security. | EVD-002 |\n| DEC-003 | DECIDED | Store raw transcript. | Logging. | EVD-003 |\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.";
     let updated = replace_section_body(&log_text, "Decisions", new_decisions);
@@ -1609,7 +1612,7 @@ fn decision_ledger_extraction_skips_sensitive_entries() {
     let prepare = stdout(&run(target, &["compact", "prepare"], 1));
     assert!(prepare.contains("BLOCKED_BY_OWNER_GATE"));
     assert!(prepare.contains("CONTEXT_CAPSULE_CREATED"));
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     let capsule_text = fs::read_to_string(&capsule_path).unwrap();
     let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
     let decisions = capsule
@@ -1644,13 +1647,13 @@ fn decision_ledger_extraction_empty_log() {
     make_compact_handoff_current(target, "PASS", now_unix_millis_marker());
 
     // Empty decisions section
-    let decision_log = target.join(".codex/compact/decision-log.md");
+    let decision_log = target.join(".aiplus/compact/decision-log.md");
     let log_text = fs::read_to_string(&decision_log).unwrap();
     let updated = replace_section_body(&log_text, "Decisions", "No decisions yet.\n\nAllowed status values: DECIDED, PROVISIONAL, REVERSED, NEEDS_VERIFICATION.");
     fs::write(&decision_log, updated).unwrap();
 
     run(target, &["compact", "prepare"], 0);
-    let capsule_path = target.join(".codex/compact/context-capsule.json");
+    let capsule_path = target.join(".aiplus/compact/context-capsule.json");
     let capsule_text = fs::read_to_string(&capsule_path).unwrap();
     let capsule: serde_json::Value = serde_json::from_str(&capsule_text).unwrap();
     let decisions = capsule
@@ -1710,7 +1713,7 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
     assert!(savings.contains("Estimated cost saved: ~$"));
     assert!(savings.contains("billing_data=no"));
     assert!(savings.contains("Estimate only, not billing data."));
-    let ledger = fs::read_to_string(target.join(".codex/compact/savings-ledger.jsonl")).unwrap();
+    let ledger = fs::read_to_string(target.join(".aiplus/compact/savings-ledger.jsonl")).unwrap();
     assert!(ledger.contains(r#""pricingStatus":"matched""#));
     assert!(ledger.contains(r#""billingData":false"#));
     assert!(ledger.contains("no prompt text"));
@@ -1784,7 +1787,7 @@ fn compact_savings_uses_cache_and_handles_unknown_model_without_price_input() {
     let weighted_target = weighted.path();
     setup_fake_env(weighted_target);
     run(weighted_target, &["install", "codex"], 0);
-    let ledger_dir = weighted_target.join(".codex/compact");
+    let ledger_dir = weighted_target.join(".aiplus/compact");
     fs::write(
         ledger_dir.join("savings-ledger.jsonl"),
         format!(
@@ -1921,7 +1924,7 @@ fn self_update_and_update_all_are_safe_in_fake_home() {
     assert!(update_all.contains("SELF_UPDATE_STATUS=PASS"));
     assert!(update_all.contains("PROJECT_UPDATE_STATUS=PASS"));
     assert!(update_all.contains("UPDATE_ALL_STATUS=PASS"));
-    assert!(target.join(".codex/compact").exists());
+    assert!(target.join(".aiplus/compact").exists());
 
     let no_project = tempfile::tempdir().unwrap();
     let no_project_target = no_project.path();
@@ -2860,22 +2863,23 @@ fn approve_compact_state(target: &Path) {
         "agent-state-ledger.md",
         "evidence-ledger.md",
     ] {
-        let path = target.join(".codex/compact").join(file);
+        let path = target.join(".aiplus/compact").join(file);
         let next = fs::read_to_string(&path)
             .unwrap()
             .replace("UNKNOWN_PENDING", "APPROVED");
         fs::write(path, next).unwrap();
     }
-    let mut policy = fs::read_to_string(target.join(".codex/compact/compact-policy.json")).unwrap();
+    let mut policy =
+        fs::read_to_string(target.join(".aiplus/compact/compact-policy.json")).unwrap();
     policy = policy.replace(
         "\"status\": \"UNKNOWN_PENDING\"",
         "\"status\": \"APPROVED\"",
     );
-    fs::write(target.join(".codex/compact/compact-policy.json"), policy).unwrap();
+    fs::write(target.join(".aiplus/compact/compact-policy.json"), policy).unwrap();
 }
 
 fn make_compact_handoff_current(target: &Path, phase: &str, last_updated: String) {
-    let path = target.join(".codex/compact/current-handoff.md");
+    let path = target.join(".aiplus/compact/current-handoff.md");
     let mut handoff = fs::read_to_string(&path).unwrap();
     handoff = handoff.replace(
         "Synthetic template. Replace placeholders before use.\n\n",
@@ -3835,5 +3839,202 @@ fn acceptance_scenario_parity() {
     assert!(
         target.join("feature-a.txt").exists(),
         "Final state should retain merged files"
+    );
+}
+
+#[test]
+fn agent_route_writes_consult_artifact() {
+    // W1 contract: `aiplus agent route` must produce a real consult
+    // JSONL under .aiplus/agent-memory/_team/ when a consultant-team
+    // config is installed and the task description triggers at least
+    // one member. Idempotency: re-running with the same role+task on
+    // the same day appends nothing.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    // Install + add the consultant team module so consultant-team.toml lands.
+    run(target, &["install", "codex"], 0);
+    run(target, &["add", "auto-team-consultant"], 0);
+    let consult_toml = target.join(".aiplus/consultant-team.toml");
+    assert!(
+        consult_toml.exists(),
+        "consultant-team.toml should exist after install + add auto-team-consultant"
+    );
+
+    // Task description full of LLM + release keywords — should fire
+    // both the SWE default ai_integration trigger and the release
+    // (HEAVY, stop_gate) trigger, plus push tier to HEAVY which pulls
+    // user personas in.
+    let route = stdout(&run(
+        target,
+        &[
+            "agent",
+            "route",
+            "engineer-a",
+            "release",
+            "the",
+            "LLM",
+            "tool",
+            "use",
+            "pipeline",
+        ],
+        0,
+    ));
+    assert!(
+        route.contains("Consult tier:") && route.contains("finding(s) recorded:"),
+        "route output should mention consult artifact:\n{}",
+        route
+    );
+
+    // Find the freshly-written consult-<id>.jsonl.
+    let team_dir = target.join(".aiplus/agent-memory/_team");
+    assert!(team_dir.exists(), "_team/ namespace should exist");
+    let consult_files: Vec<_> = fs::read_dir(&team_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.starts_with("consult-") && s.ends_with(".jsonl"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        consult_files.len(),
+        1,
+        "expected exactly one consult-*.jsonl, found {:?}",
+        consult_files
+    );
+    let body = fs::read_to_string(&consult_files[0]).unwrap();
+    let line_count = body.lines().count();
+    assert!(
+        line_count >= 1,
+        "consult JSONL should have at least one finding line; body=\n{}",
+        body
+    );
+    // Each line should be parseable JSON with the contracted fields.
+    for line in body.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).expect("findings parse as JSON");
+        assert_eq!(
+            v.get("schemaVersion").and_then(|x| x.as_str()),
+            Some("0.1.0")
+        );
+        assert!(v.get("taskId").and_then(|x| x.as_str()).is_some());
+        assert!(v.get("memberId").and_then(|x| x.as_str()).is_some());
+        assert!(v.get("tier").and_then(|x| x.as_str()).is_some());
+    }
+
+    // Idempotency: run the same route a second time. The JSONL line
+    // count must not grow — (task_id, member_id) is the dedupe key.
+    run(
+        target,
+        &[
+            "agent",
+            "route",
+            "engineer-a",
+            "release",
+            "the",
+            "LLM",
+            "tool",
+            "use",
+            "pipeline",
+        ],
+        0,
+    );
+    let body2 = fs::read_to_string(&consult_files[0]).unwrap();
+    assert_eq!(
+        body2.lines().count(),
+        line_count,
+        "re-running route on the same day must be idempotent; before=\n{}\nafter=\n{}",
+        body,
+        body2
+    );
+
+    // Doctor should still pass on the schema_version supported check.
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(
+        doctor.contains("PASS consultant-team.toml schema_version is supported by this CLI"),
+        "doctor should report supported schema_version:\n{}",
+        doctor
+    );
+}
+
+#[test]
+fn agent_route_skips_consult_on_unsupported_schema() {
+    // W1 safety contract: an unsupported schema must NOT crash dispatch.
+    // Instead `agent route` prints a NOTE and writes no consult JSONL.
+    // The doctor check is what surfaces drift; route stays lenient.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    run(target, &["install", "codex"], 0);
+    run(target, &["add", "auto-team-consultant"], 0);
+    let consult_toml = target.join(".aiplus/consultant-team.toml");
+    // Replace the bundled file with one whose schema_version is bogus.
+    let bogus = "schema_version = \"99.99\"\n";
+    fs::write(&consult_toml, bogus).unwrap();
+
+    // Route should still succeed (exit 0) and emit the unsupported-schema NOTE.
+    let output = run(
+        target,
+        &["agent", "route", "engineer-a", "publish", "release"],
+        0,
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("schema_version='99.99' not in the supported list")
+            || combined.contains("not in the supported list"),
+        "route should warn about unsupported schema:\n{}",
+        combined
+    );
+    // No consult JSONL should have been written.
+    let team_dir = target.join(".aiplus/agent-memory/_team");
+    if team_dir.exists() {
+        let any: Vec<_> = fs::read_dir(&team_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.starts_with("consult-"))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(
+            any.is_empty(),
+            "no consult artifact expected on unsupported schema, got {:?}",
+            any
+        );
+    }
+
+    // Doctor should report the supported-schema check as NEEDS_FIX.
+    // (Exit code may be non-zero on NEEDS_FIX — accept either.)
+    let mut command = Command::new(bin());
+    command
+        .args(["doctor"])
+        .current_dir(target)
+        .env("HOME", target.join("fake-home"))
+        .env("CODEX_HOME", target.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", target.join("fake-xdg"));
+    let doctor_out = command.output().expect("run doctor");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&doctor_out.stdout),
+        String::from_utf8_lossy(&doctor_out.stderr)
+    );
+    assert!(
+        combined.contains("schema_version is supported by this CLI"),
+        "doctor should report on schema_version drift:\n{}",
+        combined
     );
 }

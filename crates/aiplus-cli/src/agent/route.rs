@@ -2,6 +2,7 @@ use crate::agent::cache;
 use crate::agent::core::get_role_config;
 use crate::agent::state;
 use crate::agent::worktree;
+use aiplus_core::consult;
 use anyhow::Result;
 
 pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
@@ -64,30 +65,7 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                     println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
                 }
                 if !task.is_empty() {
-                    let (tier, why) = state::score_task_tier(task);
-                    match tier {
-                        "HEAVY" => {
-                            println!();
-                            println!("  ⚠  Task tier: HEAVY ({why}).");
-                            println!(
-                                "     Recommendation: run `aiplus-auto-team-consultant` before \
-                                 staffing this dispatch, and double-check Owner sign-off on \
-                                 STOP-gated actions (submission / posting / authorship / release)."
-                            );
-                        }
-                        "MEDIUM" => {
-                            println!();
-                            println!("  ℹ  Task tier: MEDIUM ({why}).");
-                            println!(
-                                "     Recommendation: brief the consultant team before \
-                                 implementation; flag identification-adjacent assumptions to \
-                                 Theorist/Architect first."
-                            );
-                        }
-                        _ => {
-                            // LIGHT — no nudge.
-                        }
-                    }
+                    run_consult(&project_root, candidate, task)?;
                 }
                 return Ok(());
             }
@@ -100,10 +78,87 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                     format!("{candidate} {task}")
                 };
                 println!("Routing task to PI/CEO for scoring and dispatch: {full_task}");
+                let project_root = std::env::current_dir()?;
+                run_consult(&project_root, "pi", &full_task)?;
                 return Ok(());
             }
         }
     }
     println!("Routing task to PI/CEO for scoring and dispatch: {task}");
+    let project_root = std::env::current_dir()?;
+    run_consult(&project_root, "pi", task)?;
+    Ok(())
+}
+
+/// Walk the consultant team for `task` and persist per-member findings
+/// under `.aiplus/agent-memory/_team/consult-<task-id>.jsonl`. The
+/// JSONL is what makes the consult a real side effect instead of a
+/// narrative — downstream `agent transcript` reads it, and W2 (owner
+/// gates) will gate dispatch on what it finds.
+///
+/// Failure to consult is intentionally non-fatal: missing config or
+/// unsupported schema prints a NOTE and lets dispatch continue. The
+/// goal is "consult-as-side-effect when possible," not "force every
+/// route through a complete consult."
+fn run_consult(project_root: &std::path::Path, role: &str, task: &str) -> Result<()> {
+    let team = match consult::load_consult_team(project_root) {
+        Ok(Some(team)) => team,
+        Ok(None) => {
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!(
+                "  NOTE: consultant team config could not be loaded ({e}); skipping consult."
+            );
+            return Ok(());
+        }
+    };
+    if !consult::is_supported_schema(&team.schema_version) {
+        eprintln!(
+            "  NOTE: consultant-team.toml schema_version='{}' not in the supported list \
+             ({:?}); skipping consult. Run `aiplus doctor` for guidance.",
+            team.schema_version,
+            consult::SUPPORTED_CONSULT_SCHEMAS,
+        );
+        return Ok(());
+    }
+    let today = aiplus_core::now_iso();
+    // YYYY-MM-DD slice as the task-id salt so re-running the same
+    // command on the same day yields the same id (idempotent), while
+    // re-running tomorrow opens a fresh consult file.
+    let date_salt: String = today.chars().take(10).collect();
+    let task_id = consult::derive_task_id(role, task, &date_salt);
+    let (tier, complexity, risk, findings) = consult::build_findings(&team, task, &task_id, &today);
+
+    if findings.is_empty() {
+        println!(
+            "  Consult tier: {} (complexity {}, risk {:.2}). No member triggers matched — skipping artifact.",
+            tier.as_str(),
+            complexity,
+            risk,
+        );
+        return Ok(());
+    }
+    match consult::write_findings(project_root, &task_id, &findings) {
+        Ok(path) => {
+            // Convert to a project-relative path for the on-screen
+            // hint; absolute paths are noisy and break copy/paste.
+            let rel = path
+                .strip_prefix(project_root)
+                .map(|p| p.to_path_buf())
+                .unwrap_or(path.clone());
+            println!(
+                "  Consult tier: {} (complexity {}, risk {:.2}). {} finding(s) recorded: {}",
+                tier.as_str(),
+                complexity,
+                risk,
+                findings.len(),
+                rel.display(),
+            );
+        }
+        Err(e) => {
+            eprintln!("  WARN: failed to write consult findings: {e}");
+        }
+    }
     Ok(())
 }
