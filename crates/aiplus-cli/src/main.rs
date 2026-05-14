@@ -15421,12 +15421,17 @@ fn command_velocity(
             )?;
 
             let estimate_id = generate_estimate_id();
+            // Derive task_id from estimate_id by prefix-swap so the
+            // user's `--task-id ${EST_ID/est_/task_}` idiom (the one
+            // every example in README uses) actually points back at
+            // the right estimate record. Calling `generate_estimate_id`
+            // a second time would produce an independent ULID with a
+            // different random tail and break that round-trip.
+            let derived_task_id = estimate_id.replacen("est_", "task_", 1);
             let record = EstimateRecord {
                 schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
                 id: estimate_id.clone(),
-                task_id: task_id
-                    .clone()
-                    .unwrap_or_else(|| generate_estimate_id().replace("est_", "task_")),
+                task_id: task_id.clone().unwrap_or(derived_task_id),
                 created_at: now_iso(),
                 project_id: "aiplus".to_string(),
                 task_type: task_type.clone(),
@@ -15507,6 +15512,36 @@ fn command_velocity(
             };
 
             let run_id = generate_run_id();
+            // E2E-found bug: `complete` did not inherit task_type / model /
+            // workflow from the linked estimate, so RunRecord.task_type was
+            // always "" unless the user re-passed --task-type. That broke
+            // cross-project bucket lookups (global record had taskType="")
+            // and the local pre-v0.2 bucket lookup too. CLI flag still wins
+            // when supplied; estimate is the structural fallback.
+            let inherit_task_type = task_type
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    estimate
+                        .map(|e| e.task_type.clone())
+                        .filter(|s| !s.is_empty())
+                })
+                .unwrap_or_default();
+            let inherit_model = model
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| estimate.map(|e| e.model.clone()).filter(|s| !s.is_empty()))
+                .unwrap_or_else(|| "unknown".to_string());
+            let inherit_workflow = workflow
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    estimate
+                        .map(|e| e.workflow_level.clone())
+                        .filter(|s| !s.is_empty())
+                })
+                .unwrap_or_else(|| "MEDIUM".to_string());
+
             let run = RunRecord {
                 schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
                 id: run_id,
@@ -15514,12 +15549,12 @@ fn command_velocity(
                 task_id: task_id.clone(),
                 created_at: now_iso(),
                 project_id: "aiplus".to_string(),
-                task_type: task_type.clone().unwrap_or_default(),
+                task_type: inherit_task_type,
                 repo_area: "aiplus-public".to_string(),
                 agent_role: "ceo".to_string(),
                 runtime: "opencode".to_string(),
-                model: model.clone().unwrap_or_else(|| "unknown".to_string()),
-                workflow_level: workflow.clone().unwrap_or_else(|| "MEDIUM".to_string()),
+                model: inherit_model,
+                workflow_level: inherit_workflow,
                 original_estimate_minutes: original_estimate,
                 human_baseline_minutes: human_baseline,
                 actual_active_minutes: actual_minutes,
