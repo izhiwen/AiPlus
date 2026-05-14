@@ -18,7 +18,7 @@ else
       | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/' \
       || echo "")
   fi
-  VERSION="${VERSION:-v0.5.10}"  # fallback if both lookups fail
+  VERSION="${VERSION:-v0.5.11}"  # fallback if both lookups fail (last-known-good)
 fi
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
@@ -202,26 +202,23 @@ chmod 755 "$INSTALL_DIR/aiplus"
 echo "INSTALL_STATUS=PASS"
 echo "installed=$INSTALL_DIR/aiplus"
 
-# Runtime dependency check (Linux only). The aiplus binary links against
-# libdbus-1.so.3 because the `keyring` crate uses Linux Secret Service for
-# secret-broker token persistence. Most desktop Linux systems already
-# have it; minimal containers (e.g. ubuntu:22.04 base) do not. Warn the
-# user instead of failing — install completed successfully either way.
+# Optional-feature notice (Linux only): the aiplus binary statically links
+# libdbus (vendored in v0.5.11+), so it RUNS fine on any Linux. But to
+# actually use the OS keyring for secret-broker token storage, a D-Bus
+# session bus + a Secret Service daemon (gnome-keyring, kwallet, or
+# pass-secret-service) must be available at runtime. Headless servers /
+# minimal containers typically lack both. Tell the user about the
+# BWS_ACCESS_TOKEN fallback up-front — install completed successfully
+# either way.
 if [ "$(uname -s)" = "Linux" ]; then
-  has_libdbus=0
-  if command -v ldconfig >/dev/null 2>&1; then
-    if ldconfig -p 2>/dev/null | grep -q 'libdbus-1\.so\.3'; then
-      has_libdbus=1
-    fi
-  fi
-  if [ "$has_libdbus" -eq 0 ]; then
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ ! -S "/run/user/$(id -u 2>/dev/null)/bus" ]; then
     echo ""
-    echo "RUNTIME_DEP_NOTICE=libdbus-1.so.3 not found"
-    echo "aiplus needs the libdbus-1 runtime library on Linux for secret storage."
-    echo "Install it before running aiplus:"
-    echo "  Debian/Ubuntu: sudo apt-get install -y libdbus-1-3"
-    echo "  Fedora/RHEL:   sudo dnf install -y dbus-libs"
-    echo "  Alpine:        sudo apk add dbus-libs"
+    echo "OPTIONAL_NOTICE=no D-Bus session bus detected"
+    echo "aiplus runs fine here. To use OS keyring storage for secret-broker"
+    echo "tokens, you would need a D-Bus session bus + a Secret Service daemon"
+    echo "(gnome-keyring / kwallet / pass-secret-service). For headless /"
+    echo "container use, set BWS_ACCESS_TOKEN as an environment variable"
+    echo "instead — keyring is optional, not required."
   fi
 fi
 
