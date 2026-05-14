@@ -2,12 +2,12 @@
   "schemaVersion": "0.1.0",
   "name": "aieconlab",
   "displayName": "AiEconLab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "source": "bundled",
   "license": "Apache-2.0",
   "abbreviation": "AEL",
   "requires": {
-    "aiplus_min_version": "0.5.2",
+    "aiplus_min_version": "0.5.13",
     "substrate_modules": [
       "aiplus-agent-memory",
       "aiplus-compact-reminder",
@@ -27,7 +27,13 @@
     "core/templates/consultant-team.aieconlab.toml",
     "core/templates/experts/llm-measurement.toml",
     "core/templates/personas/advisor.md",
-    "core/templates/personas/llm-measurement.md"
+    "core/templates/personas/llm-measurement.md",
+    "adapters/claude-code/subagents.toml",
+    "adapters/claude-code/claude-md-block.md",
+    "adapters/claude-code/commands/aiel-route.md",
+    "adapters/claude-code/commands/aiel-talk.md",
+    "adapters/claude-code/commands/aiel-fire-consultant.md",
+    "adapters/claude-code/commands/aiel-status.md"
   ],
   "managedFiles": [
     ".aiplus/modules/aieconlab",
@@ -39,9 +45,10 @@
   "installHints": [
     "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles, 12-specialist expert directory, and a research-tuned consultant team.",
     "Default toolchain: Python + Stata + LaTeX. Requires git for worktree provisioning.",
-    "Depends on aiplus >= 0.5.2 (which already provides the velocity subcommand built-in) and the three substrate modules listed in `requires.substrate_modules`.",
+    "Depends on aiplus >= 0.5.13 (which ships the AEL claude-code adapter install path) and the three substrate modules listed in `requires.substrate_modules`.",
     "Install replaces the default SWE consultant team (`.aiplus/consultant-team.toml`) with the research-tuned `consultant-team.aieconlab.toml` (5 expert seats + 3 personas + 5 owner gates, LIGHT tier skips consult).",
-    "Sibling to aiplus-agent-team; the two can be installed in the same project (consultant-team coexistence deferred to v0.2)."
+    "Claude Code adapter (v0.2+): when `claude-code` is among the project's runtime adapters, install writes 20 subagents (8 core + 12 experts) to `.claude/agents/aieconlab-*.md`, 4 slash commands to `.claude/commands/aiel-*.md`, and an AEL managed block in `CLAUDE.md` (separate markers from AiPlus's block).",
+    "Sibling to aiplus-agent-team; the two can be installed in the same project (consultant-team coexistence deferred to v0.3)."
   ],
   "doctorChecks": [
     {
@@ -73,6 +80,16 @@
       "id": "llm-measurement-expert",
       "path": "core/templates/experts/llm-measurement.toml",
       "description": "LLM-as-Measurement Specialist expert is present (paired with consultant seat 5)."
+    },
+    {
+      "id": "claude-code-subagents-manifest",
+      "path": "adapters/claude-code/subagents.toml",
+      "description": "Claude Code subagent manifest is present (v0.2 adapter; 20 entries)."
+    },
+    {
+      "id": "claude-code-claude-md-block",
+      "path": "adapters/claude-code/claude-md-block.md",
+      "description": "Claude Code CLAUDE.md managed-block body is present (v0.2 adapter)."
     }
   ],
   "publicPrivateBoundary": {
@@ -93,7 +110,8 @@
     "notes": [
       "AiEconLab (abbreviation: AEL) introduced as a sibling to aiplus-agent-team for applied-economics research workflows.",
       "Core 8 roles mirror agent-team's tier structure but are renamed for academic research.",
-      "Brand-decoupled from AiPlus but functionally depends on the AiPlus substrate."
+      "Brand-decoupled from AiPlus but functionally depends on the AiPlus substrate.",
+      "v0.2.0 ships the Claude Code adapter (`adapters/claude-code/`) so AEL agents auto-route in Claude Code sessions after install. Requires aiplus >= 0.5.13."
     ]
   }
 }
