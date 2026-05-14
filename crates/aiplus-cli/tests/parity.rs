@@ -3240,7 +3240,10 @@ fn agent_team_invite_stub_errors_with_stub_not_invitable() {
     let out_str = stdout(&output);
     assert!(out_str.contains("STUB_NOT_INVITABLE"));
     assert!(out_str.contains("expert is v0.2 stub, not yet functional"));
-    assert!(!out_str.contains("INTERNAL_ERROR"));
+    // The stub-invite path should surface a structured STUB_NOT_INVITABLE
+    // (asserted above) rather than bubble to the uncaught-error fallback
+    // prefix from the top-level error handler (P1.2 catch-all).
+    assert!(!out_str.contains("AIPLUS_UNEXPECTED_ERROR"));
 }
 
 #[test]

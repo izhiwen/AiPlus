@@ -741,7 +741,13 @@ fn main() {
             println!("{}", msg);
             process::exit(2);
         }
-        eprintln!("INTERNAL_ERROR {error:?}");
+        // Catch-all for errors that bubbled up without being mapped to a
+        // structured CliError. Per P1.2 (unified error-format goal):
+        // user-visible errors should use <CMD>_STATUS=FAIL reason=<key>
+        // detail=<msg>; truly unexpected errors get this AIPLUS_UNEXPECTED_ERROR
+        // prefix so users / scripts can tell them apart from expected
+        // failures.
+        eprintln!("AIPLUS_UNEXPECTED_ERROR reason=uncaught detail={error:?}");
         process::exit(3);
     }
 }
