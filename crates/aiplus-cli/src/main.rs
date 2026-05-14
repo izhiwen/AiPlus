@@ -355,6 +355,20 @@ enum Commands {
         ///   dotenv:<path>                        → write/update .env single key
         #[arg(long = "to")]
         to: Option<String>,
+        /// K1/K2: for `set` / `need` — if value is missing, pop a native
+        /// OS password dialog (macOS osascript / Linux zenity-kdialog /
+        /// Windows PowerShell SecureString) so the agent can drive the
+        /// user-input flow without making the user switch to their
+        /// terminal. Falls back to rpassword tty prompt when no GUI
+        /// is available.
+        #[arg(long = "auto-prompt", action = ArgAction::SetTrue)]
+        auto_prompt: bool,
+        /// K2: env var name override for `set` / `need` (default:
+        /// uppercase alias + `_API_KEY`). Useful when one alias must
+        /// expose as a non-standard env name (e.g. multi-account
+        /// `openai_work` → `OPENAI_API_KEY`).
+        #[arg(long = "env")]
+        env_var: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
     },
@@ -947,8 +961,20 @@ fn run(command: Commands) -> Result<()> {
             alias,
             aliases,
             to,
+            auto_prompt,
+            env_var,
             command,
-        } => command_secret_broker(subcommand, arg, print, alias, aliases, to, command),
+        } => command_secret_broker(
+            subcommand,
+            arg,
+            print,
+            alias,
+            aliases,
+            to,
+            auto_prompt,
+            env_var,
+            command,
+        ),
         Commands::SelfCommand {
             subcommand,
             dry_run,
@@ -5126,6 +5152,8 @@ fn command_secret_broker(
     alias_flags: Vec<String>,
     aliases_csv: Option<String>,
     to: Option<String>,
+    auto_prompt: bool,
+    env_var: Option<String>,
     command: Vec<String>,
 ) -> Result<()> {
     match subcommand.as_deref() {
@@ -5136,20 +5164,60 @@ fn command_secret_broker(
         Some("run") => secret_broker_run(alias_flags, aliases_csv, command),
         Some("push") => secret_broker_push(alias_flags, aliases_csv, to, print_secret),
         Some("token") => secret_broker_token(arg),
-        Some("set") => secret_broker_set(alias_flags.first().cloned().or(arg)),
+        Some("set") => {
+            secret_broker_set(alias_flags.first().cloned().or(arg), auto_prompt, env_var)
+        }
+        Some("need") => secret_broker_need(
+            collect_alias_args(arg.clone(), alias_flags.clone(), aliases_csv.clone()),
+            auto_prompt,
+            env_var,
+        ),
         Some("delete") => secret_broker_delete(alias_flags.first().cloned().or(arg)),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set --alias <a>|delete --alias <a>|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--env <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|token set|delete");
             process::exit(2);
         }
     }
 }
 
+// K2: collect alias names from `arg`, repeated `--alias`, and `--aliases
+// a,b`. Used by `need` which can take multiple aliases in one call.
+fn collect_alias_args(
+    arg: Option<String>,
+    alias_flags: Vec<String>,
+    aliases_csv: Option<String>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(a) = arg {
+        if !a.is_empty() {
+            out.push(a);
+        }
+    }
+    out.extend(alias_flags);
+    if let Some(csv) = aliases_csv {
+        for part in csv.split(',') {
+            let trimmed = part.trim();
+            if !trimmed.is_empty() {
+                out.push(trimmed.to_string());
+            }
+        }
+    }
+    let mut seen = BTreeSet::new();
+    out.retain(|a| seen.insert(a.clone()));
+    out
+}
+
 // v0.5.16: store a secret value for the default (keyring) backend.
-// Reads value from stdin so the value never appears in shell history
-// or argv. Appends the alias to the project TSV registry if it's not
-// already there, so `secret-broker list` shows it.
-fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
+// v0.5.18: optional --auto-prompt flag pops a native OS dialog so the
+// agent can drive the input flow without the user having to switch
+// to their terminal. --env <NAME> overrides the default
+// `<ALIAS>_API_KEY` env-var name (useful for multi-account setups
+// like openai_work / openai_personal both → OPENAI_API_KEY).
+fn secret_broker_set(
+    alias_name: Option<String>,
+    auto_prompt: bool,
+    env_override: Option<String>,
+) -> Result<()> {
     let alias_name = alias_name.ok_or_else(|| {
         CliError::new(1, "ERROR aiplus secret-broker set requires --alias <name>")
     })?;
@@ -5163,18 +5231,22 @@ fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
         )
         .into());
     }
-    let mut value = String::new();
-    io::stdin().read_to_string(&mut value)?;
-    let value = value.trim();
+    let value = if auto_prompt {
+        prompt_secret_via_gui(&alias_name)?
+    } else {
+        let mut buf = String::new();
+        io::stdin().read_to_string(&mut buf)?;
+        buf.trim().to_string()
+    };
     if value.is_empty() {
         return Err(CliError::new(
             1,
-            "ERROR no value received on stdin (run as: `echo -n $YOUR_KEY | aiplus secret-broker set --alias <name>`)",
+            "ERROR empty value (use `--auto-prompt` for a native dialog, or `echo -n $YOUR_KEY | aiplus secret-broker set --alias <name>`)",
         )
         .into());
     }
     let entry = keyring_alias_entry(&alias_name)?;
-    match entry.set_password(value) {
+    match entry.set_password(&value) {
         Ok(()) => {}
         Err(keyring::Error::NoStorageAccess(detail))
         | Err(keyring::Error::PlatformFailure(detail)) => {
@@ -5192,12 +5264,266 @@ fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
             .into());
         }
     }
-    let env_var = format!("{}_API_KEY", alias_name.to_ascii_uppercase());
+    let env_var =
+        env_override.unwrap_or_else(|| format!("{}_API_KEY", alias_name.to_ascii_uppercase()));
     append_alias_to_registry(&alias_name, &env_var)?;
     println!(
         "SECRET_SET_STATUS=PASS alias={alias_name} provider=keyring env_var={env_var} stored=os_keyring"
     );
     Ok(())
+}
+
+// K1: OS native password dialog. Pops a hidden-input box on the user's
+// desktop, even when the calling process has no controlling TTY (i.e.
+// when an AI agent runs `aiplus secret-broker set --auto-prompt` inside
+// its sandboxed bash tool). The dialog draws on the OS's own UI server
+// (macOS WindowServer / Linux X11/Wayland / Windows DWM), not on the
+// caller's terminal. Falls back to rpassword tty prompt when the
+// system has no GUI (SSH, headless CI, etc.).
+//
+// Three platform shims:
+//   macOS    : osascript (always present on macOS)
+//   Linux    : zenity → kdialog → tty fallback
+//   Windows  : powershell Read-Host -AsSecureString
+fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
+    let title = "AiPlus secret-broker";
+    let message = format!(
+        "Enter the API key / token for alias `{alias_name}`.\n\nThe value is stored in your OS keyring only — never on disk, never printed, never in git history."
+    );
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display dialog \"{}\" with title \"{}\" default answer \"\" with hidden answer buttons {{\"Cancel\", \"Save\"}} default button \"Save\" with icon caution",
+            message.replace('"', "\\\""),
+            title,
+        );
+        let out = Command::new("osascript").arg("-e").arg(&script).output();
+        if let Ok(out) = out {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if let Some(value) = parse_osascript_text_returned(&stdout) {
+                    return Ok(value);
+                }
+            } else {
+                // user clicked Cancel → exit 1; treat as empty
+                return Ok(String::new());
+            }
+        }
+        // osascript missing or failed → fall through to tty
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        for tool in &["zenity", "kdialog"] {
+            if !command_available(tool) {
+                continue;
+            }
+            let result = if *tool == "zenity" {
+                Command::new("zenity")
+                    .args(["--password", "--title", title, "--text", &message])
+                    .output()
+            } else {
+                Command::new("kdialog")
+                    .args(["--title", title, "--password", &message])
+                    .output()
+            };
+            if let Ok(out) = result {
+                if out.status.success() {
+                    let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return Ok(value);
+                } else {
+                    return Ok(String::new()); // cancelled
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = format!(
+            "$sec = Read-Host -AsSecureString '{message}'; [System.Net.NetworkCredential]::new('', $sec).Password"
+        );
+        if let Ok(out) = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .output()
+        {
+            if out.status.success() {
+                return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
+            }
+        }
+    }
+
+    // tty fallback (no GUI / GUI failed / SSH session)
+    match rpassword::prompt_password(format!("Value for alias `{alias_name}` (hidden): ")) {
+        Ok(v) => Ok(v.trim().to_string()),
+        Err(e) => Err(CliError::new(
+            1,
+            format!(
+                "SECRET_SET_STATUS=FAIL reason=no_input_available detail={e} hint=run from a real terminal or set the value via stdin"
+            ),
+        )
+        .into()),
+    }
+}
+
+// osascript "display dialog ..." output format:
+//   "button returned:Save, text returned:<value>\n"
+// We only care about the text-returned portion. Cancellation gives a
+// non-zero exit; this parser only sees the success branch.
+fn parse_osascript_text_returned(stdout: &str) -> Option<String> {
+    for chunk in stdout.split(", ") {
+        let chunk = chunk.trim_end_matches(['\n', '\r']);
+        if let Some(rest) = chunk.strip_prefix("text returned:") {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+// K2: agent-callable bridge. Agent runs this before any external API
+// call. Behavior:
+//   - alias present in keyring → print `export <ENV>='<value>'` lines
+//     to stdout, exit 0 → agent evals/parses them
+//   - alias missing + --auto-prompt → pop GUI, store, then print exports
+//   - alias missing + no --auto-prompt → exit 75 with hint
+//
+// Cross-project sharing: if alias is in keyring but the current project's
+// .aiplus/keys.toml doesn't list it, silently append the alias to that
+// project's keys.toml so cd-auto-load picks it up on the next visit.
+fn secret_broker_need(
+    aliases: Vec<String>,
+    auto_prompt: bool,
+    env_override: Option<String>,
+) -> Result<()> {
+    if aliases.is_empty() {
+        return Err(CliError::new(
+            2,
+            "ERROR aiplus secret-broker need requires at least one <alias>",
+        )
+        .into());
+    }
+    if provider_name() != "keyring" {
+        return Err(CliError::new(
+            1,
+            format!(
+                "SECRET_NEED_STATUS=FAIL reason=wrong_provider current={} hint=`need` only works with keyring backend",
+                provider_name()
+            ),
+        )
+        .into());
+    }
+    let mut missing: Vec<String> = Vec::new();
+    let mut exports: Vec<(String, String, String)> = Vec::new(); // (alias, env_var, value)
+
+    for alias in &aliases {
+        let entry = keyring_alias_entry(alias)?;
+        let value = match entry.get_password() {
+            Ok(v) => v,
+            Err(keyring::Error::NoEntry) => {
+                if auto_prompt {
+                    let v = prompt_secret_via_gui(alias)?;
+                    if v.is_empty() {
+                        missing.push(alias.clone());
+                        continue;
+                    }
+                    if let Err(e) = entry.set_password(&v) {
+                        return Err(CliError::new(
+                            1,
+                            format!(
+                                "SECRET_NEED_STATUS=FAIL alias={alias} reason=keyring_write_failed detail={e}"
+                            ),
+                        )
+                        .into());
+                    }
+                    v
+                } else {
+                    missing.push(alias.clone());
+                    continue;
+                }
+            }
+            Err(e) => {
+                return Err(CliError::new(
+                    1,
+                    format!("SECRET_NEED_STATUS=FAIL alias={alias} reason={e}"),
+                )
+                .into());
+            }
+        };
+        let env_var = env_override
+            .clone()
+            .unwrap_or_else(|| format!("{}_API_KEY", alias.to_ascii_uppercase()));
+        exports.push((alias.clone(), env_var.clone(), value));
+        // Cross-project share: ensure this alias is in the registry +
+        // the current project's keys.toml.
+        let _ = append_alias_to_registry(alias, &env_var);
+        let _ = append_alias_to_project_keys(alias);
+    }
+
+    if !missing.is_empty() {
+        let list = missing.join(", ");
+        eprintln!(
+            "SECRET_NEED_STATUS=MISSING missing=[{list}] hint=run `aiplus secret-broker set {} --auto-prompt` for each missing alias",
+            missing[0]
+        );
+        process::exit(75);
+    }
+
+    // Print export lines on stdout — agent / shell hook evals these.
+    for (alias, env_var, value) in &exports {
+        // Single-quote the value; escape any embedded single quotes.
+        let escaped = value.replace('\'', "'\\''");
+        println!("export {env_var}='{escaped}'  # alias={alias}");
+    }
+    println!("# SECRET_NEED_STATUS=PASS aliases=[{}]", aliases.join(","));
+    Ok(())
+}
+
+// K4 support: append alias to the current project's .aiplus/keys.toml
+// `aliases = [...]`. Creates the file if missing. No-op if alias is
+// already listed. Called by both `need` (when alias resolves) and
+// `set --auto-prompt` (so the next cd-auto-load picks it up).
+fn append_alias_to_project_keys(alias_name: &str) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let aiplus_dir = cwd.join(".aiplus");
+    if !aiplus_dir.exists() {
+        // not inside an aiplus-installed project — silent no-op
+        return Ok(());
+    }
+    let path = aiplus_dir.join("keys.toml");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    if existing.contains(&format!("\"{alias_name}\"")) {
+        return Ok(());
+    }
+    let new_aliases = collect_project_aliases(&existing, alias_name);
+    let formatted = new_aliases
+        .iter()
+        .map(|a| format!("\"{a}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let content = format!("# Aliases this project needs at runtime.\n# Edit via `aiplus secret-broker need <alias>` or by hand.\naliases = [{formatted}]\n");
+    let _ = fs::write(&path, content);
+    Ok(())
+}
+
+fn collect_project_aliases(existing: &str, new_alias: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = BTreeSet::new();
+    if let Ok(parsed) = existing.parse::<toml::Value>() {
+        if let Some(arr) = parsed.get("aliases").and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    if seen.insert(s.to_string()) {
+                        out.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if seen.insert(new_alias.to_string()) {
+        out.push(new_alias.to_string());
+    }
+    out
 }
 
 fn secret_broker_delete(alias_name: Option<String>) -> Result<()> {
@@ -7923,35 +8249,95 @@ fn read_installed_runtime_adapters(root: &Path) -> Vec<String> {
 /// negotiation is the moment we LEAST want translation drift.
 const BROKER_PROTOCOL_SECTION: &str = r#"## Secret lookup protocol (read before asking the Owner for keys)
 
-AiPlus ships an integrated secret broker. Before asking the Owner for
-any API key, token, or password, ALWAYS:
+AiPlus ships an integrated secret broker. **Default backend (v0.5.16+):
+the user's OS keyring** (macOS Keychain / Linux Secret Service / Windows
+Credential Manager). Free, zero cloud cost, works offline. Users with
+multi-machine sync / team sharing needs opt into the Bitwarden Secrets
+Manager backend via `AIPLUS_SECRET_PROVIDER=bws`.
 
-1. Run `aiplus secret-broker list` to see installed aliases.
-2. If the alias you need exists, NEVER ask the Owner — use one of:
-   - `aiplus secret-broker run --alias <a> -- <child-cmd>` (runtime;
-     injects the value as an env var into the child process)
-   - `aiplus secret-broker push --alias <a> --to <target>` (one-shot
-     write; target = `github-secret:<owner>/<repo>:<NAME>`, `env:<VAR>`,
-     or `dotenv:<path>`)
-3. The only moment the Owner is in the loop is the one-time broker
-   keyring unlock (`aiplus secret-broker token set`), which stores a
-   Bitwarden machine-account access token.
+**Canonical agent flow (v0.5.18+)** — before any external API call:
 
-The broker never prints secret values to stdout/log; `--print` requires
-an explicit opt-in env var. Audit log stays metadata-only.
+```
+# Inside the agent's bash tool, before calling an API that needs <alias>:
+eval "$(aiplus secret-broker need <alias> --auto-prompt)"
+```
+
+What that one line does:
+
+1. Checks the OS keyring for `<alias>`.
+2. **Present** → outputs `export <ENV>='<value>'` on stdout; `eval` puts
+   it in the child env; agent's subsequent commands have the env var.
+3. **Missing** + `--auto-prompt` → pops a native OS password dialog on
+   the user's desktop (not the terminal — works even from the agent's
+   sandboxed bash). User pastes value, hits Save. Value lands in
+   keyring AND in env. Agent continues.
+4. **Missing** + no `--auto-prompt` → exits 75 with a hint telling the
+   user to run `aiplus secret-broker set <alias> --auto-prompt`.
+
+**Cross-project share**: once a user provides a value for `<alias>` on
+this machine — in ANY project — every future `need <alias>` resolves
+silently from keyring. The user never re-enters the same key twice.
+
+**NEVER ask the Owner directly for a key value.** Always go through
+`need` / `set`. The value lives only in the OS keyring; the agent only
+ever sees the value as an env var inside its own child-process scope.
+
+Other commands you can call:
+
+- `aiplus secret-broker list` — alias→env_var map (no values).
+- `aiplus secret-broker resolve <alias>` — metadata (no values).
+- `aiplus secret-broker run --aliases a,b -- <cmd>` — alternative to
+  the `eval` pattern: spawn a child with env vars injected, cleared on
+  exit.
+- `aiplus secret-broker push --alias <a> --to <target>` — push to
+  GitHub Actions / `.env` / shell `export` (target = `github-secret:`,
+  `env:`, `dotenv:`).
+
+The broker never prints secret values to stdout/log by default;
+`--print` requires explicit opt-in. Audit log stays metadata-only.
 
 中文版（与英文同义，agent 任择其一阅读）：
-AiPlus 自带 secret broker。需要任何 API key / token 之前，必须先：
-1. `aiplus secret-broker list` 查 alias。
-2. alias 存在就用 broker，**绝不问 Owner**：
-   - 运行时注入：`aiplus secret-broker run --alias <a> -- <子命令>`
-   - 一次性写入：`aiplus secret-broker push --alias <a> --to <target>`
-     target 三种：`github-secret:<owner>/<repo>:<NAME>`、`env:<VAR>`、
-     `dotenv:<path>`
-3. Owner 仅在 broker keyring 首次解锁时入环（`aiplus secret-broker
-   token set` 一次性配置）。
 
-broker 永不向 stdout/log 打印 secret 值；audit 只记元数据。
+AiPlus 自带 secret broker。**默认后端（v0.5.16+）：用户操作系统自带的
+keyring**（macOS Keychain / Linux Secret Service / Windows Credential
+Manager），免费、离线、零订阅。需要多机同步 / 团队共享时用户可 opt-in
+Bitwarden Secrets Manager（`AIPLUS_SECRET_PROVIDER=bws`）。
+
+**Agent 标准流程（v0.5.18+）**：调外部 API 之前先跑一行：
+
+```
+eval "$(aiplus secret-broker need <alias> --auto-prompt)"
+```
+
+这行命令：
+1. 查 OS keyring 有没有 `<alias>`
+2. **有** → stdout 输出 `export <ENV>='<value>'`，eval 注入到 child
+   进程 env，后续调用拿得到
+3. **没** + `--auto-prompt` → 在用户桌面弹原生密码框（不是终端 prompt —
+   即使 agent 在 sandboxed bash 里也能弹），用户粘 value、点 Save，
+   值存进 keyring 同时注入 env，agent 继续
+4. **没** + 无 `--auto-prompt` → exit 75，stderr 提示用户跑
+   `aiplus secret-broker set <alias> --auto-prompt`
+
+**跨项目共享**：一台机器上用户给某 alias 提供过一次值（任何项目里），
+之后所有项目里 `need <alias>` 都从 keyring 静默取出。**用户绝不需要
+重输入同一把 key**。
+
+**严禁直接向 Owner 索取 key 明文**。永远走 `need` / `set`。值只在
+OS keyring 里，agent 永远只能通过 env var 在自己子进程范围内见到。
+
+其他命令：
+
+- `aiplus secret-broker list` —— alias→env_var 映射（无 value）
+- `aiplus secret-broker resolve <alias>` —— 元数据（无 value）
+- `aiplus secret-broker run --aliases a,b -- <cmd>` —— `eval` 模式的
+  替代：直接 spawn child + 注入 env，退出即清
+- `aiplus secret-broker push --alias <a> --to <target>` —— 推到
+  GitHub Actions / `.env` / 当前 shell（`github-secret:`、`env:`、
+  `dotenv:` 三种 target）
+
+broker 默认绝不向 stdout/log 打印 secret 值；`--print` 要显式 opt-in。
+audit 只记元数据。
 "#;
 
 const AGENT_TEAM_SECTION: &str = r#"## Virtual Team: AiPlus Agent Team (software-engineering)
