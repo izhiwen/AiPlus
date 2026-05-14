@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "name": "aieconlab",
   "displayName": "AiEconLab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "source": "bundled",
   "license": "Apache-2.0",
   "abbreviation": "AEL",
@@ -33,7 +33,12 @@
     "adapters/claude-code/commands/aiel-route.md",
     "adapters/claude-code/commands/aiel-talk.md",
     "adapters/claude-code/commands/aiel-fire-consultant.md",
-    "adapters/claude-code/commands/aiel-status.md"
+    "adapters/claude-code/commands/aiel-status.md",
+    "adapters/opencode/subagents.toml",
+    "adapters/opencode/commands/aiel-route.md",
+    "adapters/opencode/commands/aiel-talk.md",
+    "adapters/opencode/commands/aiel-fire-consultant.md",
+    "adapters/opencode/commands/aiel-status.md"
   ],
   "managedFiles": [
     ".aiplus/modules/aieconlab",
@@ -48,6 +53,7 @@
     "Depends on aiplus >= 0.5.13 (which ships the AEL claude-code adapter install path) and the three substrate modules listed in `requires.substrate_modules`.",
     "Install replaces the default SWE consultant team (`.aiplus/consultant-team.toml`) with the research-tuned `consultant-team.aieconlab.toml` (5 expert seats + 3 personas + 5 owner gates, LIGHT tier skips consult).",
     "Claude Code adapter (v0.2+): when `claude-code` is among the project's runtime adapters, install writes 20 subagents (8 core + 12 experts) to `.claude/agents/aieconlab-*.md`, 4 slash commands to `.claude/commands/aiel-*.md`, and an AEL managed block in `CLAUDE.md` (separate markers from AiPlus's block).",
+    "OpenCode adapter (v0.3+): when `opencode` is among the project's runtime adapters, install writes the same 20 subagents to `.opencode/agents/aieconlab-*.md` and the same 4 slash commands to `.opencode/commands/aiel-*.md`. The roster is advertised via the existing `AIECONLAB_TEAM` section in `.aiplus/AGENTS.aiplus.md` (no separate managed block).",
     "Sibling to aiplus-agent-team; the two can be installed in the same project (consultant-team coexistence deferred to v0.3)."
   ],
   "doctorChecks": [
@@ -90,6 +96,11 @@
       "id": "claude-code-claude-md-block",
       "path": "adapters/claude-code/claude-md-block.md",
       "description": "Claude Code CLAUDE.md managed-block body is present (v0.2 adapter)."
+    },
+    {
+      "id": "opencode-subagents-manifest",
+      "path": "adapters/opencode/subagents.toml",
+      "description": "OpenCode subagent manifest is present (v0.3 adapter; 20 entries)."
     }
   ],
   "publicPrivateBoundary": {
@@ -111,7 +122,8 @@
       "AiEconLab (abbreviation: AEL) introduced as a sibling to aiplus-agent-team for applied-economics research workflows.",
       "Core 8 roles mirror agent-team's tier structure but are renamed for academic research.",
       "Brand-decoupled from AiPlus but functionally depends on the AiPlus substrate.",
-      "v0.2.0 ships the Claude Code adapter (`adapters/claude-code/`) so AEL agents auto-route in Claude Code sessions after install. Requires aiplus >= 0.5.13."
+      "v0.2.0 ships the Claude Code adapter (`adapters/claude-code/`) so AEL agents auto-route in Claude Code sessions after install. Requires aiplus >= 0.5.13.",
+      "v0.3.0 adds the OpenCode adapter (`adapters/opencode/`) with the same 20-role roster and 4-command set; OpenCode reads `.opencode/agents/aieconlab-*.md` after install. Requires aiplus >= 0.5.18."
     ]
   }
 }

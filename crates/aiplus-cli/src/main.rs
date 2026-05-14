@@ -7220,6 +7220,11 @@ fn aieconlab_init(root: &Path, plan: &mut Plan) -> Result<()> {
     // commands, and an AEL managed block in CLAUDE.md.
     install_aieconlab_claude_code_adapter(root, plan)?;
 
+    // v0.3 (Track B.1): same shape for OpenCode. Writes 20 prefixed
+    // agent files + 4 slash commands under `.opencode/`. No-op when
+    // opencode isn't in the project's runtime adapter list.
+    install_aieconlab_opencode_adapter(root, plan)?;
+
     Ok(())
 }
 
@@ -8785,6 +8790,131 @@ fn install_aieconlab_claude_code_adapter(root: &Path, plan: &mut Plan) -> Result
     Ok(())
 }
 
+/// Track B.1: AEL OpenCode adapter (v0.3). Mirrors the v0.2 claude-code
+/// adapter shape — same subagent manifest + same slash-command set —
+/// but writes to `.opencode/agents/` and `.opencode/commands/` and
+/// skips the CLAUDE.md managed-block step (OpenCode reads
+/// `.aiplus/AGENTS.aiplus.md` transitively, which already advertises
+/// the AEL roster via the `AIECONLAB_TEAM` section).
+///
+/// No-op when opencode is not in the project's runtime adapter list.
+fn install_aieconlab_opencode_adapter(root: &Path, plan: &mut Plan) -> Result<()> {
+    let adapters = read_installed_runtime_adapters(root);
+    if !adapters.iter().any(|a| a == "opencode") {
+        return Ok(());
+    }
+
+    // 1. Read the opencode-specific subagent manifest. Schema is
+    //    identical to the claude-code manifest (same TOML struct).
+    let manifest_text =
+        embedded_asset_text("aieconlab/adapters/opencode/subagents.toml").map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR aieconlab opencode subagents manifest missing: {e}"),
+            )
+        })?;
+    let manifest: AielSubagentManifest = toml::from_str(&manifest_text).map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR parse aieconlab/adapters/opencode/subagents.toml: {e}"),
+        )
+    })?;
+    if manifest.subagent.is_empty() {
+        return Err(CliError::new(
+            1,
+            "ERROR aieconlab opencode subagent manifest declared zero entries",
+        )
+        .into());
+    }
+
+    let mut role_basenames: BTreeSet<String> = BTreeSet::new();
+
+    // 2. Write prefixed agent files. We use the same YAML frontmatter
+    //    shape as the claude-code adapter — modern OpenCode (1.14+)
+    //    parses subagent frontmatter, and older versions ignore it
+    //    harmlessly. Source body is the runtime-agnostic persona
+    //    markdown shared with claude-code/codex.
+    let agents_rel = ".opencode/agents";
+    for entry in &manifest.subagent {
+        let unprefixed = entry.name.strip_prefix("aieconlab-").unwrap_or(&entry.name);
+        role_basenames.insert(format!("{unprefixed}.md"));
+
+        let persona_asset = format!("aieconlab/{}", entry.persona_file);
+        let persona_body = embedded_asset_text(&persona_asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR persona file {} missing for subagent {}: {}",
+                    persona_asset, entry.name, e
+                ),
+            )
+        })?;
+        let body = wrap_aieconlab_subagent(entry, &persona_body);
+        let rel = format!("{agents_rel}/{}.md", entry.name);
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 3. Clean up bare unprefixed persona files that
+    //    `mirror_personas_to_runtimes` wrote into `.opencode/agents/`.
+    //    Defensive: only remove files that do NOT start with `---`
+    //    (mirror copies raw persona body, never frontmatter), so a
+    //    user-authored file at the same path survives.
+    for basename in &role_basenames {
+        let target = rel_to_abs(root, &format!("{agents_rel}/{basename}"))?;
+        if target.exists() {
+            if let Some(text) = read_text_if_exists(&target)? {
+                if !text.starts_with("---") {
+                    let _ = std::fs::remove_file(&target);
+                    plan.items.push(PlanItem {
+                        action: "remove-duplicate".to_string(),
+                        path: format!("{agents_rel}/{basename}"),
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. Copy slash commands. Same set as the claude-code adapter.
+    let commands_rel = ".opencode/commands";
+    for cmd in AIECONLAB_SLASH_COMMANDS {
+        let asset = format!("aieconlab/adapters/opencode/commands/{cmd}.md");
+        let body = embedded_asset_text(&asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR aieconlab opencode slash command {cmd} missing: {e}"),
+            )
+        })?;
+        let rel = format!("{commands_rel}/{cmd}.md");
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // No CLAUDE.md-equivalent managed block: OpenCode reads AGENTS.md
+    // which references .aiplus/AGENTS.aiplus.md, where the
+    // `AIECONLAB_TEAM` section already advertises the roster.
+
+    Ok(())
+}
+
 const AGENT_TEAM_SLASH_COMMANDS: &[&str] = &["at-status", "at-route"];
 
 fn agent_team_managed_block(body: &str) -> String {
@@ -8895,8 +9025,12 @@ fn remove_runtime_adapter_artifacts(root: &Path, plan: &mut Plan) -> Result<()> 
     // but NOT under `.claude/agents/`). See the prompts entry below.
     let claude_agent_prefixes: &[&str] = &["aieconlab-", "agent-team-", "aiplus-"];
     let claude_command_prefixes: &[&str] = &["aiel-", "aiplus-", "at-"];
-    let opencode_agent_prefixes: &[&str] = &["aiplus-"];
-    let opencode_command_prefixes: &[&str] = &["aiplus-"];
+    // Track B.1: opencode now also receives aieconlab- prefixed agents
+    // and aiel-* slash commands. Future Track B.2 will add agent-team-
+    // / at- to opencode. Keeping both in the prefix list ahead of B.2
+    // is harmless — globbing only acts when a matching file exists.
+    let opencode_agent_prefixes: &[&str] = &["aieconlab-", "agent-team-", "aiplus-"];
+    let opencode_command_prefixes: &[&str] = &["aiel-", "aiplus-", "at-"];
     // .opencode/prompts/ has both `aiplus.md` and `aiplus-route.md`.
     // Match `aiplus` (no hyphen suffix) to catch both.
     let opencode_prompt_prefixes: &[&str] = &["aiplus"];

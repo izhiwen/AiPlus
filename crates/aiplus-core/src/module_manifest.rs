@@ -111,7 +111,7 @@ pub const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "aieconlab",
         vendor_name: "aieconlab",
-        version: "0.2.0",
+        version: "0.3.0",
         path: ".aiplus/modules/aieconlab",
         required_files: &[
             "core/templates/advisor.toml",
@@ -120,6 +120,7 @@ pub const MODULES: &[ModuleSpec] = &[
             "core/templates/personas/advisor.md",
             "adapters/claude-code/subagents.toml",
             "adapters/claude-code/claude-md-block.md",
+            "adapters/opencode/subagents.toml",
         ],
         // Opt-in by design: AiEconLab is for applied-economics
         // research, which is a niche audience relative to the
