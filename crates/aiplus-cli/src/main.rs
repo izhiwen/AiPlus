@@ -5130,11 +5130,138 @@ fn command_secret_broker(
         Some("run") => secret_broker_run(alias_flags, aliases_csv, command),
         Some("push") => secret_broker_push(alias_flags, aliases_csv, to, print_secret),
         Some("token") => secret_broker_token(arg),
+        Some("set") => secret_broker_set(alias_flags.first().cloned().or(arg)),
+        Some("delete") => secret_broker_delete(alias_flags.first().cloned().or(arg)),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set --alias <a>|delete --alias <a>|token set|delete");
             process::exit(2);
         }
     }
+}
+
+// v0.5.16: store a secret value for the default (keyring) backend.
+// Reads value from stdin so the value never appears in shell history
+// or argv. Appends the alias to the project TSV registry if it's not
+// already there, so `secret-broker list` shows it.
+fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
+    let alias_name = alias_name.ok_or_else(|| {
+        CliError::new(
+            1,
+            "ERROR aiplus secret-broker set requires --alias <name>",
+        )
+    })?;
+    if provider_name() != "keyring" {
+        return Err(CliError::new(
+            1,
+            format!(
+                "SECRET_SET_STATUS=FAIL reason=wrong_provider current={} hint=`set` only works with the keyring backend. Unset AIPLUS_SECRET_PROVIDER or set it to `keyring`.",
+                provider_name()
+            ),
+        )
+        .into());
+    }
+    let mut value = String::new();
+    io::stdin().read_to_string(&mut value)?;
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(CliError::new(
+            1,
+            "ERROR no value received on stdin (run as: `echo -n $YOUR_KEY | aiplus secret-broker set --alias <name>`)",
+        )
+        .into());
+    }
+    let entry = keyring_alias_entry(&alias_name)?;
+    match entry.set_password(value) {
+        Ok(()) => {}
+        Err(keyring::Error::NoStorageAccess(detail))
+        | Err(keyring::Error::PlatformFailure(detail)) => {
+            return Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}"
+                ),
+            )
+            .into());
+        }
+        Err(e) => {
+            return Err(CliError::new(
+                1,
+                format!("SECRET_SET_STATUS=FAIL reason=keyring_write_failed detail={e}"),
+            )
+            .into());
+        }
+    }
+    let env_var = format!("{}_API_KEY", alias_name.to_ascii_uppercase());
+    append_alias_to_registry(&alias_name, &env_var)?;
+    println!(
+        "SECRET_SET_STATUS=PASS alias={alias_name} provider=keyring env_var={env_var} stored=os_keyring"
+    );
+    Ok(())
+}
+
+fn secret_broker_delete(alias_name: Option<String>) -> Result<()> {
+    let alias_name = alias_name.ok_or_else(|| {
+        CliError::new(
+            1,
+            "ERROR aiplus secret-broker delete requires --alias <name>",
+        )
+    })?;
+    if provider_name() != "keyring" {
+        return Err(CliError::new(
+            1,
+            format!(
+                "SECRET_DELETE_STATUS=FAIL reason=wrong_provider current={} hint=`delete` only works with keyring backend",
+                provider_name()
+            ),
+        )
+        .into());
+    }
+    let entry = keyring_alias_entry(&alias_name)?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            println!("SECRET_DELETE_STATUS=PASS alias={alias_name} provider=keyring");
+            Ok(())
+        }
+        Err(e) => Err(CliError::new(
+            1,
+            format!("SECRET_DELETE_STATUS=FAIL alias={alias_name} reason={e}"),
+        )
+        .into()),
+    }
+}
+
+// Append alias→env_var to the user's secret-broker registry TSV so
+// `secret-broker list` and `secret-broker run` see it. No-op if the
+// alias is already present. Uses the legacy single-file location
+// `~/.config/aiplus/secret-broker/secret-aliases.tsv` (created if
+// missing). bitwarden_name column is set to "keyring:<alias>" as a
+// placeholder — the KeyringProvider ignores it.
+fn append_alias_to_registry(alias_name: &str, env_var: &str) -> Result<()> {
+    let dir = config_home()?.join("aiplus").join("secret-broker");
+    fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    let path = dir.join("secret-aliases.tsv");
+    let existing = if path.exists() {
+        fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = trimmed.split('\t').collect();
+        if fields.first().copied() == Some(alias_name) {
+            return Ok(());
+        }
+    }
+    let mut new_content = existing.clone();
+    if !new_content.is_empty() && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+    new_content.push_str(&format!("{alias_name}\tkeyring:{alias_name}\t{env_var}\n"));
+    fs::write(&path, new_content).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 fn secret_broker_status() -> Result<()> {
@@ -5707,6 +5834,75 @@ impl SecretsProvider for BwsProvider {
     }
 }
 
+// ---------------------------------------------------------------------------
+// KeyringProvider — v0.5.16 default backend.
+// Stores each alias's value as a separate OS keyring entry under
+// (service = SECRET_KEYRING_SERVICE, account = <alias>). Zero cloud cost,
+// zero CLI dep, works offline. Each entry is per-machine — no automatic
+// sync across machines (use the Bitwarden backend for that).
+// ---------------------------------------------------------------------------
+
+const SECRET_KEYRING_SERVICE: &str = "aiplus/secret-broker-key";
+
+fn keyring_alias_entry(alias_name: &str) -> Result<keyring::Entry> {
+    keyring::Entry::new(SECRET_KEYRING_SERVICE, alias_name)
+        .context("create OS keyring entry for alias")
+}
+
+struct KeyringProvider;
+
+impl SecretsProvider for KeyringProvider {
+    fn resolve(&self, alias: &SecretAlias) -> Result<SecretValue> {
+        let entry = keyring_alias_entry(&alias.alias)?;
+        match entry.get_password() {
+            Ok(v) => {
+                validate_secret_value(&alias.alias, &v)?;
+                Ok(SecretValue { value: v })
+            }
+            Err(keyring::Error::NoEntry) => Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=keyring reason=no_value_set hint=run `aiplus secret-broker set --alias {}` to store it. (If you used Bitwarden previously, set AIPLUS_SECRET_PROVIDER=bws to switch back.)",
+                    alias.alias, alias.alias
+                ),
+            )
+            .into()),
+            Err(keyring::Error::NoStorageAccess(detail))
+            | Err(keyring::Error::PlatformFailure(detail)) => Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=keyring reason=keyring_unavailable detail={detail}",
+                    alias.alias
+                ),
+            )
+            .into()),
+            Err(e) => Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=keyring reason={e}",
+                    alias.alias
+                ),
+            )
+            .into()),
+        }
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "keyring"
+    }
+
+    fn secret_id_found(&self, alias: &SecretAlias) -> Result<Option<bool>> {
+        let Ok(entry) = keyring_alias_entry(&alias.alias) else {
+            return Ok(None);
+        };
+        match entry.get_password() {
+            Ok(_) => Ok(Some(true)),
+            Err(keyring::Error::NoEntry) => Ok(Some(false)),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
 impl BwsProvider {
     fn lookup_secret_id(&self, alias: &SecretAlias) -> Result<String> {
         let project_id = bitwarden_project_id();
@@ -5986,15 +6182,29 @@ fn secret_error_reason(error: &anyhow::Error) -> String {
 }
 
 fn load_secret_provider() -> Result<Box<dyn SecretsProvider>> {
-    if provider_name() == "mock" {
-        return Ok(Box::new(MockProvider));
+    match provider_name().as_str() {
+        "mock" => Ok(Box::new(MockProvider)),
+        "bws" => {
+            let token = get_bws_token()?;
+            Ok(Box::new(BwsProvider { token }))
+        }
+        "keyring" => Ok(Box::new(KeyringProvider)),
+        other => Err(CliError::new(
+            1,
+            format!(
+                "AIPLUS_SECRET_PROVIDER={other} not recognized; supported: keyring (default), bws, mock"
+            ),
+        )
+        .into()),
     }
-    let token = get_bws_token()?;
-    Ok(Box::new(BwsProvider { token }))
 }
 
+// v0.5.16: default switched from "bws" to "keyring". OS keyring is free,
+// offline, zero-config — works for solo developers without paying for a
+// Bitwarden Secrets Manager subscription. Users with multi-machine sync
+// or team sharing needs set AIPLUS_SECRET_PROVIDER=bws in their shell.
 fn provider_name() -> String {
-    std::env::var("AIPLUS_SECRET_PROVIDER").unwrap_or_else(|_| "bws".to_string())
+    std::env::var("AIPLUS_SECRET_PROVIDER").unwrap_or_else(|_| "keyring".to_string())
 }
 
 fn token_source() -> &'static str {

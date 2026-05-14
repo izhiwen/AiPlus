@@ -79,17 +79,29 @@ auto-prepares a structured handoff before, and recovers from a
 checksum-verified capsule after — so tokens go into new work, not into
 re-establishing context.
 
-**Agent Key** — Stop telling the agent your keys every time. One-time
-setup per machine: store your real keys in Bitwarden Secrets Manager,
-map short aliases to backend paths in a TSV, store the Bitwarden
-access token in your OS keyring. From then on every Codex / Claude
-Code / OpenCode session in this project picks up the right key
-automatically — `aiplus secret-broker run --aliases openai,anthropic
--- python my_agent.py` resolves each alias at runtime, injects the
-value into the child process's environment, and forgets it on exit.
-No copy-paste, no `.env` shuffling, no key in prompts, no rotation
-chase across eight projects. (Bonus: values never hit disk by default,
-never print by default, never enter git history.)
+**Agent Key** — Stop telling the agent your keys every time. **Free,
+zero-config default**: each key lives in your OS keyring (macOS
+Keychain / Linux Secret Service / Windows Credential Manager), never
+on disk. One-time per machine:
+
+```bash
+echo -n "$YOUR_OPENAI_KEY" | aiplus secret-broker set --alias openai
+# Repeat once for each provider (anthropic, github, …)
+```
+
+From then on every Codex / Claude Code / OpenCode session in any
+project picks up the key automatically:
+
+```bash
+aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
+# OPENAI_API_KEY + ANTHROPIC_API_KEY available in env; cleared on exit
+```
+
+No copy-paste, no `.env` shuffling, no key in prompts. (Bonus: values
+never default-print, never enter git history.) For multi-machine sync
+or team sharing, opt in to the Bitwarden Secrets Manager backend
+(`export AIPLUS_SECRET_PROVIDER=bws`) — same alias surface, paid
+subscription required.
 
 **Auto Team Consultant** — The agent stops overlooking the important stuff.
 A virtual team (5 expert members + your project's user personas, sitting at
@@ -258,7 +270,7 @@ in every AiPlus project:
 - [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — **save tokens on long sessions**: detect the right moment to `/compact`, package the handoff before, and resume from a checksum-verified capsule after — tokens go into new work, not re-establishing context.
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) — virtual expert team consulted automatically on each task.
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
-- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — **stop telling the agent your keys every time**: configure aliases once per machine (Bitwarden Secrets Manager + OS keyring), then every agent session in any project picks up keys automatically. No copy-paste, no `.env` shuffling, no key in prompts.
+- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — **stop telling the agent your keys every time**. Default: free, zero-config OS keyring backend. `aiplus secret-broker set --alias openai` once per machine, then every agent session in any project picks up the key automatically. Opt-in Bitwarden Secrets Manager backend for multi-machine sync / team sharing.
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) — AI-native time estimation (`aiplus velocity` — track estimated vs actual, learn bias, surface calibrated p50/p90).
 
 ## Optional opt-in module
