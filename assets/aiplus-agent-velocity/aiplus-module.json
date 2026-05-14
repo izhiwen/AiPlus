@@ -22,7 +22,7 @@
     ".aiplus/modules/aiplus-agent-velocity",
     ".aiplus/velocity"
   ],
-  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "runtimeAdapters": [],
   "installHints": [
     "AiPlus Agent Velocity adds AI-native time estimation: it tracks estimated vs actual time per task, learns model + task-type bias, and surfaces calibrated p50/p90 estimates over time.",
     "Functionality is exposed via the built-in `aiplus velocity` subcommand. This module ships the schemas + design docs that runtimes can reference locally.",
