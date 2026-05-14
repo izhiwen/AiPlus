@@ -193,6 +193,26 @@ enum Commands {
         /// --force, the broken file is replaced with a fresh aiplus entry.
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
+        /// Where to register the MCP server.
+        ///
+        ///   global   → writes to the runtime's user-level config so all
+        ///             projects on this machine inherit the aiplus tools.
+        ///             For codex this is ~/.codex/config.toml; for claude
+        ///             and opencode this is the user-home equivalent
+        ///             (~/.claude/.mcp.json, ~/.opencode/opencode.json).
+        ///   project  → writes to the current project's config so only
+        ///             this project sees the aiplus tools. For claude /
+        ///             opencode this is the project-local .mcp.json /
+        ///             opencode.json (which is their natural home); for
+        ///             codex this is ./.codex/config.toml if that
+        ///             directory exists.
+        ///
+        /// Per-runtime defaults (matches each runtime's idiomatic flow):
+        ///   codex     → global   (codex itself stores all config globally)
+        ///   claude    → project  (claude-code looks for .mcp.json in cwd)
+        ///   opencode  → project  (opencode looks for opencode.json in cwd)
+        #[arg(long, value_name = "SCOPE", value_parser = ["global", "project"])]
+        scope: Option<String>,
     },
     Status {
         #[arg(long, action = ArgAction::SetTrue)]
@@ -816,7 +836,8 @@ fn run(command: Commands) -> Result<()> {
             runtime,
             dry_run,
             force,
-        } => command_mcp_register(runtime, dry_run, force),
+            scope,
+        } => command_mcp_register(runtime, dry_run, force, scope),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
@@ -13071,7 +13092,38 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
 // the aiplus entry already exists.
 // ---------------------------------------------------------------------------
 
-fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> Result<()> {
+/// P1.5: `--scope global|project` selects where to write the config.
+/// Each runtime has an idiomatic default — codex is global (matches how
+/// codex itself stores all config user-wide), claude / opencode are
+/// project-local (matches how they auto-discover .mcp.json /
+/// opencode.json in cwd). The flag lets the user override either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpScope {
+    Global,
+    Project,
+}
+
+fn resolve_scope_for(runtime: &str, requested: Option<&str>) -> Result<McpScope> {
+    match requested {
+        Some("global") => Ok(McpScope::Global),
+        Some("project") => Ok(McpScope::Project),
+        None => match runtime {
+            "codex" => Ok(McpScope::Global),
+            "claude" | "opencode" => Ok(McpScope::Project),
+            _ => unreachable!("runtime allowlist guarded above"),
+        },
+        Some(other) => Err(anyhow!(
+            "unknown --scope '{other}'. Valid: global, project."
+        )),
+    }
+}
+
+fn command_mcp_register(
+    runtime: Option<String>,
+    dry_run: bool,
+    force: bool,
+    scope: Option<String>,
+) -> Result<()> {
     let bin = std::env::current_exe().context("locate current aiplus binary path")?;
     let bin_str = bin.to_string_lossy().into_owned();
 
@@ -13097,10 +13149,11 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> 
 
     let mut any_change = false;
     for rt in runtimes {
+        let rt_scope = resolve_scope_for(rt, scope.as_deref())?;
         let changed = match rt {
-            "codex" => register_mcp_codex(&bin_str, dry_run, force)?,
-            "claude" => register_mcp_claude(&bin_str, dry_run, force)?,
-            "opencode" => register_mcp_opencode(&bin_str, dry_run, force)?,
+            "codex" => register_mcp_codex(&bin_str, dry_run, force, rt_scope)?,
+            "claude" => register_mcp_claude(&bin_str, dry_run, force, rt_scope)?,
+            "opencode" => register_mcp_opencode(&bin_str, dry_run, force, rt_scope)?,
             _ => unreachable!(),
         };
         any_change = any_change || changed;
@@ -13116,19 +13169,43 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> 
     Ok(())
 }
 
-fn register_mcp_codex(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let codex_dir = match home {
-        Some(h) => h.join(".codex"),
-        None => {
-            println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME");
-            return Ok(false);
+fn register_mcp_codex(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects whether to write user-global or project-local
+    // codex config. The project-local case is rare (codex itself reads
+    // config from ~/.codex), but we support it for users who want a
+    // project-scoped aiplus-only codex setup.
+    let codex_dir: PathBuf = match scope {
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            let dir = home.join(".codex");
+            if !dir.exists() {
+                println!(
+                    "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed scope=global \
+                     hint=run `codex --version` to verify install"
+                );
+                return Ok(false);
+            }
+            dir
+        }
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for codex project scope")?;
+            let dir = cwd.join(".codex");
+            if !dir.exists() {
+                println!(
+                    "MCP_REGISTER_CODEX=SKIP reason=no_project_codex_dir scope=project \
+                     hint=create ./.codex/ to opt into project-scoped codex config"
+                );
+                return Ok(false);
+            }
+            dir
         }
     };
-    if !codex_dir.exists() {
-        println!("MCP_REGISTER_CODEX=SKIP reason=codex_not_installed (no ~/.codex)");
-        return Ok(false);
-    }
     let config_path = codex_dir.join("config.toml");
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
@@ -13202,9 +13279,32 @@ fn register_mcp_codex(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_claude(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let cwd = std::env::current_dir().context("get cwd for claude registration")?;
-    let config_path = cwd.join(".mcp.json");
+fn register_mcp_claude(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects ./.mcp.json (project) vs ~/.claude/.mcp.json
+    // (global). Project is the natural home for claude-code MCP config,
+    // but a power user might want a global default that every project
+    // inherits — we support both.
+    let config_path: PathBuf = match scope {
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for claude project scope")?;
+            cwd.join(".mcp.json")
+        }
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_CLAUDE=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            // ~/.claude/ may not exist on a fresh machine. Create it so
+            // global registration is self-contained — claude itself will
+            // create the dir on first run otherwise.
+            let dir = home.join(".claude");
+            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+            dir.join(".mcp.json")
+        }
+    };
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
             .with_context(|| format!("read {}", config_path.display()))?
@@ -13270,9 +13370,28 @@ fn register_mcp_claude(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let cwd = std::env::current_dir().context("get cwd for opencode registration")?;
-    let config_path = cwd.join("opencode.json");
+fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects ./opencode.json (project) vs
+    // ~/.opencode/opencode.json (global). Project is the default and
+    // matches opencode's auto-discovery.
+    let config_path: PathBuf = match scope {
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for opencode project scope")?;
+            cwd.join("opencode.json")
+        }
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_OPENCODE=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            let dir = home.join(".opencode");
+            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+            dir.join("opencode.json")
+        }
+    };
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
             .with_context(|| format!("read {}", config_path.display()))?
