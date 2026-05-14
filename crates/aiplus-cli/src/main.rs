@@ -1464,7 +1464,7 @@ fn command_add_from_git(
             source_ref: Some(resolved_ref.clone()),
         },
     );
-    let modules: Vec<String> = installed.keys().cloned().collect();
+    let _modules: Vec<String> = installed.keys().cloned().collect();
     let adapters = existing.runtime_adapters.unwrap_or_default();
     write_manifest_with_external(
         &root,

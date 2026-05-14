@@ -167,21 +167,6 @@ const CORE_ROLES: &[&str] = &[
     "qa",
 ];
 
-/// The 11 experts (6 functional + 5 stub) available in v0.1
-const EXPERTS: &[&str] = &[
-    "ai-integration",
-    "security-reviewer",
-    "tech-writer",
-    "devops",
-    "ui-designer",
-    "researcher",
-    "data-analyst",
-    "customer-researcher",
-    "performance-engineer",
-    "accessibility",
-    "compliance-reviewer",
-];
-
 /// The 6 functional experts available in v0.1
 const FUNCTIONAL_EXPERTS: &[&str] = &[
     "ai-integration",
