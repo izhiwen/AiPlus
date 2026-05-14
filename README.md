@@ -211,16 +211,19 @@ MyProject/
 └── AGENTS.md                    # Codex managed block (if installed)
 ```
 
-## The five core standalone modules
+## The six bundled standalone modules
 
-Each module also ships as its own GitHub repo if you want to inspect or
-adopt one piece at a time:
+Each module ships as its own GitHub repo for inspection / piecewise
+adoption AND is auto-installed by `aiplus install` so its schemas,
+docs, and adapter content land under `.aiplus/modules/aiplus-<name>/`
+in every AiPlus project:
 
-- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
-- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
-- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
-- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
+- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory) — local JSONL memory + role identity + skill candidates.
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — token-savings prompts before `/compact` derails long sessions.
+- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) — virtual expert team consulted automatically on each task.
+- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
+- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — alias-based, zero-persistence secret resolution (`aiplus secret-broker`).
+- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) — AI-native time estimation (`aiplus velocity` — track estimated vs actual, learn bias, surface calibrated p50/p90).
 
 ## Optional opt-in module
 
@@ -239,10 +242,11 @@ Two verbs, two distinct purposes:
   Claude Code / OpenCode) into your project's `.codex/` / `.claude/` /
   `.opencode/` directories. Run once per project per runtime.
 - **`aiplus add <module>`** — add a bundled module (agent-memory,
-  compact-reminder, auto-team-consultant, agent-team, aieconlab). The
-  4 substrate modules are auto-installed by `aiplus install`; aieconlab
-  is opt-in via explicit `aiplus add`. v0.5.4+ also supports
-  `aiplus add --from-git <URL>[@REF]` for third-party modules.
+  compact-reminder, auto-team-consultant, agent-team, agent-key,
+  agent-velocity, aieconlab). The 6 substrate modules are
+  auto-installed by `aiplus install`; aieconlab is opt-in via explicit
+  `aiplus add`. v0.5.4+ also supports `aiplus add --from-git
+  <URL>[@REF]` for third-party modules.
 
 ## Safety boundaries
 

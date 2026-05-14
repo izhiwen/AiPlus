@@ -1,0 +1,112 @@
+---
+# =====================================================================
+# AiPlus-Agent-Key — Acceptance Criteria Schema v0.1.0
+# =====================================================================
+# Structural invariants for first-release correctness. Behavioral and
+# security audits of the actual `aiplus secret-broker` runtime live in
+# the AiPlus repo's own acceptance suite.
+
+schema_version: "0.1.0"
+
+defaults:
+  check_timeout_seconds: 30
+  total_budget_seconds: 120
+
+variables:
+  project_name: "$(basename $PWD)"
+  project_root: "$PWD"
+  agent_key_root: ".aiplus/agent-key"
+  module_manifest_path: "aiplus-module.json"
+  core_dir: "core"
+
+# ---------------------------------------------------------------------
+# core invariants
+# ---------------------------------------------------------------------
+core_invariants:
+
+  - id: module_manifest_present
+    description: "aiplus-module.json exists, parses, declares correct name and adapters."
+    files_required:
+      - "{module_manifest_path}"
+    parse_as: json
+    must_declare_name: "agent-key"
+    must_declare_adapters:
+      - codex
+      - claude-code
+      - opencode
+
+  - id: license_present
+    description: "Apache-2.0 LICENSE present."
+    files_required:
+      - "LICENSE"
+
+  - id: readme_present
+    description: "English and Chinese READMEs present and substantive."
+    files_required:
+      - "README.md"
+      - "README.zh-CN.md"
+    parse_as: markdown
+    min_size_bytes: 5000
+
+  - id: design_doc_present
+    description: "DESIGN.md present and substantive."
+    files_required:
+      - "DESIGN.md"
+    parse_as: markdown
+    min_size_bytes: 8000
+
+  - id: example_aliases_present
+    description: "Example aliases TOML present and parses; no real secret values."
+    files_required:
+      - "{core_dir}/example-aliases.toml"
+    parse_as: toml
+
+  - id: alias_conventions_present
+    description: "Alias-conventions guide present."
+    files_required:
+      - "{core_dir}/alias-conventions.md"
+    parse_as: markdown
+    min_size_bytes: 1500
+
+  - id: adapters_present
+    description: "All 3 runtime adapters have at least a README."
+    files_required:
+      - "adapters/codex/README.md"
+      - "adapters/claude-code/README.md"
+      - "adapters/opencode/README.md"
+
+  - id: examples_present
+    description: "Examples README present."
+    files_required:
+      - "examples/README.md"
+
+# ---------------------------------------------------------------------
+# safety invariants
+# ---------------------------------------------------------------------
+safety_invariants:
+
+  - id: gitignore_blocks_secrets
+    description: ".gitignore blocks env-files, tokens, keys, credentials, BW exports."
+    applies_to:
+      - ".gitignore"
+    must_contain_pattern: "*.env"
+    must_contain_pattern_2: "*.token"
+    must_contain_pattern_3: "*.key"
+
+  - id: no_real_secrets_heuristic
+    description: "No file in the repo contains a string matching common API-key patterns. Heuristic: 40+ char alphanumeric strings starting with sk-, sk_live_, bw-, ANTHROPIC_API_KEY=..., etc."
+    applies_to: "all-text-files"
+    forbidden_patterns:
+      - "sk-[A-Za-z0-9]{40,}"     # OpenAI-style real key
+      - "sk_live_[A-Za-z0-9]{30,}" # Stripe live key
+      - "ghp_[A-Za-z0-9]{36}"      # GitHub PAT (classic)
+      - "github_pat_[A-Za-z0-9_]{50,}" # GitHub fine-grained PAT
+    note: "Example placeholders (e.g. `sk-proj-...` truncated) in docs are permitted; full-length real keys are forbidden."
+
+# ---------------------------------------------------------------------
+# pass criteria
+# ---------------------------------------------------------------------
+pass_criteria:
+  all_core_invariants: true
+  all_safety_invariants: true
+  total_budget_respected: true

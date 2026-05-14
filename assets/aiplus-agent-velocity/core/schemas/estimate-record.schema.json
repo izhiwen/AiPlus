@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EstimateRecord",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "taskId",
+    "createdAt",
+    "humanEstimateMinutes",
+    "aiNativeEstimateP50Minutes",
+    "aiNativeEstimateP90Minutes",
+    "confidence"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "id": { "type": "string" },
+    "taskId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "projectId": { "type": "string" },
+    "taskType": { "type": "string" },
+    "repoArea": { "type": "string" },
+    "agentRole": { "type": "string" },
+    "runtime": { "type": "string" },
+    "model": { "type": "string" },
+    "workflowLevel": { "type": "string" },
+    "estimateBasis": { "type": "string" },
+    "humanBaselineMinutes": { "type": "integer", "minimum": 0 },
+    "humanBaselineSource": { "type": "string" },
+    "humanEstimateMinutes": { "type": "integer", "minimum": 0 },
+    "aiNativeEstimateP50Minutes": { "type": "integer", "minimum": 0 },
+    "aiNativeEstimateP90Minutes": { "type": "integer", "minimum": 0 },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "matchedRecords": { "type": "integer", "minimum": 0 },
+    "humanAnchorSignals": { "type": "array", "items": { "type": "string" } },
+    "stopWhenDone": { "type": "boolean" }
+  }
+}

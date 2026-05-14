@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VelocityConfig",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "maxRecords",
+    "rareCaseMaxRecords",
+    "maxBytesPerJsonl",
+    "retainDays",
+    "minBucketSamples",
+    "rawContentAllowed",
+    "memoryIntegration"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "maxRecords": { "type": "integer", "minimum": 1 },
+    "rareCaseMaxRecords": { "type": "integer", "minimum": 1 },
+    "maxBytesPerJsonl": { "type": "integer", "minimum": 1 },
+    "retainDays": { "type": "integer", "minimum": 1 },
+    "minBucketSamples": { "type": "integer", "minimum": 1 },
+    "rawContentAllowed": { "type": "boolean" },
+    "memoryIntegration": { "type": "string", "enum": ["disabled", "enabled"] }
+  }
+}

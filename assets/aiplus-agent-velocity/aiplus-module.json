@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "agent-velocity",
+  "displayName": "AiPlus Agent Velocity",
+  "version": "0.1.0",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "abbreviation": "",
+  "requires": {
+    "aiplus_min_version": "0.5.0",
+    "substrate_modules": []
+  },
+  "requiredFiles": [
+    "core/schemas/run-record.schema.json",
+    "core/schemas/estimate-record.schema.json",
+    "core/schemas/config.schema.json",
+    "core/schemas/rare-case-record.schema.json",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-agent-velocity",
+    ".aiplus/velocity"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "AiPlus Agent Velocity adds AI-native time estimation: it tracks estimated vs actual time per task, learns model + task-type bias, and surfaces calibrated p50/p90 estimates over time.",
+    "Functionality is exposed via the built-in `aiplus velocity` subcommand. This module ships the schemas + design docs that runtimes can reference locally.",
+    "Run `aiplus velocity init` in a project to start tracking. Then `aiplus velocity estimate` before a task and `aiplus velocity complete` after."
+  ],
+  "doctorChecks": [
+    {
+      "id": "velocity-schema",
+      "path": "core/schemas/run-record.schema.json",
+      "description": "Velocity run-record schema is present."
+    },
+    {
+      "id": "velocity-config-schema",
+      "path": "core/schemas/config.schema.json",
+      "description": "Velocity config schema is present."
+    }
+  ]
+}

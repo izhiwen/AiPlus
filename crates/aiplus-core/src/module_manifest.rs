@@ -71,6 +71,42 @@ pub const MODULES: &[ModuleSpec] = &[
         auto_install: true,
     },
     ModuleSpec {
+        name: "agent-key",
+        vendor_name: "aiplus-agent-key",
+        version: "0.1.0",
+        path: ".aiplus/modules/aiplus-agent-key",
+        required_files: &[
+            "README.md",
+            "DESIGN.md",
+            "core/alias-conventions.md",
+            "core/example-aliases.md",
+            "core/example-aliases.tsv",
+        ],
+        // Auto-installed: agent-key documents the built-in `aiplus
+        // secret-broker` subcommand and ships alias conventions + the
+        // example TSV layout. Project-local docs let runtimes reference
+        // them without round-tripping to GitHub.
+        auto_install: true,
+    },
+    ModuleSpec {
+        name: "agent-velocity",
+        vendor_name: "aiplus-agent-velocity",
+        version: "0.1.0",
+        path: ".aiplus/modules/aiplus-agent-velocity",
+        required_files: &[
+            "README.md",
+            "DESIGN.md",
+            "core/schemas/run-record.schema.json",
+            "core/schemas/estimate-record.schema.json",
+            "core/schemas/config.schema.json",
+            "core/schemas/rare-case-record.schema.json",
+        ],
+        // Auto-installed: agent-velocity documents the built-in
+        // `aiplus velocity` subcommand and ships the JSONL schemas
+        // (run-record, estimate-record, config, rare-case-record).
+        auto_install: true,
+    },
+    ModuleSpec {
         name: "aieconlab",
         vendor_name: "aieconlab",
         version: "0.2.0",

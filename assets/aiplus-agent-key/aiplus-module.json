@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "agent-key",
+  "displayName": "AiPlus Agent Key",
+  "version": "0.1.0",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "abbreviation": "",
+  "requires": {
+    "aiplus_min_version": "0.5.0",
+    "substrate_modules": []
+  },
+  "requiredFiles": [
+    "core/example-aliases.tsv",
+    "core/example-aliases.md",
+    "core/alias-conventions.md",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-agent-key"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "AiPlus Agent Key provides alias-based, zero-persistence secret resolution for AI coding agents.",
+    "Backend: Bitwarden Secrets Manager (other backends planned). Secrets are resolved at runtime and injected into child-process environment variables only; never written to disk, never printed by default, never committed.",
+    "v0.1 documents the existing AiPlus CLI subcommand `aiplus secret-broker`. Source-code extraction into a standalone crate is planned for v0.2."
+  ],
+  "doctorChecks": [
+    {
+      "id": "manifest-present",
+      "path": "aiplus-module.json",
+      "description": "Module manifest present and parses."
+    },
+    {
+      "id": "example-aliases-present",
+      "path": "core/example-aliases.tsv",
+      "description": "Example alias TSV present (real schema: 3 tab-separated columns)."
+    },
+    {
+      "id": "conventions-present",
+      "path": "core/alias-conventions.md",
+      "description": "Alias naming conventions document present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Public module record. Code lives in the AiPlus CLI (subcommand `aiplus secret-broker`) for v0.1.",
+      "Real secret values must NEVER be committed to this repo or any project repo; alias names only."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "This module IS the secret boundary. The module's own files, examples, tests, and CI must never contain real secret values, real account IDs, or real Bitwarden Secrets Manager workspace IDs.",
+      "Example aliases use the form `EXAMPLE_<PROVIDER>_<USE>` and are never resolvable to real secrets.",
+      "Configuration that references a real secret must live OUTSIDE this repo — in the user's `~/.config/aiplus/profiles/<profile>/secrets.toml` (alias → backend-path mapping, no values)."
+    ]
+  },
+  "legacyStatus": {
+    "status": "new-agent-key-foundation",
+    "notes": [
+      "Extracted from AiPlus's existing `secret-broker` subcommand as a sibling public module.",
+      "v0.1 documents the existing feature; v0.2 may physically split the Rust source into its own crate.",
+      "CLI surface (status / doctor / list / resolve / run / token) is preserved as `aiplus secret-broker <subcommand>` for backward compatibility."
+    ]
+  }
+}
