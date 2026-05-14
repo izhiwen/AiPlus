@@ -138,9 +138,15 @@ impl SnapshotBuilder {
         Ok(path)
     }
 
-    pub fn write_profile_snapshot(&self, profile_root: &Path) -> Result<PathBuf> {
+    pub fn write_profile_snapshot(
+        &self,
+        profile_root: &Path,
+        profile_name: &str,
+    ) -> Result<PathBuf> {
         let snapshot = self.build_profile_snapshot(profile_root)?;
-        let path = profile_root.join("aiplus-work-with-zhiwen/profile-memory/USER.md");
+        let path = profile_root
+            .join(profile_name)
+            .join("profile-memory/USER.md");
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -266,15 +272,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let builder = SnapshotBuilder::new(tmp.path());
 
-        let profile = tmp.path().join("aiplus-work-with-zhiwen/profile-memory");
+        let profile = tmp.path().join("test-profile/profile-memory");
         fs::create_dir_all(&profile).unwrap();
 
-        let path = builder.write_profile_snapshot(tmp.path()).unwrap();
-        assert_eq!(
-            path,
-            tmp.path()
-                .join("aiplus-work-with-zhiwen/profile-memory/USER.md")
-        );
+        let path = builder
+            .write_profile_snapshot(tmp.path(), "test-profile")
+            .unwrap();
+        assert_eq!(path, tmp.path().join("test-profile/profile-memory/USER.md"));
         assert!(path.exists());
     }
 }

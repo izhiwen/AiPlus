@@ -183,7 +183,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(status.contains("identity=advisor="));
     assert!(status.contains("skillCandidatesTotal="));
     assert!(status.contains("approved_auto=none"));
-    assert!(status.contains("profile=aiplus-work-with-zhiwen"));
+    assert!(status.contains("profile=(none)"));
     assert!(status.contains("secret_values=none"));
     assert!(status.contains("global_agent_config=untouched"));
     assert!(status.contains("STATUS=PASS"));
@@ -197,7 +197,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(refresh.contains("- Memory records:"));
     assert!(refresh.contains("- Identity: advisor="));
     assert!(refresh.contains("- Skill candidates:"));
-    assert!(refresh.contains("- Profile: aiplus-work-with-zhiwen"));
+    assert!(refresh.contains("- Profile: (none)"));
     assert!(refresh.contains("- Secret values: none"));
     assert!(refresh.contains("- Global agent config: untouched"));
     assert!(refresh.contains("AIPLUS_REFRESH_STATUS=PASS"));
@@ -211,7 +211,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     assert!(refresh_zh.contains("- Memory records:"));
     assert!(refresh_zh.contains("- Identity: advisor="));
     assert!(refresh_zh.contains("- Skill candidates:"));
-    assert!(refresh_zh.contains("- Profile: aiplus-work-with-zhiwen"));
+    assert!(refresh_zh.contains("- Profile: (none)"));
     assert!(refresh_zh.contains("- Secret values: none"));
     assert!(refresh_zh.contains("- Global agent config: untouched"));
     assert!(refresh_zh.contains("AIPLUS_REFRESH_STATUS=PASS"));
