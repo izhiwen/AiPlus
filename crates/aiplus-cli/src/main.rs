@@ -10153,6 +10153,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.9"
             | "0.5.10"
             | "0.5.11"
+            | "0.5.12"
     )
 }
 
