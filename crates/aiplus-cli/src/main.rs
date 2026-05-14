@@ -7574,6 +7574,11 @@ fn agent_team_init(root: &Path, plan: &mut Plan, adapters: &[String]) -> Result<
     // Claude Code's auto-routing can discover the team.
     install_agent_team_claude_code_adapter(root, plan, adapters)?;
 
+    // Track B.2: same shape for OpenCode. Writes 14 prefixed agent
+    // files + 2 slash commands under `.opencode/`. No-op when
+    // opencode isn't in the live adapter list.
+    install_agent_team_opencode_adapter(root, plan, adapters)?;
+
     Ok(())
 }
 
@@ -9294,6 +9299,123 @@ fn install_agent_team_claude_code_adapter(
     })?;
     update_claude_md_agent_team_block(root, plan, &block_body)?;
 
+    Ok(())
+}
+
+/// Track B.2: agent-team OpenCode adapter (v0.2). Mirrors the v0.1
+/// claude-code adapter shape but writes to `.opencode/agents/` and
+/// `.opencode/commands/`. No separate CLAUDE.md block (OpenCode reads
+/// AGENTS.md → `.aiplus/AGENTS.aiplus.md`, where the
+/// `AGENT_TEAM_TEAM` section already advertises the roster).
+///
+/// No-op when opencode is not in the live adapter list passed in
+/// (same threading pattern as the claude-code adapter — see
+/// `install_agent_team_claude_code_adapter` doc for the install-vs-add
+/// timing rationale).
+fn install_agent_team_opencode_adapter(
+    root: &Path,
+    plan: &mut Plan,
+    adapters: &[String],
+) -> Result<()> {
+    if !adapters.iter().any(|a| a == "opencode") {
+        return Ok(());
+    }
+
+    let manifest_text = embedded_asset_text("aiplus-agent-team/adapters/opencode/subagents.toml")
+        .map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR agent-team opencode subagents manifest missing: {e}"),
+        )
+    })?;
+    let manifest: AielSubagentManifest = toml::from_str(&manifest_text).map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR parse aiplus-agent-team/adapters/opencode/subagents.toml: {e}"),
+        )
+    })?;
+    if manifest.subagent.is_empty() {
+        return Err(CliError::new(
+            1,
+            "ERROR agent-team opencode subagent manifest declared zero entries",
+        )
+        .into());
+    }
+
+    let mut role_basenames: BTreeSet<String> = BTreeSet::new();
+
+    let agents_rel = ".opencode/agents";
+    for entry in &manifest.subagent {
+        let unprefixed = entry
+            .name
+            .strip_prefix("agent-team-")
+            .unwrap_or(&entry.name);
+        role_basenames.insert(format!("{unprefixed}.md"));
+
+        let persona_asset = format!("aiplus-agent-team/{}", entry.persona_file);
+        let persona_body = embedded_asset_text(&persona_asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR persona file {} missing for subagent {}: {}",
+                    persona_asset, entry.name, e
+                ),
+            )
+        })?;
+        let body = wrap_agent_team_subagent(entry, &persona_body);
+        let rel = format!("{agents_rel}/{}.md", entry.name);
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // Clean bare-name files from mirror_personas_to_runtimes (only if
+    // they don't carry user frontmatter).
+    for basename in &role_basenames {
+        let target = rel_to_abs(root, &format!("{agents_rel}/{basename}"))?;
+        if target.exists() {
+            if let Some(text) = read_text_if_exists(&target)? {
+                if !text.starts_with("---") {
+                    let _ = std::fs::remove_file(&target);
+                    plan.items.push(PlanItem {
+                        action: "remove-duplicate".to_string(),
+                        path: format!("{agents_rel}/{basename}"),
+                    });
+                }
+            }
+        }
+    }
+
+    let commands_rel = ".opencode/commands";
+    for cmd in AGENT_TEAM_SLASH_COMMANDS {
+        let asset = format!("aiplus-agent-team/adapters/opencode/commands/{cmd}.md");
+        let body = embedded_asset_text(&asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR agent-team opencode slash command {cmd} missing: {e}"),
+            )
+        })?;
+        let rel = format!("{commands_rel}/{cmd}.md");
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
     Ok(())
 }
 
