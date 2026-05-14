@@ -7073,6 +7073,15 @@ fn aieconlab_init(root: &Path, plan: &mut Plan) -> Result<()> {
     std::fs::create_dir_all(agents_dir.join("personas").join("_stubs"))?;
     std::fs::create_dir_all(agents_dir.join("experts"))?;
 
+    // Track A.2: clear agent-team's exclusive files from
+    // `.aiplus/agents/` before writing AEL's own. Otherwise the
+    // snapshot saved later by `snapshot_active_team` captures BOTH
+    // teams merged, `set_active_team` restores that merged state, and
+    // `mirror_personas_to_runtimes` writes both teams' bare files
+    // into `.claude/agents/` — the residue uninstall (A.1) cannot
+    // safely remove.
+    clear_other_team_residue(root, "aieconlab")?;
+
     // Copy core role configs (8 roles)
     for role in [
         "advisor",
@@ -7269,6 +7278,138 @@ const AIECONLAB_ROLES: &[&str] = &[
     "replicator",
 ];
 
+/// Track A.2: roles owned only by agent-team (advisor + pm are shared
+/// with aieconlab; the team-specific init writes them last so we don't
+/// need to clear them at residue time).
+const AGENT_TEAM_EXCLUSIVE_ROLES: &[&str] = &[
+    "ceo",
+    "architect",
+    "engineer-a",
+    "engineer-b",
+    "reviewer",
+    "qa",
+];
+
+const AGENT_TEAM_EXPERTS_ALL: &[&str] = &[
+    "ai-integration",
+    "security-reviewer",
+    "tech-writer",
+    "devops",
+    "ui-designer",
+    "researcher",
+    "data-analyst",
+    "customer-researcher",
+    "performance-engineer",
+    "accessibility",
+    "compliance-reviewer",
+];
+
+const AGENT_TEAM_STUB_PERSONAS: &[&str] = &[
+    "data-analyst",
+    "customer-researcher",
+    "performance-engineer",
+    "accessibility",
+    "compliance-reviewer",
+];
+
+const AIECONLAB_EXCLUSIVE_ROLES: &[&str] = &[
+    "pi",
+    "theorist",
+    "ra-stata",
+    "ra-python",
+    "referee",
+    "replicator",
+];
+
+const AIECONLAB_EXPERTS_ALL: &[&str] = &[
+    "coauthor-liaison",
+    "computation",
+    "econometrician",
+    "ethics-irb",
+    "historical-sources",
+    "job-talk-coach",
+    "lit-reviewer",
+    "llm-measurement",
+    "reproducibility",
+    "survey-experiment",
+    "viz-specialist",
+    "writer",
+];
+
+/// Track A.2: before `agent_team_init` / `aieconlab_init` writes its
+/// own role TOMLs / personas / experts into `.aiplus/agents/`, sweep
+/// the OTHER team's exclusive files. Without this, a second team init
+/// runs on top of the first team's files; the subsequent
+/// `snapshot_active_team` captures the merged state, `set_active_team`
+/// restores that merge, and `mirror_personas_to_runtimes` writes both
+/// teams' bare role files into `.claude/agents/` — the residue
+/// `aiplus uninstall` (A.1) cannot safely remove.
+///
+/// `my_team` is "agent-team" or "aieconlab"; this function clears the
+/// opposite team's files. Shared role names (`advisor`, `pm`) are NOT
+/// cleared because the calling init will overwrite them right after.
+fn clear_other_team_residue(root: &Path, my_team: &str) -> Result<()> {
+    let agents_dir = root.join(".aiplus").join("agents");
+    if !agents_dir.exists() {
+        return Ok(());
+    }
+    let personas_dir = agents_dir.join("personas");
+    let experts_dir = agents_dir.join("experts");
+    let stubs_dir = personas_dir.join("_stubs");
+
+    let (exclusive_roles, experts, stub_personas, team_config_file, module_dir) = match my_team {
+        "aieconlab" => (
+            AGENT_TEAM_EXCLUSIVE_ROLES,
+            AGENT_TEAM_EXPERTS_ALL,
+            AGENT_TEAM_STUB_PERSONAS,
+            "agent-team.toml",
+            ".aiplus/agent-team",
+        ),
+        "agent-team" => (
+            AIECONLAB_EXCLUSIVE_ROLES,
+            AIECONLAB_EXPERTS_ALL,
+            // aieconlab does not write _stubs personas; nothing to
+            // sweep on this axis when switching to agent-team.
+            &[][..],
+            "econ-team.toml",
+            ".aiplus/aieconlab",
+        ),
+        _ => return Ok(()),
+    };
+
+    // Sweep role TOMLs and core personas.
+    for role in exclusive_roles {
+        let _ = std::fs::remove_file(agents_dir.join(format!("{role}.toml")));
+        let _ = std::fs::remove_file(personas_dir.join(format!("{role}.md")));
+    }
+    // Sweep expert configs and their personas (aieconlab puts expert
+    // personas in personas/, agent-team puts none — only stubs).
+    for expert in experts {
+        let _ = std::fs::remove_file(experts_dir.join(format!("{expert}.toml")));
+        let _ = std::fs::remove_file(personas_dir.join(format!("{expert}.md")));
+    }
+    // Sweep agent-team's stub personas under personas/_stubs/.
+    for stub in stub_personas {
+        let _ = std::fs::remove_file(stubs_dir.join(format!("{stub}.md")));
+    }
+    // Sweep the OTHER team's top-level team-config file.
+    let _ = std::fs::remove_file(agents_dir.join(team_config_file));
+    // Sweep the OTHER team's module dir (config-only; live module
+    // content lives under `.aiplus/modules/`). Defensive: only remove
+    // if it exists.
+    let module_path = root.join(module_dir);
+    if module_path.exists() {
+        let _ = std::fs::remove_dir_all(&module_path);
+    }
+    // Intentionally do NOT wipe the OTHER team's `_teams/<other>/`
+    // snapshot here. The snapshot system exists precisely so users
+    // can switch back via `aiplus agent set-team <other>` without
+    // re-install. Legacy projects whose OTHER snapshot was captured
+    // pre-A.2 may carry merged residue; recommended remediation is to
+    // re-run `aiplus add <other>` which triggers a clean re-snapshot.
+    Ok(())
+}
+
 /// W3: seed per-role memory namespaces.
 ///
 /// Creates `.aiplus/agent-memory/<role>/` for each role in the active
@@ -7319,6 +7460,10 @@ fn agent_team_init(root: &Path, plan: &mut Plan, adapters: &[String]) -> Result<
     std::fs::create_dir_all(agents_dir.join("personas"))?;
     std::fs::create_dir_all(agents_dir.join("personas").join("_stubs"))?;
     std::fs::create_dir_all(agents_dir.join("experts"))?;
+
+    // Track A.2: clear aieconlab's exclusive files before writing
+    // agent-team's own. See `clear_other_team_residue` doc for why.
+    clear_other_team_residue(root, "agent-team")?;
 
     // Copy core role configs
     for role in AGENT_TEAM_ROLES {
