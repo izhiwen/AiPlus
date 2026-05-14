@@ -6766,6 +6766,15 @@ fn install_runtime_adapter(
                 plan,
                 options,
             )?;
+            // W7: real /aiplus-route slash command. Lets a Claude Code
+            // session dispatch a task without an MCP roundtrip.
+            write_file_safe(
+                root,
+                ".claude/commands/aiplus-route.md",
+                claude_route_command_content().as_bytes(),
+                plan,
+                options,
+            )?;
             write_file_safe(
                 root,
                 ".claude/agents/aiplus-advisor.md",
@@ -6815,6 +6824,14 @@ fn install_runtime_adapter(
                 plan,
                 options,
             )?;
+            // W7: matching route command for OpenCode.
+            write_file_safe(
+                root,
+                ".opencode/commands/aiplus-route.md",
+                opencode_route_command_content().as_bytes(),
+                plan,
+                options,
+            )?;
             write_file_safe(
                 root,
                 ".opencode/agents/aiplus-advisor.md",
@@ -6828,10 +6845,75 @@ fn install_runtime_adapter(
                 opencode_prompt_content().as_bytes(),
                 plan,
                 options,
+            )?;
+            write_file_safe(
+                root,
+                ".opencode/prompts/aiplus-route.md",
+                opencode_route_command_content().as_bytes(),
+                plan,
+                options,
             )
         }
         _ => Ok(()),
     }
+}
+
+/// W7: Claude Code slash command body for `/aiplus-route`.
+fn claude_route_command_content() -> String {
+    r#"---
+name: aiplus-route
+description: Route a task to an AiPlus agent role with consult + owner-gate enforcement
+---
+
+# AiPlus Route
+
+Route a task to an AiPlus agent role. The CLI scores the task, fires
+the consultant team, enforces owner gates, and writes per-member
+findings to `.aiplus/agent-memory/_team/consult-<task-id>.jsonl`.
+
+## Usage
+
+```
+/aiplus-route <role> <free-form task description>
+```
+
+## Runtime contract
+
+1. If you have not loaded `.aiplus/AGENTS.aiplus.md` in this session,
+   read it first. It carries the active team's roster, STOP-gates,
+   and routing conventions.
+2. Run `aiplus agent route <role> <task>` (one shell invocation).
+3. If the CLI exited non-zero with `Dispatch refused`, do NOT proceed.
+   Surface the gate id from `gates-<task-id>.jsonl` and ask the Owner
+   whether to authorize with `aiplus agent route --owner-approved <gate-id>`.
+4. If zero exit, open the consult artifact and treat per-member
+   findings as the team's plan-time review before writing code.
+
+## Forbidden
+
+- Never bypass a gate refusal by running shell commands directly.
+- Never edit the JSONL artifacts; they are an audit trail.
+- The 12 §16 STOP-gates from AEL DESIGN.md never auto-approve.
+"#
+    .to_string()
+}
+
+/// W7: OpenCode prompt body for `aiplus-route`.
+fn opencode_route_command_content() -> String {
+    r#"# AiPlus Route (OpenCode)
+
+Route a task to an AiPlus agent role. Same contract as the Claude Code
+`/aiplus-route` command: load `.aiplus/AGENTS.aiplus.md`, shell out to
+`aiplus agent route`, stop on `Dispatch refused`, surface gate id, and
+address per-member findings on success.
+
+## Forbidden
+
+- Never bypass a gate refusal.
+- Never edit `_team/*.jsonl` files; they are an audit trail.
+- The 12 §16 STOP-gates from AEL DESIGN.md never auto-approve.
+"#
+    .to_string()
 }
 
 fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> Result<()> {
