@@ -52,10 +52,20 @@ rules, architectural decisions are stored as local JSONL under
 `.aiplus/memory/`. Twelve redaction patterns strip secrets before any record
 is written, so you can capture preferences without leaking them.
 
-**Compact Reminder** — The agent stops blanking out after compact. It tells
-you when it is a good time to compact (not too early, not too late), prepares
-a structured handoff before compaction, and auto-resumes from a verified
-capsule afterwards. The agent picks up where it left off, not from zero.
+**Compact Reminder** — Save tokens on long sessions. Long Codex / Claude
+Code / OpenCode sessions bleed tokens two ways: agents that don't `/compact`
+in time overflow context and re-read bloated history on every turn, and
+agents that `/compact` at the wrong moment lose state and spend the next
+session re-explaining what they already knew. This module reminds you
+when the timing is right (token threshold + task-handoff-point detection),
+auto-prepares a structured handoff before, and recovers from a
+checksum-verified capsule after — so tokens go into new work, not into
+re-establishing context.
+
+**Agent Key** — The agent stops leaking your API keys. Project code calls
+aliases (`OPENAI_KEY_WORK`); the broker resolves each alias to a real value
+at runtime, injects it into the child process's environment, and forgets
+it. Never written to disk, never printed by default, never in git history.
 
 **Auto Team Consultant** — The agent stops overlooking the important stuff.
 A virtual team (5 expert members + your project's user personas, sitting at
@@ -93,8 +103,10 @@ AiPlus serves two audiences with the same underlying agent substrate:
   Specialist. Replaces the SWE consultant team with one designed from
   first principles for plan-time econ review.
 
-Both audiences share the same `aiplus-agent-memory`,
-`aiplus-compact-reminder`, and `aiplus-auto-team-consultant` substrate.
+Both audiences share six bundled substrate modules:
+`aiplus-agent-memory`, `aiplus-compact-reminder`,
+`aiplus-auto-team-consultant`, `aiplus-agent-team`, `aiplus-agent-key`,
+and `aiplus-agent-velocity`.
 
 ## Install
 
@@ -205,7 +217,7 @@ MyProject/
 │   ├── agent-memory/            # Agent continuity and context records
 │   ├── consultant-team.toml     # Team routing config
 │   └── velocity/                # Estimate and run records
-├── .codex/compact/              # Compact handoffs and capsules
+├── .aiplus/compact/             # Compact handoffs and capsules
 ├── .claude/                     # Claude Code adapters (if installed)
 ├── .opencode/                   # OpenCode adapters (if installed)
 └── AGENTS.md                    # Codex managed block (if installed)
@@ -219,7 +231,7 @@ docs, and adapter content land under `.aiplus/modules/aiplus-<name>/`
 in every AiPlus project:
 
 - [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory) — local JSONL memory + role identity + skill candidates.
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — token-savings prompts before `/compact` derails long sessions.
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — **save tokens on long sessions**: detect the right moment to `/compact`, package the handoff before, and resume from a checksum-verified capsule after — tokens go into new work, not re-establishing context.
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) — virtual expert team consulted automatically on each task.
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
 - [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — alias-based, zero-persistence secret resolution (`aiplus secret-broker`).
