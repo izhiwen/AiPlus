@@ -5145,10 +5145,7 @@ fn command_secret_broker(
 // already there, so `secret-broker list` shows it.
 fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
     let alias_name = alias_name.ok_or_else(|| {
-        CliError::new(
-            1,
-            "ERROR aiplus secret-broker set requires --alias <name>",
-        )
+        CliError::new(1, "ERROR aiplus secret-broker set requires --alias <name>")
     })?;
     if provider_name() != "keyring" {
         return Err(CliError::new(
@@ -5177,9 +5174,7 @@ fn secret_broker_set(alias_name: Option<String>) -> Result<()> {
         | Err(keyring::Error::PlatformFailure(detail)) => {
             return Err(CliError::new(
                 1,
-                format!(
-                    "SECRET_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}"
-                ),
+                format!("SECRET_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}"),
             )
             .into());
         }
