@@ -4944,11 +4944,33 @@ fn secret_broker_doctor() -> Result<()> {
     println!("provider={}", provider_name());
     println!("bws_cli={}", yes_no(command_available("bws")));
     let source = token_source();
+    // S3: legacy `token_source=` retained for back-compat with any
+    // scripts grepping the doctor output; new canonical name is
+    // `bws_token_source=`.
     println!("token_source={source}");
+    println!("bws_token_source={source}");
+    // S3: structured unlock hint — what the agent should DO next, not
+    // a prose suggestion. Three cases:
+    //   * env|keychain → "ok" (no action needed)
+    //   * not_configured + bws CLI present →
+    //     "aiplus secret-broker token set"
+    //   * bws CLI missing → install hint takes precedence
+    let unlock_hint = if source == "env" || source == "keychain" {
+        "ok".to_string()
+    } else if !command_available("bws") {
+        "install bws CLI then run `aiplus secret-broker token set`".to_string()
+    } else {
+        "aiplus secret-broker token set".to_string()
+    };
+    println!("bws_token_unlock_hint={unlock_hint}");
     if source == "not_configured" {
         println!("next=run aiplus secret-broker token set in Terminal");
     }
     println!("keychain_supported={}", yes_no(cfg!(target_os = "macos")));
+    // S3: alias count gives the agent a one-line "what's available"
+    // signal. The list itself stays behind `aiplus secret-broker list`
+    // — we don't want a 31-line alias dump in every doctor run.
+    println!("alias_count={}", secret_aliases()?.len());
     println!("secret_values_printed=no");
     println!("SECRET_BROKER_DOCTOR_STATUS=PASS");
     Ok(())

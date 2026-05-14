@@ -4401,3 +4401,56 @@ fn install_writes_broker_protocol_to_agents_aiplus_md() {
     );
     assert_eq!(end_count, 1, "...and end marker exactly once");
 }
+
+#[test]
+fn secret_broker_doctor_reports_token_source_and_unlock_hint() {
+    // S3: doctor must surface bws_token_source, bws_token_unlock_hint,
+    // alias_count. Test runs the not_configured branch deterministically
+    // by clearing BWS_ACCESS_TOKEN.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    let mut command = Command::new(bin());
+    command
+        .args(["secret-broker", "doctor"])
+        .current_dir(target)
+        .env_remove("BWS_ACCESS_TOKEN")
+        .env("HOME", target.join("fake-home"))
+        .env("CODEX_HOME", target.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", target.join("fake-xdg"));
+    let out = command.output().expect("doctor");
+    assert!(
+        out.status.success(),
+        "doctor must exit 0 even on missing token"
+    );
+    let body = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        body.contains("bws_token_source="),
+        "doctor should print bws_token_source:\n{body}"
+    );
+    assert!(
+        body.contains("bws_token_unlock_hint="),
+        "doctor should print bws_token_unlock_hint:\n{body}"
+    );
+    assert!(
+        body.contains("alias_count="),
+        "doctor should print alias_count:\n{body}"
+    );
+    let line = body
+        .lines()
+        .find(|l| l.starts_with("alias_count="))
+        .unwrap();
+    let n: usize = line
+        .strip_prefix("alias_count=")
+        .unwrap()
+        .parse()
+        .expect("alias_count should be an integer");
+    let _ = n;
+
+    let hint_line = body
+        .lines()
+        .find(|l| l.starts_with("bws_token_unlock_hint="))
+        .unwrap();
+    let hint = hint_line.strip_prefix("bws_token_unlock_hint=").unwrap();
+    assert!(!hint.is_empty(), "unlock_hint must not be empty");
+}
