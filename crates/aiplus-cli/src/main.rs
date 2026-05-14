@@ -158,7 +158,17 @@ enum Commands {
         #[arg(long = "override-bundled", action = ArgAction::SetTrue)]
         override_bundled: bool,
     },
-    Doctor,
+    Doctor {
+        /// Probe the OS keyring backend (Keychain / Secret Service /
+        /// Credential Manager) by writing, reading, and deleting a
+        /// scratch entry. Reports the detected backend, each probe
+        /// step's result, and whether BWS_ACCESS_TOKEN env-var fallback
+        /// is available. Use this right after `aiplus install` to confirm
+        /// the keyring path is usable on this machine before relying on
+        /// `aiplus secret-broker token set` in real workflows.
+        #[arg(long = "check-keyring", action = ArgAction::SetTrue)]
+        check_keyring: bool,
+    },
     /// Run the AiPlus MCP server (Phase E). Reads JSON-RPC 2.0 messages on
     /// stdin and replies on stdout. Codex / claude-code / opencode launch
     /// this subprocess to invoke AiPlus agent operations directly during a
@@ -788,7 +798,13 @@ fn run(command: Commands) -> Result<()> {
                 command_add(module, dry_run, verbose)
             }
         }
-        Commands::Doctor => command_doctor(),
+        Commands::Doctor { check_keyring } => {
+            if check_keyring {
+                command_doctor_check_keyring()
+            } else {
+                command_doctor()
+            }
+        }
         Commands::McpServe => mcp_server::run_server(),
         Commands::McpRegister {
             runtime,
@@ -2383,6 +2399,128 @@ fn command_doctor() -> Result<()> {
     }
     println!("DOCTOR_STATUS={}", if pass { "PASS" } else { "NEEDS_FIX" });
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `aiplus doctor --check-keyring` — probe the OS keyring backend with a
+// throwaway entry (separate service ID from the real secret-broker token,
+// so we never trample stored user data). Reports:
+//   - which backend was compiled in (Keychain / Secret Service / Credential
+//     Manager)
+//   - whether write, read-back, and delete each succeed on the live system
+//   - whether BWS_ACCESS_TOKEN env-var fallback is set (so headless users
+//     know they have a working path even if the keyring itself isn't)
+//
+// Output is one KV line per fact + a final KEYRING_CHECK_STATUS=PASS|FAIL
+// terminator. Stable for scripting; intentionally not part of the
+// human-readable `aiplus doctor` output (which is already long).
+// ---------------------------------------------------------------------------
+
+fn command_doctor_check_keyring() -> Result<()> {
+    const PROBE_SERVICE: &str = "aiplus/doctor-keyring-probe";
+    const PROBE_ACCOUNT: &str = "aiplus-doctor";
+
+    let backend_compile_time = if cfg!(target_os = "macos") {
+        "Keychain (security-framework)"
+    } else if cfg!(target_os = "linux") {
+        "Secret Service (dbus-secret-service, vendored libdbus)"
+    } else if cfg!(target_os = "windows") {
+        "Credential Manager (wincred)"
+    } else {
+        "unknown"
+    };
+    println!("KEYRING_CHECK");
+    println!("backend_compile_time={backend_compile_time}");
+
+    let entry = match keyring::Entry::new(PROBE_SERVICE, PROBE_ACCOUNT) {
+        Ok(e) => e,
+        Err(e) => {
+            println!("backend_available=no");
+            println!("write=skipped read=skipped delete=skipped");
+            println!("KEYRING_CHECK_STATUS=FAIL reason=entry_create_failed detail={e}");
+            report_bws_fallback();
+            return Ok(());
+        }
+    };
+
+    let nonce = format!("aiplus-doctor-probe-{}", epoch_millis());
+
+    // Write probe.
+    match entry.set_password(&nonce) {
+        Ok(()) => println!("write=ok"),
+        Err(keyring::Error::NoStorageAccess(detail))
+        | Err(keyring::Error::PlatformFailure(detail)) => {
+            println!("backend_available=no");
+            println!("write=fail reason=backend_unavailable detail={detail}");
+            println!("read=skipped delete=skipped");
+            println!("KEYRING_CHECK_STATUS=FAIL reason=backend_unavailable");
+            report_bws_fallback();
+            return Ok(());
+        }
+        Err(e) => {
+            println!("write=fail reason=other detail={e}");
+            println!("read=skipped delete=skipped");
+            println!("KEYRING_CHECK_STATUS=FAIL reason=write_failed detail={e}");
+            report_bws_fallback();
+            return Ok(());
+        }
+    }
+
+    // Read probe back and verify the value round-trips byte-for-byte. A
+    // backend that silently corrupts the value (or returns a different
+    // entry's content because of a service-ID collision) would pass the
+    // write step but fail here.
+    let read_value = match entry.get_password() {
+        Ok(v) => v,
+        Err(e) => {
+            println!("read=fail detail={e}");
+            println!("delete=skipped");
+            let _ = entry.delete_credential();
+            println!("KEYRING_CHECK_STATUS=FAIL reason=read_failed detail={e}");
+            report_bws_fallback();
+            return Ok(());
+        }
+    };
+    let read_matches = read_value == nonce;
+    println!("read=ok match={}", if read_matches { "yes" } else { "no" });
+
+    // Delete probe regardless of read match (clean up after ourselves).
+    let delete_result = entry.delete_credential();
+    match &delete_result {
+        Ok(()) => println!("delete=ok"),
+        Err(keyring::Error::NoEntry) => println!("delete=noop reason=no_entry"),
+        Err(e) => println!("delete=fail detail={e}"),
+    }
+
+    if !read_matches {
+        println!("KEYRING_CHECK_STATUS=FAIL reason=read_mismatch");
+        report_bws_fallback();
+        return Ok(());
+    }
+
+    println!("backend_available=yes");
+    println!("KEYRING_CHECK_STATUS=PASS");
+    report_bws_fallback();
+    Ok(())
+}
+
+fn report_bws_fallback() {
+    println!();
+    println!("BWS_ENV_FALLBACK");
+    match std::env::var("BWS_ACCESS_TOKEN") {
+        Ok(val) if !val.trim().is_empty() => {
+            println!("bws_access_token=set chars={}", val.chars().count());
+            println!("bws_env_fallback_status=available");
+        }
+        Ok(_) => {
+            println!("bws_access_token=set_but_empty");
+            println!("bws_env_fallback_status=unavailable_empty");
+        }
+        Err(_) => {
+            println!("bws_access_token=unset");
+            println!("bws_env_fallback_status=unavailable_unset");
+        }
+    }
 }
 
 fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
