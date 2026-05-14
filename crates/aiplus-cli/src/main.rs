@@ -2641,6 +2641,12 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     remove_claude_md_aieconlab_block(&root, &mut plan)?;
     remove_claude_md_agent_team_block(&root, &mut plan)?;
     remove_claude_hooks(&root, &mut plan)?;
+    // Track A.1: remove `.claude/agents/{prefix}-*.md`,
+    // `.claude/commands/{prefix}-*.md`, and the opencode analogs.
+    // Before this, uninstall left ~20 AEL + ~14 agent-team + 5 aiplus
+    // subagent files orphaned under `.claude/agents/`. Same for
+    // `.claude/commands/` and the matching opencode dirs.
+    remove_runtime_adapter_artifacts(&root, &mut plan)?;
     plan.items.push(PlanItem {
         action: "remove".to_string(),
         path: ".aiplus/".to_string(),
@@ -8710,6 +8716,132 @@ fn remove_claude_md_agent_team_block(root: &Path, plan: &mut Plan) -> Result<()>
         write_managed_text(root, rel, &next, plan)?;
     }
     Ok(())
+}
+
+/// Track A.1: Uninstall hygiene. Remove runtime-adapter artifacts that
+/// AiPlus wrote outside `.aiplus/` but that uninstall historically
+/// left behind. Limited to files matching our owned prefixes so we
+/// never touch user-authored content:
+///
+///   .claude/agents/{aieconlab,agent-team,aiplus}-*.md
+///   .claude/commands/{aiel,aiplus,at}-*.md
+///   .opencode/agents/aiplus-*.md
+///   .opencode/commands/aiplus-*.md
+///   .opencode/prompts/aiplus*.md
+///
+/// NOT touched (out of scope, separate cleanup track):
+///   .opencode/agents/<bare-role>.md  — `mirror_personas_to_runtimes`
+///       writes these with no prefix; cannot disambiguate from user
+///       content. Future OpenCode adapters (Track B.1/B.2) will use
+///       prefixed file names, and this function will pick them up
+///       automatically once the prefix list grows.
+///   .opencode/opencode.json — user-config file; handled separately.
+///   .claude/settings.local.json — handled by remove_claude_hooks.
+///
+/// After file removal, empty `.claude/{agents,commands}/` and
+/// `.opencode/{agents,commands,prompts}/` directories that we created
+/// are pruned, and the parent `.claude/` / `.opencode/` directories
+/// are pruned if they become empty.
+fn remove_runtime_adapter_artifacts(root: &Path, plan: &mut Plan) -> Result<()> {
+    // (parent_rel, prefix_patterns) — prefix matches against file
+    // basename. A trailing `-` is required for prefixes that would
+    // otherwise be too permissive (e.g. `aiplus` alone would also
+    // match `aiplus.md`, which we DO want under `.opencode/prompts/`
+    // but NOT under `.claude/agents/`). See the prompts entry below.
+    let claude_agent_prefixes: &[&str] = &["aieconlab-", "agent-team-", "aiplus-"];
+    let claude_command_prefixes: &[&str] = &["aiel-", "aiplus-", "at-"];
+    let opencode_agent_prefixes: &[&str] = &["aiplus-"];
+    let opencode_command_prefixes: &[&str] = &["aiplus-"];
+    // .opencode/prompts/ has both `aiplus.md` and `aiplus-route.md`.
+    // Match `aiplus` (no hyphen suffix) to catch both.
+    let opencode_prompt_prefixes: &[&str] = &["aiplus"];
+
+    let groups: &[(&str, &[&str])] = &[
+        (".claude/agents", claude_agent_prefixes),
+        (".claude/commands", claude_command_prefixes),
+        (".opencode/agents", opencode_agent_prefixes),
+        (".opencode/commands", opencode_command_prefixes),
+        (".opencode/prompts", opencode_prompt_prefixes),
+    ];
+
+    let mut touched_parents: BTreeSet<String> = BTreeSet::new();
+
+    for (parent_rel, prefixes) in groups {
+        let parent_abs = rel_to_abs(root, parent_rel)?;
+        if !parent_abs.exists() || !parent_abs.is_dir() {
+            continue;
+        }
+        let entries = match fs::read_dir(&parent_abs) {
+            Ok(it) => it,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !name.ends_with(".md") {
+                continue;
+            }
+            if !prefixes.iter().any(|p| name.starts_with(p)) {
+                continue;
+            }
+            let rel = format!("{parent_rel}/{name}");
+            plan.items.push(PlanItem {
+                action: "remove".to_string(),
+                path: rel.clone(),
+            });
+            if !plan.dry_run {
+                let _ = fs::remove_file(&path);
+            }
+            touched_parents.insert((*parent_rel).to_string());
+        }
+    }
+
+    // Prune empty parent dirs we touched, plus their grandparents
+    // (`.claude/`, `.opencode/`) if they end up empty. Don't recurse
+    // beyond two levels — we'll never delete the project root.
+    if plan.dry_run {
+        return Ok(());
+    }
+    let mut candidate_dirs: BTreeSet<String> = touched_parents;
+    for parent_rel in candidate_dirs.clone() {
+        let parent_abs = rel_to_abs(root, &parent_rel)?;
+        prune_dir_if_empty(&parent_abs);
+        // Also try the grandparent (e.g. `.claude/` after we cleaned
+        // `.claude/agents/` and `.claude/commands/`).
+        if let Some(grand) = std::path::Path::new(&parent_rel).parent() {
+            if !grand.as_os_str().is_empty() {
+                if let Some(gs) = grand.to_str() {
+                    candidate_dirs.insert(gs.to_string());
+                }
+            }
+        }
+    }
+    for dir_rel in candidate_dirs {
+        // Recheck after first pass — child cleanup may have left the
+        // grandparent empty.
+        let dir_abs = rel_to_abs(root, &dir_rel)?;
+        prune_dir_if_empty(&dir_abs);
+    }
+    Ok(())
+}
+
+fn prune_dir_if_empty(dir: &Path) {
+    if !dir.is_dir() {
+        return;
+    }
+    match fs::read_dir(dir) {
+        Ok(mut it) => {
+            if it.next().is_none() {
+                let _ = fs::remove_dir(dir);
+            }
+        }
+        Err(_) => {}
+    }
 }
 
 /// Wrap an agent-team persona body with YAML frontmatter so Claude Code's
