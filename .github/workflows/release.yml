@@ -180,10 +180,21 @@ jobs:
           # Create a draft release so the Owner can review notes/assets before
           # making it visible to consumers. Owner promotes from draft via
           # GitHub UI or `gh release edit "${TAG}" --draft=false`.
+          #
+          # P2.1: use --notes-from-tag instead of --generate-notes. The
+          # auto-generated notes from `--generate-notes` produced a
+          # reverse-reference ("Full Changelog: compare/v0.5.10...v0.5.9"
+          # when v0.5.10 was the NEW tag and v0.5.9 the previous), which
+          # reads backwards. The tag annotation (set via `git tag -a vX -m
+          # "..."`) is authoritative — release maintainer already writes
+          # a multi-line summary there for every release, and `--notes-
+          # from-tag` uses that verbatim. If the tag has no annotation
+          # this falls back to an empty body and the owner can edit it
+          # before promoting the draft.
           ASSETS=$(ls dist/aiplus-*.tar.gz dist/aiplus-*.zip 2>/dev/null || true)
           gh release create "${TAG}" \
             --title "AiPlus ${TAG}" \
             --draft \
-            --generate-notes \
+            --notes-from-tag \
             ${ASSETS} \
             dist/checksums.txt
