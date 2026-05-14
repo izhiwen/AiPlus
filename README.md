@@ -43,7 +43,7 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    hats, and the agent does each hat **shallowly**. Real engineering teams
    divide labor because the work *is* that structured.
 
-AiPlus is five small modules that, together, fix all six.
+AiPlus is five core Rust modules that together fix all six. (Plus one optional, opt-in module — AiEconLab — for applied-economics research, see below.)
 
 ## What you get
 
@@ -211,7 +211,7 @@ MyProject/
 └── AGENTS.md                    # Codex managed block (if installed)
 ```
 
-## The five standalone modules
+## The five core standalone modules
 
 Each module also ships as its own GitHub repo if you want to inspect or
 adopt one piece at a time:
@@ -221,6 +221,28 @@ adopt one piece at a time:
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
+
+## Optional opt-in module
+
+- [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab) — applied-
+  economics research team (8 core roles + 12 experts including LLM-as-
+  Measurement Specialist; default Python + Stata + LaTeX toolchain).
+  Installed via `aiplus add aieconlab`; not bundled by default into
+  `aiplus install`. See AEL's README for the install flow and the
+  consultant-team replacement it ships.
+
+## Install verb glossary
+
+Two verbs, two distinct purposes:
+
+- **`aiplus install <runtime>`** — wire a runtime adapter (Codex /
+  Claude Code / OpenCode) into your project's `.codex/` / `.claude/` /
+  `.opencode/` directories. Run once per project per runtime.
+- **`aiplus add <module>`** — add a bundled module (agent-memory,
+  compact-reminder, auto-team-consultant, agent-team, aieconlab). The
+  4 substrate modules are auto-installed by `aiplus install`; aieconlab
+  is opt-in via explicit `aiplus add`. v0.5.4+ also supports
+  `aiplus add --from-git <URL>[@REF]` for third-party modules.
 
 ## Safety boundaries
 
