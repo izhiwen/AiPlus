@@ -93,7 +93,12 @@ const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
 const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
-const DEFAULT_BWS_PROJECT_ID: &str = "ddd15408-b7bd-4230-8df3-b44401403ce3";
+// No hardcoded Bitwarden project UUID in public source — the value is
+// installation-specific and shipping one in a public binary advertises
+// which workspace the maintainer uses. Users supply theirs via the
+// `AIPLUS_BWS_PROJECT_ID` env var or a private profile bundle (which
+// can read it from ~/.config/aiplus/profiles/<name>/secrets.toml).
+const DEFAULT_BWS_PROJECT_ID: &str = "";
 
 #[derive(Parser)]
 #[command(
@@ -5105,9 +5110,27 @@ fn secret_broker_doctor() -> Result<()> {
         println!("next=run aiplus secret-broker token set in Terminal");
     }
     println!("keychain_supported={}", yes_no(cfg!(target_os = "macos")));
-    // S3: alias count gives the agent a one-line "what's available"
-    // signal. The list itself stays behind `aiplus secret-broker list`
-    // — we don't want a 31-line alias dump in every doctor run.
+    // v0.5.16: surface whether the Bitwarden project UUID is set.
+    // Public source ships with an empty default — users must supply
+    // `AIPLUS_BWS_PROJECT_ID` env var or a private profile bundle.
+    // Without it `secret-broker resolve` will fail at first use.
+    let project_id = bitwarden_project_id();
+    let project_id_source = if !std::env::var("AIPLUS_BWS_PROJECT_ID")
+        .unwrap_or_default()
+        .is_empty()
+    {
+        "env"
+    } else if !project_id.is_empty() {
+        "default"
+    } else {
+        "not_configured"
+    };
+    println!("bws_project_id_source={project_id_source}");
+    if project_id_source == "not_configured" {
+        println!(
+            "bws_project_id_hint=set AIPLUS_BWS_PROJECT_ID env var (Bitwarden Secrets Manager project UUID) before `aiplus secret-broker resolve`"
+        );
+    }
     println!("alias_count={}", secret_aliases()?.len());
     println!("secret_values_printed=no");
     println!("SECRET_BROKER_DOCTOR_STATUS=PASS");
@@ -5617,6 +5640,16 @@ impl SecretsProvider for BwsProvider {
 impl BwsProvider {
     fn lookup_secret_id(&self, alias: &SecretAlias) -> Result<String> {
         let project_id = bitwarden_project_id();
+        if project_id.is_empty() {
+            return Err(CliError::new(
+                1,
+                format!(
+                    "SECRET_RESOLVE_STATUS=FAIL alias={} provider=bws reason=project_id_not_set hint=set AIPLUS_BWS_PROJECT_ID env var or install a private profile bundle that supplies it",
+                    alias.alias
+                ),
+            )
+            .into());
+        }
         let output = Command::new("bws")
             .args(["secret", "list"])
             .arg(&project_id)

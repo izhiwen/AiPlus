@@ -31,10 +31,37 @@ pub struct ActiveRolesState {
     pub active_roles: BTreeSet<String>,
 }
 
+/// P1.3: dispatch outcomes. A dispatch can succeed, fail (worktree
+/// creation broke, role unknown, etc.), or be canceled by the owner
+/// gate. Recording the outcome — not just successes — lets `aiplus
+/// agent dispatch-history --outcome fail` show what went wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DispatchOutcome<'a> {
+    Success,
+    Fail { reason: &'a str, detail: &'a str },
+    Canceled { reason: &'a str },
+}
+
+impl<'a> DispatchOutcome<'a> {
+    fn as_str(&self) -> &'static str {
+        match self {
+            DispatchOutcome::Success => "success",
+            DispatchOutcome::Fail { .. } => "fail",
+            DispatchOutcome::Canceled { .. } => "canceled",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchLogEntry {
     pub schema_version: String,
+    /// P1.3: stable unique ID for this dispatch. Format
+    /// `dispatch-<epoch-ms>-<role>`. Linkable across dispatch-log.jsonl
+    /// and the audit.jsonl mirror so `aiplus agent dispatch-history`
+    /// can join them.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dispatch_id: String,
     pub timestamp: String,
     pub role: String,
     pub task: String,
@@ -46,6 +73,23 @@ pub struct DispatchLogEntry {
     /// renderer displays "unscored" for those.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    /// P1.3: dispatch outcome. Older entries that pre-date this field
+    /// deserialize with outcome = "success" (the only thing that used to
+    /// be recordable).
+    #[serde(default = "default_outcome_success")]
+    pub outcome: String,
+    /// P1.3: when outcome != "success", a snake_case key naming the
+    /// failure category. Omitted for successes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_reason: Option<String>,
+    /// P1.3: when outcome != "success", a human-readable detail for the
+    /// failure. Omitted for successes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_detail: Option<String>,
+}
+
+fn default_outcome_success() -> String {
+    "success".to_string()
 }
 
 const ACTIVE_ROLES_PATH: &str = ".aiplus/agents/active-roles.json";
@@ -65,17 +109,33 @@ pub fn load_active_roles(project_root: &Path) -> Result<ActiveRolesState> {
 }
 
 /// Mark `role` active and append a dispatch-log entry. Called from
-/// `aiplus agent route <role>` whenever a known role is dispatched.
+/// `aiplus agent route <role>` whenever a known role is dispatched
+/// successfully. Convenience wrapper around `record_dispatch_with_outcome`
+/// for the happy path.
 pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str) -> Result<()> {
+    record_dispatch_with_outcome(project_root, role, task, source, DispatchOutcome::Success)
+        .map(|_dispatch_id| ())
+}
+
+/// P1.3: full-control variant. Records the dispatch outcome (success /
+/// fail / canceled) and returns the dispatch_id so the caller can
+/// reference it in subsequent audit-trail writes. Used by:
+///   - the happy path via the `record_dispatch` wrapper above
+///   - the worktree-creation failure path in route.rs
+///   - the owner-gate cancellation path in route.rs
+pub fn record_dispatch_with_outcome(
+    project_root: &Path,
+    role: &str,
+    task: &str,
+    source: &str,
+    outcome: DispatchOutcome<'_>,
+) -> Result<String> {
     let agents_dir = project_root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir).context("ensure .aiplus/agents/")?;
 
     let timestamp = aiplus_core::now_iso();
+    let dispatch_id = format!("dispatch-{}-{}", aiplus_core::epoch_millis(), role);
 
-    // 1) Append a dispatch-log line.
-    // Score the task tier at dispatch time so the audit log captures
-    // the same MEDIUM/HEAVY signal that the route command shows on
-    // stdout. Empty task → no tier scoring.
     let tier = if task.is_empty() {
         None
     } else {
@@ -83,52 +143,63 @@ pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str
         Some(t.to_string())
     };
 
+    let (error_reason, error_detail) = match outcome {
+        DispatchOutcome::Success => (None, None),
+        DispatchOutcome::Fail { reason, detail } => {
+            (Some(reason.to_string()), Some(detail.to_string()))
+        }
+        DispatchOutcome::Canceled { reason } => (Some(reason.to_string()), None),
+    };
+
     let entry = DispatchLogEntry {
-        schema_version: "0.1.1".to_string(),
+        schema_version: "0.2.0".to_string(),
+        dispatch_id: dispatch_id.clone(),
         timestamp: timestamp.clone(),
         role: role.to_string(),
         task: task.to_string(),
-        // v0 default: reversibility is unspecified. Future work: the PI
-        // persona's response will tag the dispatch as
-        // reversible/semi/irreversible and the CLI surfaces it here.
         reversibility: "unspecified".to_string(),
         source: source.to_string(),
         tier,
+        outcome: outcome.as_str().to_string(),
+        error_reason,
+        error_detail,
     };
     let line = serde_json::to_string(&entry)?;
     let log_path = project_root.join(DISPATCH_LOG_PATH);
     aiplus_core::append_jsonl_atomic(&log_path, &line)?;
 
-    // 2) Update active-roles.json.
-    let mut state = load_active_roles(project_root)?;
-    state.schema_version = "0.1.0".to_string();
-    state.active_roles.insert(role.to_string());
-    let serialized = serde_json::to_string_pretty(&state)?;
-    let active_path = project_root.join(ACTIVE_ROLES_PATH);
-    aiplus_core::write_file_atomic(&active_path, serialized.as_bytes())?;
+    // Only mark role active on success — a failed/canceled dispatch
+    // should not light up `aiplus agent status`'s active-roles list.
+    if matches!(outcome, DispatchOutcome::Success) {
+        let mut state = load_active_roles(project_root)?;
+        state.schema_version = "0.1.0".to_string();
+        state.active_roles.insert(role.to_string());
+        let serialized = serde_json::to_string_pretty(&state)?;
+        let active_path = project_root.join(ACTIVE_ROLES_PATH);
+        aiplus_core::write_file_atomic(&active_path, serialized.as_bytes())?;
+    }
 
-    // 3) Mirror to `.aiplus/memory/audit.jsonl` so dispatches show up in
-    //    the project's general audit trail (not just the team-local one).
-    //    This makes `aiplus memory` queries surface dispatches alongside
-    //    other audited events (compact runs, secret-broker calls, etc.).
+    // Mirror to .aiplus/memory/audit.jsonl with the same dispatch_id so
+    // `aiplus agent dispatch-history` (and future cross-trail joiners)
+    // can correlate dispatch records to memory-audit entries.
     let memory_audit_path = project_root.join(".aiplus/memory/audit.jsonl");
     if let Some(parent) = memory_audit_path.parent() {
-        // Only mirror if the memory dir already exists — don't create
-        // .aiplus/memory/ on systems where memory wasn't installed.
         if parent.exists() {
             let memory_entry = serde_json::json!({
-                "schemaVersion": "0.1.0",
+                "schemaVersion": "0.2.0",
                 "kind": "agent-dispatch",
+                "dispatchId": dispatch_id,
                 "timestamp": timestamp,
                 "role": role,
                 "task": task,
                 "source": source,
+                "outcome": outcome.as_str(),
             });
             let memory_line = serde_json::to_string(&memory_entry)?;
             let _ = aiplus_core::append_jsonl_atomic(&memory_audit_path, &memory_line);
         }
     }
-    Ok(())
+    Ok(dispatch_id)
 }
 
 /// Score a task description on the LIGHT/MEDIUM/HEAVY scale that

@@ -14,12 +14,21 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                 let project_root = std::env::current_dir()?;
 
                 // W2: run the gate check *before* worktree provisioning
-                // and before recording dispatch. A pending gate means
-                // the dispatch itself doesn't happen — we don't want
-                // .aiplus/agents/dispatch-log.jsonl to record a dispatch
-                // that the gate refused.
+                // and before recording dispatch. A pending gate cancels
+                // the dispatch. P1.3: we still record the canceled
+                // attempt so `dispatch-history --outcome canceled` can
+                // surface gate-refusal patterns.
                 let gate_state = enforce_gates(&project_root, candidate, task, &approved)?;
                 if gate_state == GateOutcome::PendingBlocked {
+                    let _ = state::record_dispatch_with_outcome(
+                        &project_root,
+                        candidate,
+                        task,
+                        "aiplus agent route",
+                        state::DispatchOutcome::Canceled {
+                            reason: "owner_gate_pending",
+                        },
+                    );
                     return Err(anyhow!(
                         "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
                     ));
@@ -46,6 +55,20 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                                 }
                                 Err(e) => {
                                     eprintln!("  ERROR: Failed to create worktree: {}", e);
+                                    // P1.3: record the failed dispatch so
+                                    // `dispatch-history --outcome fail` can
+                                    // surface worktree-creation regressions.
+                                    let detail = format!("{e}");
+                                    let _ = state::record_dispatch_with_outcome(
+                                        &project_root,
+                                        candidate,
+                                        task,
+                                        "aiplus agent route",
+                                        state::DispatchOutcome::Fail {
+                                            reason: "worktree_create_failed",
+                                            detail: &detail,
+                                        },
+                                    );
                                     return Err(e);
                                 }
                             }
