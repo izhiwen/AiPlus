@@ -4497,3 +4497,99 @@ fn secret_broker_doctor_reports_token_source_and_unlock_hint() {
     let hint = hint_line.strip_prefix("bws_token_unlock_hint=").unwrap();
     assert!(!hint.is_empty(), "unlock_hint must not be empty");
 }
+
+#[test]
+fn install_with_yes_appends_shell_init_to_zshrc() {
+    // K5 contract: `aiplus install <runtime> --yes` (which install
+    // already upgrades to internally for existing installs) appends
+    // the cd-auto-load snippet to the user's shell rc. Test runs in
+    // zsh mode with HOME=$tempdir, so writing ~/.zshrc is sandboxed.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let fake_home = target.join("fake-home");
+    let zshrc = fake_home.join(".zshrc");
+    // Pre-seed an existing line so we can prove we append, not overwrite.
+    fs::write(&zshrc, "# pre-existing user content\nexport FOO=bar\n").unwrap();
+
+    let out = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/bin/zsh")],
+    );
+    let stderr_text = stderr(&out);
+    assert!(
+        stderr_text.contains("SHELL_INIT=appended"),
+        "install should report appending shell hook in stderr:\n{stderr_text}"
+    );
+
+    let rc_body = fs::read_to_string(&zshrc).unwrap();
+    assert!(
+        rc_body.contains("# pre-existing user content"),
+        "must NOT clobber existing rc lines:\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("_aiplus_broker_hook"),
+        "hook function name must be appended:\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("AiPlus secret-broker cd-auto-load (zsh)"),
+        "zsh-flavored snippet must be appended:\n{rc_body}"
+    );
+
+    // Idempotency: re-run install. Hook function name must still
+    // appear exactly once (no duplicated block).
+    let out2 = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/bin/zsh")],
+    );
+    assert!(
+        stderr(&out2).contains("SHELL_INIT=already_enabled"),
+        "second run should detect existing wiring:\n{}",
+        stderr(&out2)
+    );
+    let rc_body2 = fs::read_to_string(&zshrc).unwrap();
+    let occurrences = rc_body2
+        .matches("AiPlus secret-broker cd-auto-load (zsh)")
+        .count();
+    assert_eq!(
+        occurrences, 1,
+        "snippet header must appear exactly once after re-install:\n{rc_body2}"
+    );
+}
+
+#[test]
+fn install_skips_shell_init_when_env_opts_out() {
+    // K5 escape hatch: AIPLUS_SKIP_SHELL_INIT=1 tells the installer to
+    // leave the user's rc files alone (for dotfile-managed setups).
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let out = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/bin/zsh"), ("AIPLUS_SKIP_SHELL_INIT", "1")],
+    );
+    let stderr_text = stderr(&out);
+    assert!(
+        !stderr_text.contains("SHELL_INIT="),
+        "AIPLUS_SKIP_SHELL_INIT should suppress all SHELL_INIT output:\n{stderr_text}"
+    );
+    let zshrc = target.join("fake-home/.zshrc");
+    assert!(
+        !zshrc.exists(),
+        ".zshrc must not be created when env opts out"
+    );
+}

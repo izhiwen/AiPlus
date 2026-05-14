@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.5.21
+
+### K5: `aiplus install` auto-wires the cd-auto-load hook
+
+- **`aiplus install <runtime>` now offers to append the
+  secret-broker shell hook to your rc** (default Y on interactive
+  tty; auto-append with `--yes`). Closes the last manual step in the
+  agent-key UX: after a fresh install + one keyring entry, every
+  `cd` into a project with `.aiplus/keys.toml` injects the expected
+  `*_API_KEY` env vars before your agent starts. Idempotent (skipped
+  if the rc already contains `_aiplus_broker_hook`); honors
+  `AIPLUS_SKIP_SHELL_INIT=1` for dotfile-managed setups; falls back
+  to a printed hint on unknown shells or non-tty without `--yes`.
+  Detects zsh/bash/fish from `$SHELL` and writes to `~/.zshrc`,
+  `~/.bash_profile`/`~/.bashrc`, or `$XDG_CONFIG_HOME/fish/config.fish`
+  respectively. Append-only — never rewrites or removes existing rc
+  content.
+  / **`aiplus install` 自动 wire shell-init**：装完会问一句"启用 cd 自动
+  装载？[Y/n]"，同意就 append ~6 行到你的 rc。装一次 + 第一把 key 弹窗
+  粘一次 = 永久无感。`AIPLUS_SKIP_SHELL_INIT=1` 跳过；幂等；只 append
+  不重写。
+
 ## 0.5.20
 
 - **`aiplus doctor` no longer reports NEEDS_FIX for stale-registry
