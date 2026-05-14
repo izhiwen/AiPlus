@@ -107,6 +107,86 @@ it's worthless. There's no middle setting. This was the design decision
 that made me trust my own multi-agent system enough to leave a task
 running unattended for two hours.
 
+## A weird angle: the user is also an economics PhD student
+
+The framing above is "engineer builds tooling for engineers." That's
+the half of my life this blog mostly speaks from. The other half is
+that I'm a fifth-year economics PhD candidate, and the same workflow
+problems show up in research with different names. Cross-session
+amnesia becomes "I told my RA last month, why is this the same
+question this month." Post-compact context loss becomes "where did I
+write down the identification rationale for this robustness check."
+One-agent-every-hat becomes the dissertation student trying to be PI,
+Theorist, RA, Replicator, Writer, and Referee at once and noticing
+that every hat is being worn shallowly.
+
+AiPlus ships an optional opt-in module called **AiEconLab** that
+flips the team to research roles — PI, Theorist, two RAs, Referee,
+Replicator — and replaces the consultant team with five seats
+designed from first principles for plan-time econ review: Design
+Credibility, Contribution Framing, Day-1 Reproducibility, IRB /
+Disclosure Gate, and an LLM-as-Measurement specialist. AEL also
+formalizes the twelve irreversible actions that a research workflow
+shouldn't auto-approve — journal submission, R&R response sending,
+working-paper posting, authorship-order change, robustness drop,
+sample-frame change mid-fieldwork, IRB-protected data access,
+estimator change that moves the headline, and a few more. Those
+twelve are STOP-gates: the CLI refuses to proceed without an explicit
+`--owner-approved <gate-id>` flag. The cost is a couple of seconds
+typing the flag. The benefit is that I cannot accidentally tell an
+agent to send my R&R response and have it actually go.
+
+I run my own paper on this stack. I would not have shipped if the
+stack only worked for software engineering and I had to mentally
+translate every concept; the translation would have broken the
+abstraction. So AEL exists because **the AiPlus design only works
+when the persona-roster matches the user's actual workflow**, and
+imposing a SWE-team roster on a research project would have produced
+a worse tool than no tool at all.
+
+## The moment I caught my own dogfood failing
+
+The honest meta-frame of AiPlus is "I used AI to build the tool that
+manages AI." A few weeks after the 0.5 line shipped, I noticed the
+recursion went one level deeper than I'd planned.
+
+I was working with the agent on a small chore — set a GitHub Actions
+secret in a sibling repo so a CI workflow could call the Anthropic
+API. The agent dutifully asked me for the key. I started to paste it.
+Then I stopped. AiPlus ships a `secret-broker` module that already
+manages thirty-one of my API credentials. Every one of them is sitting
+in my Bitwarden Secrets Manager vault, behind a one-time machine-
+account unlock. The agent had no reason to ask me anything. It should
+have run `aiplus secret-broker list`, found the alias, and routed the
+value to the GitHub secret without my fingers ever touching the key.
+
+It hadn't. The reason was almost cosmically appropriate: I had built
+the broker, but I'd never told the agent. The `AGENTS.aiplus.md`
+file — the one document every AiPlus runtime reads at session start —
+said nothing about the broker. The persona files said nothing. The
+doctor didn't surface it. There was no command to write a broker
+value into a GitHub secret in one step. The chain was technically
+complete but socially invisible.
+
+The fix took most of a Saturday. It's a clean series — push command,
+agent-protocol section in AGENTS, doctor coverage, persona workflow
+step zero, role-level secret-need declaration, doctor coverage of
+declared needs, route-time wiring, end-to-end verification — and the
+PR series merged together over the same afternoon. What I want to
+flag here isn't the fix; it's the **kind** of failure. AiPlus's worst
+bugs are not "the code doesn't work." They are "the code works, and
+the agent doesn't know it works, and so the agent does the human
+thing and asks the human." Discoverability inside a multi-agent
+system is its own engineering discipline, and I keep underestimating
+how much of it has to be explicit. The agent will never *infer* that
+a capability exists; you have to *tell it*, in the document the agent
+re-reads every session, with the literal command it should run.
+
+The next time my agent asked me for an API key, I noticed in the same
+beat that I'd left a new alias out of the broker. The bug had moved
+from "the agent doesn't know about the tool" to "the alias is
+missing." That's the kind of bug I can live with.
+
 ## What's still unsolved
 
 A few things are still open and I want to be honest about them.
