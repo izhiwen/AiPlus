@@ -1,3 +1,9 @@
+// TODO(v0.2): cross-platform binary alias substitution. Used by audit
+// when a fixture references e.g. `stata` but the host machine has it
+// under a different name. Not wired up yet — kept as scaffolding.
+// Suppress dead_code at module level to keep `cargo build` warning-free.
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 

@@ -1,3 +1,10 @@
+// TODO(v0.2): canary replay scaffolding. Wired into audit pipeline once
+// `aiplus agent audit canary` subcommand lands. Until then the entire
+// module is dead — kept as scaffolding to preserve the design intent
+// rather than rewriting it from scratch later. Suppress dead_code
+// warnings for the whole module so we don't pollute every `cargo build`.
+#![allow(dead_code)]
+
 use std::path::Path;
 
 use anyhow::{Context, Result};

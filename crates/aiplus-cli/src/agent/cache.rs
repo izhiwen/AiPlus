@@ -1,3 +1,8 @@
+// TODO(v0.2): WarmBenchCache scaffolding for cross-session role-state
+// caching. Wired into `aiplus agent route` once we add the warm-bench
+// fast-path. Currently unused — keep as scaffolding rather than rewrite.
+#![allow(dead_code)]
+
 use aiplus_core::agent_team::RoleId;
 use std::collections::HashMap;
 use std::fs;

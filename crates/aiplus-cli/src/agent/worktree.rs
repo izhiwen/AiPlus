@@ -572,6 +572,9 @@ pub fn merge_agent_branch(project_root: &Path, role: &str) -> Result<()> {
 }
 
 /// Find all stale worktrees (registered in git but directory is missing).
+// TODO(v0.2): used by `aiplus agent prune-worktrees --stale-only` once
+// added. Currently `prune-worktrees` is unconditional; this helper waits.
+#[allow(dead_code)]
 pub fn get_stale_worktrees(project_root: &Path) -> Result<Vec<(String, PathBuf)>> {
     let worktrees = list_worktrees(project_root)?;
     let mut stale = Vec::new();

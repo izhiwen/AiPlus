@@ -17,6 +17,10 @@ use aiplus_core::auditor::gate::{GateResult, PreAuditGate};
 
 const EMBEDDED_SCHEMA_PATH: &str = "aiplus-agent-team/core/schemas/acceptance-v0.1.4.yaml";
 const SCHEMA_SHA256: &str = "06ee2b35466f6bd2019dbed3bf70384f98428f5eacd6cc117ba2e74fcaf5b526";
+// TODO(audit-migration): referenced when migrating projects from
+// pre-v0.1.4 schema layout. Not used in steady-state — kept as a
+// documented constant for the eventual migration path.
+#[allow(dead_code)]
 const LEGACY_SCHEMA_PATH: &str = ".aiplus/agent-team/acceptance/v0.1.4/schema.yaml";
 const AUDIT_TRAIL_DIR: &str = ".aiplus/agent-team/audit-trail";
 const RELEASE_MANIFEST_PATH: &str = ".aiplus/agent-team/release-manifest.yaml";
