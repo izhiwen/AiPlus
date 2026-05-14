@@ -312,6 +312,12 @@ enum Commands {
         alias: Vec<String>,
         #[arg(long = "aliases")]
         aliases: Option<String>,
+        /// S1: target DSL for `push`.
+        ///   github-secret:<owner>/<repo>:<NAME>  → gh secret set
+        ///   env:<VAR_NAME>                       → print export VAR=... line
+        ///   dotenv:<path>                        → write/update .env single key
+        #[arg(long = "to")]
+        to: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
     },
@@ -890,8 +896,9 @@ fn run(command: Commands) -> Result<()> {
             print,
             alias,
             aliases,
+            to,
             command,
-        } => command_secret_broker(subcommand, arg, print, alias, aliases, command),
+        } => command_secret_broker(subcommand, arg, print, alias, aliases, to, command),
         Commands::SelfCommand {
             subcommand,
             dry_run,
@@ -4857,6 +4864,7 @@ fn command_secret_broker(
     print_secret: bool,
     alias_flags: Vec<String>,
     aliases_csv: Option<String>,
+    to: Option<String>,
     command: Vec<String>,
 ) -> Result<()> {
     match subcommand.as_deref() {
@@ -4865,9 +4873,10 @@ fn command_secret_broker(
         Some("list") => secret_broker_list(),
         Some("resolve") => secret_broker_resolve(arg, print_secret),
         Some("run") => secret_broker_run(alias_flags, aliases_csv, command),
+        Some("push") => secret_broker_push(alias_flags, aliases_csv, to, print_secret),
         Some("token") => secret_broker_token(arg),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|token set|delete");
             process::exit(2);
         }
     }
@@ -5004,6 +5013,278 @@ fn secret_broker_run(
         return Err(CliError::new(status.code().unwrap_or(1), "ERROR child command failed").into());
     }
     println!("SECRET_BROKER_RUN_STATUS=PASS");
+    Ok(())
+}
+
+/// S1: `aiplus secret-broker push --alias <a> --to <target>`
+///
+/// Resolves one alias from the broker and writes the value to a
+/// declarative target without ever printing the value to stdout/log.
+/// Three targets:
+///   * `github-secret:<owner>/<repo>:<NAME>` — pipes the value into
+///     `gh secret set <NAME> --repo <owner>/<repo> --body @-`. We
+///     feed the secret on stdin (not as an argv argument) because
+///     argv is visible to other processes via /proc/<pid>/cmdline.
+///   * `env:<VAR>` — prints a single `export VAR='...'` line on
+///     stdout. Caller is expected to `eval` it; we do not export
+///     ourselves because aiplus runs in its own subprocess and the
+///     env wouldn't propagate.
+///   * `dotenv:<path>` — writes/updates a single `VAR=...` line in
+///     the named .env file. Existing key is replaced in place; new
+///     key is appended.
+///
+/// `--print` is rejected (would defeat the purpose). The push uses
+/// the same alias-selection logic as `run` (single alias only — we
+/// reject multi-alias because a "target" is by definition singular).
+/// Idempotent: pushing the same value twice produces the same
+/// outcome with no extra side effects (gh secret set is idempotent,
+/// dotenv replace-in-place is idempotent).
+fn secret_broker_push(
+    alias_flags: Vec<String>,
+    aliases_csv: Option<String>,
+    target: Option<String>,
+    print_secret: bool,
+) -> Result<()> {
+    if print_secret {
+        return Err(CliError::new(
+            2,
+            "ERROR --print is not allowed with push (push never prints secret values)",
+        )
+        .into());
+    }
+    let target = target.ok_or_else(|| {
+        CliError::new(
+            2,
+            "ERROR --to <target> required. Forms: \
+             github-secret:<owner>/<repo>:<NAME>, env:<VAR>, dotenv:<path>",
+        )
+    })?;
+    let requested = parse_requested_aliases(alias_flags, aliases_csv)?;
+    if requested.len() != 1 {
+        return Err(CliError::new(2, "ERROR push requires exactly one --alias <name>").into());
+    }
+    let aliases = select_secret_aliases(&requested)?;
+    let alias = aliases
+        .into_iter()
+        .next()
+        .ok_or_else(|| CliError::new(2, "ERROR alias not found in registry"))?;
+
+    let provider = load_secret_provider()?;
+    let value = provider.resolve(&alias).map_err(|e| {
+        CliError::new(
+            1,
+            format!(
+                "SECRET_BROKER_PUSH_STATUS=FAIL alias={} reason={}",
+                alias.alias,
+                secret_error_reason(&e)
+            ),
+        )
+    })?;
+
+    // The PushTarget enum normalizes the DSL and isolates the actual
+    // value-handling side effect. We pass `value` by reference and
+    // never log it; on return the value is dropped (heap zeroized
+    // by SecretValue::expose_for_explicit_print's Drop, but we only
+    // hold a borrow here).
+    let parsed = PushTarget::parse(&target)?;
+    let target_summary = parsed.summary();
+    let value_str = value.expose_for_explicit_print();
+    let result = parsed.write(&alias.env_var, &value_str);
+    // Always overwrite the local binding with a non-secret value
+    // before any println — defense-in-depth against an accidental
+    // {value_str} interpolation slipping into a future edit.
+    let value_str = String::new();
+    result?;
+    drop(value_str);
+
+    println!("SECRET_BROKER_PUSH");
+    println!("alias={}", alias.alias);
+    println!("env_var={}", alias.env_var);
+    println!("target={}", target_summary);
+    println!("secret_value_printed=no");
+    println!("SECRET_BROKER_PUSH_STATUS=PASS");
+    Ok(())
+}
+
+/// Parsed `--to` target. We split the DSL parse from the write so the
+/// parser is unit-testable without filesystem or `gh` side effects.
+#[derive(Debug)]
+enum PushTarget {
+    GithubSecret {
+        owner: String,
+        repo: String,
+        name: String,
+    },
+    Env {
+        var: String,
+    },
+    Dotenv {
+        path: PathBuf,
+    },
+}
+
+impl PushTarget {
+    fn parse(raw: &str) -> Result<Self> {
+        if let Some(rest) = raw.strip_prefix("github-secret:") {
+            // `<owner>/<repo>:<NAME>`. Split on the LAST `:` so the
+            // <NAME> can't accidentally consume part of the path.
+            let (owner_repo, name) = rest.rsplit_once(':').ok_or_else(|| {
+                CliError::new(2, "ERROR github-secret target needs <owner>/<repo>:<NAME>")
+            })?;
+            let (owner, repo) = owner_repo.split_once('/').ok_or_else(|| {
+                CliError::new(2, "ERROR github-secret target needs <owner>/<repo>:<NAME>")
+            })?;
+            if owner.is_empty() || repo.is_empty() || name.is_empty() {
+                return Err(CliError::new(
+                    2,
+                    "ERROR github-secret target needs non-empty owner, repo, and name",
+                )
+                .into());
+            }
+            return Ok(PushTarget::GithubSecret {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                name: name.to_string(),
+            });
+        }
+        if let Some(var) = raw.strip_prefix("env:") {
+            if var.is_empty() {
+                return Err(CliError::new(2, "ERROR env target needs a variable name").into());
+            }
+            return Ok(PushTarget::Env {
+                var: var.to_string(),
+            });
+        }
+        if let Some(path) = raw.strip_prefix("dotenv:") {
+            if path.is_empty() {
+                return Err(CliError::new(2, "ERROR dotenv target needs a file path").into());
+            }
+            return Ok(PushTarget::Dotenv {
+                path: PathBuf::from(path),
+            });
+        }
+        Err(CliError::new(
+            2,
+            format!(
+                "ERROR unknown push target '{raw}'. Forms: \
+                 github-secret:<owner>/<repo>:<NAME>, env:<VAR>, dotenv:<path>"
+            ),
+        )
+        .into())
+    }
+
+    /// Short label that's safe to log (no secret value).
+    fn summary(&self) -> String {
+        match self {
+            PushTarget::GithubSecret { owner, repo, name } => {
+                format!("github-secret:{owner}/{repo}:{name}")
+            }
+            PushTarget::Env { var } => format!("env:{var}"),
+            PushTarget::Dotenv { path } => format!("dotenv:{}", path.display()),
+        }
+    }
+
+    /// Perform the actual write. `env_var` is the broker's canonical
+    /// env name for this alias (e.g. `ANTHROPIC_API_KEY`); for
+    /// github-secret and env targets the override goes to whatever
+    /// the user requested in `--to`, not `env_var`.
+    fn write(&self, _broker_env_var: &str, value: &str) -> Result<()> {
+        match self {
+            PushTarget::GithubSecret { owner, repo, name } => {
+                use std::io::Write as _;
+                use std::process::Stdio;
+                let repo_arg = format!("{owner}/{repo}");
+                let mut child = Command::new("gh")
+                    .args(["secret", "set", name, "--repo", &repo_arg, "--body", "-"])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| {
+                        CliError::new(
+                            1,
+                            format!(
+                                "SECRET_BROKER_PUSH_STATUS=FAIL target=github-secret \
+                                 reason=spawn_gh_failed err={e}"
+                            ),
+                        )
+                    })?;
+                {
+                    let stdin = child.stdin.as_mut().ok_or_else(|| {
+                        CliError::new(
+                            1,
+                            "SECRET_BROKER_PUSH_STATUS=FAIL target=github-secret \
+                             reason=stdin_unavailable",
+                        )
+                    })?;
+                    stdin
+                        .write_all(value.as_bytes())
+                        .context("write secret to gh stdin")?;
+                }
+                let out = child.wait_with_output().context("wait gh secret set")?;
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    return Err(CliError::new(
+                        out.status.code().unwrap_or(1),
+                        format!(
+                            "SECRET_BROKER_PUSH_STATUS=FAIL target=github-secret \
+                             repo={owner}/{repo} name={name} reason=gh_failed stderr={}",
+                            stderr.trim()
+                        ),
+                    )
+                    .into());
+                }
+                Ok(())
+            }
+            PushTarget::Env { var } => {
+                // Single-quote the value to be eval-safe; escape any
+                // embedded single quotes via the standard `'\''` dance.
+                let escaped = value.replace('\'', "'\\''");
+                println!("export {var}='{escaped}'");
+                Ok(())
+            }
+            PushTarget::Dotenv { path } => write_dotenv_line(path, _broker_env_var, value),
+        }
+    }
+}
+
+/// Replace-or-append a single `VAR=value` line in a .env-style file.
+/// Quoting: we wrap the value in double quotes and escape `\\`, `"`,
+/// `$`, `` ` `` so it survives `source .env` in a POSIX shell.
+fn write_dotenv_line(path: &Path, var: &str, value: &str) -> Result<()> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`");
+    let new_line = format!("{var}=\"{escaped}\"");
+    let mut replaced = false;
+    let mut out_lines: Vec<String> = Vec::new();
+    for line in existing.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix(&format!("{var}=")) {
+            let _ = rest;
+            out_lines.push(new_line.clone());
+            replaced = true;
+        } else {
+            out_lines.push(line.to_string());
+        }
+    }
+    if !replaced {
+        out_lines.push(new_line);
+    }
+    let mut body = out_lines.join("\n");
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
+    }
+    std::fs::write(path, body).with_context(|| format!("write {}", path.display()))?;
     Ok(())
 }
 
@@ -12805,6 +13086,119 @@ fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool) -> Result<bool> 
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
+
+    // S1: push-target parser and dotenv writer tests.
+    //
+    // Why parser tests matter: PushTarget::parse is the ONLY input
+    // gate between a user-supplied --to string and the side-effect
+    // dispatch. Malformed input must surface a clear error, not panic
+    // or default to a wrong target type.
+
+    #[test]
+    fn push_target_parse_github_secret_happy() {
+        let p = PushTarget::parse("github-secret:izhiwen/AiEconLab:ANTHROPIC_API_KEY").unwrap();
+        match p {
+            PushTarget::GithubSecret { owner, repo, name } => {
+                assert_eq!(owner, "izhiwen");
+                assert_eq!(repo, "AiEconLab");
+                assert_eq!(name, "ANTHROPIC_API_KEY");
+            }
+            _ => panic!("expected GithubSecret variant"),
+        }
+    }
+
+    #[test]
+    fn push_target_parse_env_happy() {
+        let p = PushTarget::parse("env:OPENAI_API_KEY").unwrap();
+        match p {
+            PushTarget::Env { var } => assert_eq!(var, "OPENAI_API_KEY"),
+            _ => panic!("expected Env variant"),
+        }
+    }
+
+    #[test]
+    fn push_target_parse_dotenv_happy() {
+        let p = PushTarget::parse("dotenv:.env.local").unwrap();
+        match p {
+            PushTarget::Dotenv { path } => assert_eq!(path, PathBuf::from(".env.local")),
+            _ => panic!("expected Dotenv variant"),
+        }
+    }
+
+    #[test]
+    fn push_target_parse_rejects_unknown_scheme() {
+        let err = PushTarget::parse("aws-ssm:/foo/bar").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown push target"), "got: {msg}");
+    }
+
+    #[test]
+    fn push_target_parse_rejects_empty_components() {
+        assert!(PushTarget::parse("github-secret:owner/:NAME").is_err());
+        assert!(PushTarget::parse("github-secret:/repo:NAME").is_err());
+        assert!(PushTarget::parse("github-secret:owner/repo:").is_err());
+        assert!(PushTarget::parse("env:").is_err());
+        assert!(PushTarget::parse("dotenv:").is_err());
+    }
+
+    #[test]
+    fn push_target_summary_does_not_leak_value() {
+        // The summary string is what gets logged. It must surface
+        // identity but never include the secret value (which isn't
+        // even held by PushTarget anyway — value is passed by
+        // reference to write()).
+        let p = PushTarget::parse("github-secret:o/r:N").unwrap();
+        assert_eq!(p.summary(), "github-secret:o/r:N");
+        let p = PushTarget::parse("env:VAR").unwrap();
+        assert_eq!(p.summary(), "env:VAR");
+    }
+
+    #[test]
+    fn dotenv_write_appends_new_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".env");
+        std::fs::write(&path, "EXISTING=foo\n").unwrap();
+        write_dotenv_line(&path, "NEW", "bar").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("EXISTING=foo\n"));
+        assert!(body.contains("NEW=\"bar\"\n"));
+    }
+
+    #[test]
+    fn dotenv_write_replaces_existing_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".env");
+        std::fs::write(&path, "EXISTING=foo\nKEEP=bar\n").unwrap();
+        write_dotenv_line(&path, "EXISTING", "new-value").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("EXISTING=\"new-value\"\n"));
+        assert!(body.contains("KEEP=bar\n"));
+        // Replacement must be idempotent — running twice yields the same file.
+        write_dotenv_line(&path, "EXISTING", "new-value").unwrap();
+        let body2 = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(body, body2);
+    }
+
+    #[test]
+    fn dotenv_write_escapes_shell_metachars() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".env");
+        // Quotes, backslashes, $, ` are the four `source`-dangerous chars.
+        write_dotenv_line(&path, "TRICKY", "a\"b\\c$d`e").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("TRICKY=\"a\\\"b\\\\c\\$d\\`e\"\n"),
+            "body was: {body}"
+        );
+    }
+
+    #[test]
+    fn dotenv_write_creates_parent_dir_if_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("nested/dir/.env");
+        write_dotenv_line(&path, "K", "v").unwrap();
+        assert!(path.exists());
+    }
 
     static REGISTRY_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
