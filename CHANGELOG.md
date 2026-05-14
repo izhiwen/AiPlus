@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.5.20
+
+- **`aiplus doctor` no longer reports NEEDS_FIX for stale-registry
+  entries alone (#74).** The cross-project registry accumulates an
+  entry for every project AiPlus has ever installed into; deleted
+  project directories leave behind stale entries. Doctor now surfaces
+  these as `INFO registry has N stale entries (run aiplus prune-
+  projects --yes)` and keeps `DOCTOR_STATUS=PASS` when stale entries
+  are the only finding. Genuine install-correctness failures still
+  flip to NEEDS_FIX. New `CheckSeverity` enum + `push_info_check`
+  helper formalize the distinction.
+  / **doctor 不再因 stale-registry 误报 NEEDS_FIX (#74)**。已删除项目目录
+  对应的 registry entry 现在归类为 INFO 而非 NEEDS_FIX，DOCTOR_STATUS
+  保持 PASS。
+
 ## 0.5.19
 
 The v0.5.18 tag was pushed before this sprint's Tracks A.1/A.2/B.1/
