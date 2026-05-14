@@ -3292,7 +3292,11 @@ fn agent_team_doctor_validates_configs() {
     assert!(doctor.contains("Found 2 agent config(s)"));
     assert!(doctor.contains("ai-integration (AI Integration) [ACTIVE]"));
     assert!(doctor.contains("devops (DevOps) [ACTIVE]"));
-    assert!(doctor.contains("WARNING: worktree .aiplus/agents/devops-wt does not exist"));
+    // Lazy worktree creation is by design — was WARNING in 0.5.9; demoted
+    // to INFO in 0.5.10 because every fresh-install state-of-the-world had
+    // ~30 of these and they drowned out real issues. Real failures still
+    // get WARNING.
+    assert!(doctor.contains("INFO: worktree .aiplus/agents/devops-wt not yet provisioned (lazy)"));
     assert!(doctor.contains("Doctor check complete."));
 }
 
