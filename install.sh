@@ -22,17 +22,29 @@ else
 fi
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
+# P1.7: optional auto-register MCP server with installed runtimes.
+# Values: "" (interactive prompt if tty), "yes" (silent register),
+# "no" (silent skip).
+REGISTER_MCP="${AIPLUS_REGISTER_MCP:-}"
 
 usage() {
   cat <<'USAGE'
 Install the aiplus command.
 
 Usage:
-  sh install.sh [--dry-run]
+  sh install.sh [--dry-run] [--register-mcp | --no-register-mcp]
 
 Environment:
-  AIPLUS_VERSION      Release version to install, default latest GitHub release
-  AIPLUS_INSTALL_DIR  Install directory, default $HOME/.local/bin
+  AIPLUS_VERSION       Release version to install, default latest GitHub release
+  AIPLUS_INSTALL_DIR   Install directory, default $HOME/.local/bin
+  AIPLUS_REGISTER_MCP  "yes" / "no" — same as flags, but settable from CI etc.
+
+Flags:
+  --dry-run             Print what would happen without writing
+  --register-mcp        After install, run `aiplus mcp-register` for any
+                        detected runtime (codex / claude / opencode)
+  --no-register-mcp     Skip the MCP registration prompt entirely
+  -h, --help            Show this help
 
 The installer downloads a GitHub Release asset, verifies checksums.txt, and
 installs only the aiplus binary. It does not edit shell profiles, require sudo,
@@ -54,6 +66,12 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run)
       DRY_RUN=1
+      ;;
+    --register-mcp)
+      REGISTER_MCP=yes
+      ;;
+    --no-register-mcp)
+      REGISTER_MCP=no
       ;;
     -h|--help)
       usage
@@ -231,6 +249,64 @@ case ":$PATH:" in
     echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     ;;
 esac
+
+# ─────────────────────────────────────────────────────────────────────
+# P1.7: MCP auto-registration. If we detect codex / claude-code /
+# opencode installed (via their config dirs in $HOME), offer to run
+# `aiplus mcp-register` for the user — this is the step that makes the
+# MCP tools (agent_route, agent_status, etc.) callable from those
+# runtimes. Without it, the binary install is "ready" but the agent
+# workflow won't actually fire.
+# ─────────────────────────────────────────────────────────────────────
+detect_runtime_count() {
+  count=0
+  [ -d "$HOME/.codex" ] && count=$((count + 1))
+  [ -d "$HOME/.claude" ] && count=$((count + 1))
+  [ -d "$HOME/.opencode" ] && count=$((count + 1))
+  echo "$count"
+}
+
+runtime_count=$(detect_runtime_count)
+should_register=0
+case "$REGISTER_MCP" in
+  yes)
+    should_register=1
+    ;;
+  no)
+    should_register=0
+    ;;
+  "")
+    # No explicit flag. Prompt only if we have a TTY and at least one
+    # runtime is detected. Headless installs (CI, curl|bash piped to
+    # bash without a tty) silently skip the prompt.
+    if [ "$runtime_count" -gt 0 ] && [ -t 0 ] && [ -t 1 ]; then
+      printf "Detected %d installed runtime(s) (codex/claude/opencode).\n" "$runtime_count"
+      printf "Register aiplus MCP server with them now? This makes the agent_route\n"
+      printf "and other PI tools callable from inside those runtimes. [Y/n] "
+      read -r answer
+      case "$answer" in
+        n|N|no|NO) should_register=0 ;;
+        *)         should_register=1 ;;
+      esac
+    fi
+    ;;
+esac
+
+if [ "$should_register" = 1 ]; then
+  echo ""
+  echo "Running: $INSTALL_DIR/aiplus mcp-register"
+  if "$INSTALL_DIR/aiplus" mcp-register; then
+    echo "MCP_REGISTER_FROM_INSTALLER=OK"
+  else
+    echo "MCP_REGISTER_FROM_INSTALLER=FAIL — you can retry manually: aiplus mcp-register" >&2
+  fi
+elif [ "$runtime_count" -gt 0 ] && [ -z "$REGISTER_MCP" ]; then
+  # Headless / non-tty install with detected runtimes — print the hint
+  # so users know about mcp-register even when we can't prompt.
+  echo ""
+  echo "MCP_HINT detected $runtime_count runtime(s) but skipped the register prompt (no tty)"
+  echo "Run \`aiplus mcp-register\` to enable agent_route + other MCP tools."
+fi
 
 echo "Next:"
 echo "  cd MyProject"
