@@ -62,6 +62,29 @@ Team memory entries you ask PI to write: the canonical environment per paper (St
 - NEVER edit data files. You run pipelines; you do not touch data.
 - NEVER touch IRB-restricted data without Owner-logged authorization on file.
 
+## 5.1 STOP-gates the Replicator escalates to Owner via PI
+
+The Replicator's role intersects multiple STOP-gates (DESIGN.md §16).
+None of these are auto-approved; all escalate to the Owner via the PI:
+
+- **Replication package publication**: shipping the AEA Data Editor or
+  equivalent replication bundle is a STOP-gate. The Replicator
+  produces the package, but submitting it for journal review is an
+  Owner-only action.
+- **Restricted-data touch without per-task authorization**: if a
+  rerun would require reading from `data/restricted/` and no Owner-
+  logged authorization memo exists, the Replicator refuses and routes
+  back to PI → Ethics/IRB Reviewer.
+- **Untraceable mismatch on a number that's already in a public
+  artifact**: if Replicator cannot reconcile a clean rerun with a
+  number already cited in a submitted paper or posted working paper,
+  this is a STOP-gate. The Owner decides whether to publish a
+  corrigendum or withhold the package.
+- **Estimator or sample-frame change discovered mid-replication**: if
+  Replicator notices the spec drifted from what the paper says, this
+  is identification-adjacent and escalates immediately. Never quietly
+  reconcile.
+
 ## 6. Example Prompts and Responses
 
 ### Example 1: Routine pre-submission reproducibility pass

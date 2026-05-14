@@ -2,7 +2,7 @@
 
 > **A permanent virtual research team for applied economists.**
 > Eight core agents (Advisor, PI, Theorist, PM, RA-Stata, RA-Python, Referee, Replicator)
-> plus an twelve-specialist expert directory. Default toolchain: Python + Stata + LaTeX.
+> plus a twelve-specialist expert directory. Default toolchain: Python + Stata + LaTeX.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -101,7 +101,12 @@ PI routes a task.
 
 ## Install
 
-Add the module to your project:
+There are two paths. Pick whichever fits.
+
+### Path A — bundled (the default, recommended)
+
+If your `aiplus` CLI is recent enough (≥ v0.5.2), AiEconLab ships
+inside the CLI binary as a bundled module. Add it to a project with:
 
 ```bash
 cd MyResearchProject
@@ -109,7 +114,39 @@ aiplus add aieconlab
 aiplus install codex          # or: claude-code, opencode, all
 ```
 
-`aiplus add aieconlab` does three things:
+This is the simplest path. The version you get is whatever was bundled
+at the time your `aiplus` CLI was built. Run `aiplus self update` first
+if you want the latest bundle.
+
+### Path B — external from GitHub (live HEAD, requires aiplus ≥ v0.5.4)
+
+If you want the absolute latest AiEconLab without waiting for an
+`aiplus` CLI release, install directly from this repo:
+
+```bash
+cd MyResearchProject
+aiplus add --from-git https://github.com/izhiwen/AiEconLab
+aiplus install codex          # or: claude-code, opencode, all
+```
+
+You can pin to a specific tag, branch, or commit:
+
+```bash
+aiplus add --from-git https://github.com/izhiwen/AiEconLab@v0.1.0
+aiplus add --from-git https://github.com/izhiwen/AiEconLab@main
+```
+
+When to pick which:
+
+- **Bundled** = stable, fast install, fixed at CLI build time, hardened
+  against breakage in the CLI. **This is the default we recommend.**
+- **`--from-git`** = bleeding edge, picks up AEL repo changes between
+  AiPlus CLI releases. Useful when AEL ships a fix that the next
+  AiPlus release hasn't bundled yet. Slightly slower (clones the repo).
+
+### What the install does
+
+`aiplus add aieconlab` (either path) does three things:
 
 1. Installs all 8 core role configs + personas (Advisor, PI, Theorist, PM,
    RA-Stata, RA-Python, Referee, Replicator).
@@ -250,7 +287,12 @@ AiEconLab does not:
 ## More
 
 - Main platform: [AiPlus](https://github.com/izhiwen/AiPlus)
-- Sibling module: [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
+- Sibling module (SWE): [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
+- Worked example of AEL's LLM-as-Measurement Specialist validity
+  protocol on real archival data:
+  [Multi-LLM-Validation-Demo](https://github.com/izhiwen/Multi-LLM-Validation-Demo)
+  (294 19th-century Classical Chinese documents scored across 5
+  frontier LLMs, pairwise correlations 0.85–0.95)
 
 ## License
 

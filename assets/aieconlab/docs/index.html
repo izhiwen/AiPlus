@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AiEconLab (AEL) — a permanent virtual research team for applied economists. 8 core roles + 12 experts including an LLM-as-Measurement Specialist. Built on AiPlus.">
+  <meta name="author" content="Steve Zhiwen Wang">
+  <meta name="keywords" content="applied economics, econometrics, AI agents, research tools, Stata, LaTeX, replication, LLM measurement, Claude Code, Codex">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="AiEconLab — AI research team for applied economists">
+  <meta property="og:description" content="8 core roles + 12 experts including LLM-as-Measurement Specialist. Plan-time consultant team designed from first principles for applied-econ review. Apache-2.0.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://izhiwen.github.io/AiEconLab/">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AiEconLab — AI research team for applied economists">
+  <meta name="twitter:description" content="8 core roles + 12 experts. LLM-as-Measurement validity protocol. Apache-2.0.">
+
+  <title>AiEconLab — AI research team for applied economists</title>
+
+  <style>
+    :root {
+      --fg: #1a1a1a;
+      --fg-muted: #555;
+      --bg: #fafaf7;
+      --accent: #1f3a5f;
+      --accent-hover: #2a4d7a;
+      --code-bg: #f0eee7;
+      --border: #d4d0c4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fg: #e8e6e0;
+        --fg-muted: #a8a59c;
+        --bg: #1a1a1a;
+        --accent: #82a0c9;
+        --accent-hover: #a3bcdd;
+        --code-bg: #262522;
+        --border: #3a3733;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.55;
+      color: var(--fg);
+      background: var(--bg);
+      margin: 0;
+      padding: 0;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 4rem;
+    }
+    h1 {
+      font-size: 2.4rem;
+      line-height: 1.1;
+      margin: 0 0 0.4rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      font-size: 1.4rem;
+      margin: 2.5rem 0 0.8rem;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1.05rem;
+      margin: 1.5rem 0 0.5rem;
+      font-weight: 600;
+    }
+    p { margin: 0.5rem 0 1rem; }
+    .tagline {
+      font-size: 1.15rem;
+      color: var(--fg-muted);
+      margin: 0 0 1.5rem;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-thickness: 1px;
+    }
+    a:hover { color: var(--accent-hover); }
+    code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 0.92em;
+      background: var(--code-bg);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; }
+    .cta {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.6rem 1.2rem;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: 500;
+      margin: 0.3rem 0.5rem 0.3rem 0;
+    }
+    .cta:hover { background: var(--accent-hover); color: #fff; }
+    .cta-secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .cta-secondary:hover { background: var(--code-bg); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin: 1.5rem 0;
+    }
+    @media (max-width: 560px) {
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 2rem; }
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.2rem;
+      background: var(--bg);
+    }
+    .card h3 { margin-top: 0; }
+    .card p { margin: 0.4rem 0; font-size: 0.95em; color: var(--fg-muted); }
+    ul { padding-left: 1.4rem; }
+    li { margin-bottom: 0.3rem; }
+    .meta {
+      color: var(--fg-muted);
+      font-size: 0.85rem;
+      margin: 2rem 0 0;
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+    }
+    .meta a { color: var(--fg-muted); }
+    .meta strong { color: var(--fg); }
+    .pill {
+      display: inline-block;
+      font-size: 0.78rem;
+      padding: 0.15rem 0.6rem;
+      border-radius: 999px;
+      background: var(--code-bg);
+      color: var(--fg-muted);
+      margin: 0 0.2rem 0.2rem 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AiEconLab <span style="color:var(--fg-muted); font-size:0.7em; font-weight:normal;">(AEL)</span></h1>
+    <p class="tagline">
+      A permanent virtual research team for applied economists.
+      Eight core agents, twelve experts, and a plan-time consultant
+      designed from first principles for econ review.
+    </p>
+
+    <p>
+      <a href="https://github.com/izhiwen/AiEconLab" class="cta">View on GitHub →</a>
+      <a href="https://github.com/izhiwen/AiPlus" class="cta cta-secondary">AiPlus platform</a>
+    </p>
+
+    <p>
+      <span class="pill">Apache-2.0</span>
+      <span class="pill">v0.1.0</span>
+      <span class="pill">Python + Stata + LaTeX</span>
+      <span class="pill">Built on AiPlus</span>
+    </p>
+
+    <h2>Why this exists</h2>
+
+    <p>
+      A single AI coding agent, in a long research session, drifts
+      between roles. The prompt history mixes identification reasoning
+      with Stata syntax with rebuttal language; each task gets done
+      shallowly. AiEconLab replaces that single agent with a small
+      standing team where each member has its own persona, workspace,
+      and memory.
+    </p>
+
+    <p>
+      You talk only to <strong>Advisor</strong> (strategic) and
+      <strong>PI</strong> (execution). The PI dispatches the rest:
+      Theorist, PM, RA-Stata, RA-Python, Referee, Replicator. Twelve
+      experts sit dormant until summoned. STOP-gates (journal
+      submission, R&amp;R response, data sharing, authorship changes)
+      always escalate to you.
+    </p>
+
+    <h2>What's distinct about AEL</h2>
+
+    <div class="grid">
+      <div class="card">
+        <h3>LLM-as-Measurement Specialist</h3>
+        <p>
+          For papers using LLMs to score text data — sentiment,
+          ideology, classification. Designs the multi-model
+          cross-validation panel, hand-coded subsample, held-out
+          test docs, prompt versioning, leakage prevention —
+          <em>before</em> the first scoring run.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Research-tuned consultant</h3>
+        <p>
+          Five plan-time seats: Design Credibility · Contribution
+          Framing · Day-1 Reproducibility · IRB / Disclosure Gate ·
+          LLM-as-Measurement. Replaces AiPlus's default SWE
+          consultant when AEL is installed.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Git-worktree workspaces</h3>
+        <p>
+          Each code-touching role gets its own worktree on its own
+          branch. RA-Stata and RA-Python work in parallel; conflicts
+          surface through git, not silent context overwrites.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Local-first, audit-able</h3>
+        <p>
+          All agent state, personas, memories, and dispatches live in
+          your project's <code>.aiplus/</code>. No cloud sync. No
+          telemetry. No upload. Records are plain JSONL — greppable,
+          git-able, replicable.
+        </p>
+      </div>
+    </div>
+
+    <h2>Install</h2>
+
+    <p>Requires AiPlus ≥ 0.5.5.</p>
+
+    <pre><code># macOS Apple Silicon
+curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv aiplus /usr/local/bin/
+
+# In your research project
+cd MyResearchProject
+aiplus add aieconlab
+aiplus install codex   # or claude-code, opencode</code></pre>
+
+    <p>
+      Other platforms (Intel Mac, Linux x86_64, Linux aarch64, Windows):
+      <a href="https://github.com/izhiwen/AiPlus/releases/latest">grab a binary</a>.
+    </p>
+
+    <h2>Worked example</h2>
+
+    <p>
+      <a href="https://github.com/izhiwen/Multi-LLM-Validation-Demo">Multi-LLM-Validation-Demo</a> —
+      294 nineteenth-century Classical Chinese archival documents scored
+      across five frontier LLMs (GPT, Claude, Gemini, Qwen, DeepSeek);
+      pairwise correlations 0.85–0.95. The validity backbone for the
+      maintainer's job market paper, and the executable instance of
+      the LLM-as-Measurement Specialist's protocol.
+    </p>
+
+    <h2>Honest disclosure</h2>
+
+    <ul>
+      <li>v0.1.0. Structural acceptance tests pass; install flow works
+        on five platforms; CI green.</li>
+      <li>A complete real-world cycle from paper kickoff through
+        submission has not yet been completed using AEL. Design vs
+        reality gap is unknown.</li>
+      <li>Single maintainer (Steve Zhiwen Wang, applied-econ PhD
+        candidate at Pitt).</li>
+      <li>Three v0.2 experts (Survey/Experiment, Computation,
+        Co-Author Liaison) ship as config stubs in v0.1.</li>
+    </ul>
+
+    <h2>More</h2>
+
+    <ul>
+      <li><a href="https://github.com/izhiwen/AiEconLab/blob/main/DESIGN.md">DESIGN.md</a> — full design rationale, role mapping, routing protocol</li>
+      <li><a href="https://github.com/izhiwen/AiEconLab/blob/main/CHANGELOG.md">CHANGELOG.md</a></li>
+      <li><a href="https://github.com/izhiwen/AiEconLab/blob/main/SECURITY.md">SECURITY.md</a> — data boundaries, STOP-gates, IRB policy</li>
+      <li><a href="https://github.com/izhiwen/AiEconLab/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a></li>
+    </ul>
+
+    <div class="meta">
+      <p>
+        Maintained by <strong>Steve Zhiwen Wang</strong>, PhD candidate,
+        Department of Economics, University of Pittsburgh.
+        <a href="mailto:zhw94@pitt.edu">zhw94@pitt.edu</a> ·
+        <a href="https://www.zhiwen-wang.com">zhiwen-wang.com</a>
+      </p>
+      <p>
+        Apache-2.0. <a href="https://github.com/izhiwen/AiEconLab/blob/main/LICENSE">LICENSE</a>.
+        Sibling of <a href="https://github.com/izhiwen/AiPlus-Agent-Team">AiPlus-Agent-Team</a>
+        (the SWE team). Built on the
+        <a href="https://github.com/izhiwen/AiPlus">AiPlus</a> agent substrate.
+      </p>
+    </div>
+  </main>
+</body>
+</html>
