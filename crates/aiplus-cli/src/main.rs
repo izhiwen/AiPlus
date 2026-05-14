@@ -2482,10 +2482,7 @@ fn command_doctor_check_keyring() -> Result<()> {
         }
     };
     let read_matches = read_value == nonce;
-    println!(
-        "read=ok match={}",
-        if read_matches { "yes" } else { "no" }
-    );
+    println!("read=ok match={}", if read_matches { "yes" } else { "no" });
 
     // Delete probe regardless of read match (clean up after ourselves).
     let delete_result = entry.delete_credential();
