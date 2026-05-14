@@ -9855,6 +9855,30 @@ fn compact_readiness(result: &CompactValidation, root: &Path) -> CompactReadines
         };
     }
     if !result.pending_gates.is_empty() {
+        // Issue #34: distinguish "fresh install — Owner gates have
+        // never been touched yet" from "Owner gates exist and are
+        // pending review post-edit". The seed compact templates ship
+        // a single UNKNOWN_PENDING gate ("Owner review of compact
+        // handoff before first real use") and a seed Current Goal
+        // ("Initialize compact/resume handoff state ..."). When both
+        // signals are still in their seed state, the project simply
+        // hasn't been used yet — the PreCompact hook should not flag
+        // this as needs-review on every host compact attempt.
+        let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
+        if is_fresh_install_compact_state(&handoff, &result.pending_gates) {
+            reasons.extend(result.pending_gates.iter().cloned());
+            return CompactReadiness {
+                state: "FRESH_INSTALL_AWAITING_FIRST_USE",
+                pressure: "INFO",
+                explanation:
+                    "Compact protocol is in its seed state from `aiplus install` — no real work yet, so Owner gates have not been touched. This is informational, not a blocker.",
+                next_action:
+                    "When you start a real task, edit .aiplus/compact/current-handoff.md (Current Goal + Owner Gates) and rerun aiplus compact prepare."
+                        .to_string(),
+                manual_compact_recommended: false,
+                reasons,
+            };
+        }
         reasons.extend(result.pending_gates.iter().cloned());
         return CompactReadiness {
             state: "UNKNOWN_NEEDS_REVIEW",
@@ -9935,9 +9959,46 @@ fn print_readiness(readiness: &CompactReadiness) {
 fn readiness_exit_code(readiness: &CompactReadiness) -> i32 {
     match readiness.state {
         "READY_TO_COMPACT" => 0,
+        // Issue #34: fresh-install state is informational, not a
+        // failure. The PreCompact hook treats non-zero as "noisy
+        // problem" — exit 0 keeps fresh installs quiet and reserves
+        // the warning channel for genuine UNKNOWN_NEEDS_REVIEW.
+        "FRESH_INSTALL_AWAITING_FIRST_USE" => 0,
         "BLOCKED_BY_OWNER_GATE" => 1,
         _ => 2,
     }
+}
+
+/// Issue #34: detect the just-installed state of the compact protocol.
+/// Returns true when both the handoff Current Goal is still the seed
+/// text AND every pending gate matches one of the seed gate
+/// placeholders shipped by the compact templates. Conservative on
+/// purpose: any custom edit to the handoff Current Goal or any
+/// non-seed Owner Gate drops the project out of "fresh install" and
+/// back into the normal UNKNOWN_NEEDS_REVIEW loop.
+fn is_fresh_install_compact_state(handoff_text: &str, pending_gates: &[String]) -> bool {
+    const SEED_GOAL_MARKER: &str = "Initialize compact/resume handoff state for";
+    // The seed templates ship one UNKNOWN_PENDING gate per compact
+    // file; each file's gate has a distinct, file-specific placeholder
+    // text (so a fresh install reports four pending gates, all from
+    // the bundled templates). Any of these markers tagged on a
+    // pending-gate line means the line came verbatim from the seed.
+    const SEED_GATE_MARKERS: &[&str] = &[
+        "Owner review of compact handoff before first real use",
+        "Owner review of first real decision entries",
+        "Owner review required before relying on delegated results",
+        "Owner review of evidence quality before first real compact",
+    ];
+    let goal = section_body(handoff_text, "Current Goal");
+    if !goal.contains(SEED_GOAL_MARKER) {
+        return false;
+    }
+    if pending_gates.is_empty() {
+        return false;
+    }
+    pending_gates
+        .iter()
+        .all(|g| SEED_GATE_MARKERS.iter().any(|m| g.contains(m)))
 }
 
 fn compact_section_or_unknown(text: &str, heading: &str) -> String {

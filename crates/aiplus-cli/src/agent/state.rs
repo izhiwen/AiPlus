@@ -227,6 +227,15 @@ pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
         "revise",
         "identification strategy",
         "authorship",
+        // Issue #33: research-task vocabulary that should always score
+        // HEAVY (Owner brief: "paper", "scope", "data", "rebuttal"
+        // require heavy compounds — standalone words are too common to
+        // promote without false positives, but these specific compounds
+        // are unambiguous heavy research moves).
+        "paper submission",
+        "data acquisition plan",
+        "referee response",
+        "rebuttal letter",
     ];
     let medium_signals = [
         "robustness",
@@ -288,6 +297,25 @@ pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
         "comparable",
         "lit-gap",
         "differential",
+        // Issue #33: research-task vocabulary that the original
+        // SWE-flavored signal set missed. Owner brief flagged five
+        // categories — "paper", "scope", "identification" (already
+        // covered), "data", "rebuttal" (already covered). Standalone
+        // "paper" / "scope" / "data" are too common, so use specific
+        // compounds that are unambiguous research moves.
+        "paper revision",
+        "first paper",
+        "scoping note",
+        "scope cut",
+        "scope expansion",
+        "data acquisition",
+        "data appendix",
+        "data share",
+        "referee",
+        "iv exogeneity",
+        "weak instrument",
+        "treaty port",
+        "main spec",
     ];
     let heavy_hits = heavy_signals
         .iter()
@@ -305,5 +333,61 @@ pub fn score_task_tier(task: &str) -> (&'static str, &'static str) {
         ("MEDIUM", "task description contains a specification / robustness / identification / review keyword")
     } else {
         ("LIGHT", "no high-risk signals detected in task description")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Issue #33: research-paper vocabulary regression tests.
+    // Owner brief: heavy research moves like "scoping note", "data
+    // acquisition", "referee response", "rebuttal" should fire the
+    // consultant. Trivial work must keep falling through to LIGHT.
+
+    #[test]
+    fn heavy_research_compounds_score_heavy() {
+        for task in [
+            "paper submission to QJE for the X paper",
+            "draft a referee response to the IV exogeneity criticism",
+            "data acquisition plan for the treaty port project",
+            "draft rebuttal letter for the R&R",
+        ] {
+            let (tier, _) = score_task_tier(task);
+            assert_eq!(tier, "HEAVY", "{task:?} should score HEAVY, got {tier}");
+        }
+    }
+
+    #[test]
+    fn research_vocab_promotes_to_at_least_medium() {
+        for task in [
+            "draft scoping note for the new project",
+            "respond to referee 2 on weak instrument concern",
+            "rework the data appendix structure",
+            "rewrite paper revision section",
+            "first paper main spec discussion",
+        ] {
+            let (tier, _) = score_task_tier(task);
+            assert_ne!(
+                tier, "LIGHT",
+                "{task:?} should reach the consultant team (MEDIUM/HEAVY), \
+                 but scored LIGHT"
+            );
+        }
+    }
+
+    #[test]
+    fn light_regression_guard_for_trivial_tasks() {
+        for task in [
+            "fix typo in README",
+            "rename a variable",
+            "bump version number",
+        ] {
+            let (tier, _) = score_task_tier(task);
+            assert_eq!(
+                tier, "LIGHT",
+                "{task:?} should remain LIGHT after the #33 signal additions"
+            );
+        }
     }
 }
