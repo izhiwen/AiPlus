@@ -2265,6 +2265,7 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
         &["secret-broker", "resolve", "kimi"],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2290,6 +2291,7 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
         &["secret-broker", "resolve", "kimi"],
         1,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2303,6 +2305,7 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
         &["secret-broker", "resolve", "kimi"],
         1,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2314,7 +2317,10 @@ fn bws_resolver_looks_up_secret_id_without_printing_value() {
         target,
         &["secret-broker", "resolve", "kimi"],
         1,
-        &[("AIPLUS_BWS_PROJECT_ID", "fixture-project")],
+        &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
+            ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
+        ],
         Path::new(&path_value),
     );
     assert!(stderr(&token_missing).contains("SECRET_BROKER_TOKEN_MISSING"));
@@ -2362,6 +2368,7 @@ fn bws_resolver_rejects_placeholder_and_empty_values() {
             &["secret-broker", "resolve", alias],
             1,
             &[
+                ("AIPLUS_SECRET_PROVIDER", "bws"),
                 ("BWS_ACCESS_TOKEN", "fixture-token"),
                 ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
             ],
@@ -2389,6 +2396,7 @@ fn bws_resolver_rejects_placeholder_and_empty_values() {
         ],
         1,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2415,6 +2423,7 @@ fn bws_resolver_rejects_placeholder_and_empty_values() {
         ],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2439,6 +2448,7 @@ fn bws_resolver_rejects_placeholder_and_empty_values() {
         ],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2502,6 +2512,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         ],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2533,6 +2544,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         ],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2554,6 +2566,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         ],
         0,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2579,6 +2592,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         ],
         1,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
@@ -2601,6 +2615,7 @@ fn secret_broker_run_selective_aliases_skip_unrequested_failures() {
         ],
         1,
         &[
+            ("AIPLUS_SECRET_PROVIDER", "bws"),
             ("BWS_ACCESS_TOKEN", "fixture-token"),
             ("AIPLUS_BWS_PROJECT_ID", "fixture-project"),
         ],
