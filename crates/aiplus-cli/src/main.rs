@@ -2307,6 +2307,41 @@ fn command_doctor() -> Result<()> {
         true,
         None,
     );
+    // P1.6: persona mirror drift check. Personas live in
+    // .aiplus/agents/personas/ (source of truth) and get copied to
+    // .claude/agents/ and .opencode/agents/ at install time. If a user
+    // edits the source after install, the mirrors drift out of sync —
+    // the runtime sees stale persona text. Surface this as a doctor
+    // warning so the user knows to run `aiplus refresh` (which
+    // re-mirrors).
+    let drift = persona_mirror_drift(&root);
+    match drift {
+        PersonaDriftStatus::NoSource => {
+            // Skip the check entirely — no personas installed.
+        }
+        PersonaDriftStatus::InSync => {
+            push_check(
+                &mut checks,
+                "persona mirrors in sync with .aiplus/agents/personas/".to_string(),
+                true,
+                None,
+            );
+        }
+        PersonaDriftStatus::Drift { files } => {
+            push_check(
+                &mut checks,
+                format!(
+                    "persona mirrors in sync with .aiplus/agents/personas/ \
+                     ({} file(s) drifted: {}). \
+                     Fix: run `aiplus refresh` to re-mirror.",
+                    files.len(),
+                    files.join(", ")
+                ),
+                false,
+                Some("aiplus refresh".to_string()),
+            );
+        }
+    }
     // Registry health checks
     let registry_path = registry_file().ok();
     let registry_exists = registry_path.as_ref().map(|p| p.exists()).unwrap_or(false);
@@ -7141,6 +7176,89 @@ fn agent_team_init(root: &Path) -> Result<()> {
     init_memory_namespaces(root, AGENT_TEAM_ROLES)?;
 
     Ok(())
+}
+
+/// P1.6: result of comparing `.aiplus/agents/personas/` (source of
+/// truth) against `.claude/agents/` and `.opencode/agents/` mirrors.
+enum PersonaDriftStatus {
+    /// No source dir — personas not installed yet. Skip the check.
+    NoSource,
+    /// All mirrored files match their source by byte-equality.
+    InSync,
+    /// At least one mirrored file differs from its source. `files` is
+    /// a deduplicated, sorted list of file names (without runtime prefix).
+    Drift { files: Vec<String> },
+}
+
+/// Walk every persona under `.aiplus/agents/personas/` and check each
+/// against its corresponding mirror under `.claude/agents/` and
+/// `.opencode/agents/` (for the runtimes installed in this project).
+/// Returns a structured drift report consumed by the doctor check.
+fn persona_mirror_drift(root: &Path) -> PersonaDriftStatus {
+    let source_dir = root.join(".aiplus").join("agents").join("personas");
+    if !source_dir.exists() {
+        return PersonaDriftStatus::NoSource;
+    }
+    let adapters = read_installed_runtime_adapters(root);
+    let mut mirrors: Vec<PathBuf> = Vec::new();
+    for adapter in &adapters {
+        match adapter.as_str() {
+            "claude-code" => mirrors.push(root.join(".claude").join("agents")),
+            "opencode" => mirrors.push(root.join(".opencode").join("agents")),
+            _ => {}
+        }
+    }
+    if mirrors.is_empty() {
+        // Only codex installed, no mirroring runtimes — nothing can drift.
+        return PersonaDriftStatus::InSync;
+    }
+    let mut drifted: BTreeSet<String> = BTreeSet::new();
+    let entries = match std::fs::read_dir(&source_dir) {
+        Ok(it) => it,
+        Err(_) => return PersonaDriftStatus::NoSource,
+    };
+    for entry in entries.flatten() {
+        let src_path = entry.path();
+        if !src_path.is_file() || src_path.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let file_name = match src_path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if file_name == "aiplus-advisor.md" {
+            continue;
+        }
+        let src_bytes = match std::fs::read(&src_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        for mirror_dir in &mirrors {
+            let mirror_path = mirror_dir.join(&file_name);
+            // Only check files where a mirror with the same filename
+            // actually exists. If the mirror is renamed or absent (e.g.
+            // claude's `aiplus-<role>.md`-prefixed agents come from a
+            // separate module install path), that's not drift — that's
+            // "this runtime mirrors via a different mechanism." Only
+            // flag the case where a same-named mirror exists and its
+            // bytes don't match source.
+            if !mirror_path.exists() {
+                continue;
+            }
+            match std::fs::read(&mirror_path) {
+                Ok(mirror_bytes) if mirror_bytes == src_bytes => {}
+                _ => {
+                    drifted.insert(file_name.clone());
+                }
+            }
+        }
+    }
+    if drifted.is_empty() {
+        PersonaDriftStatus::InSync
+    } else {
+        let files: Vec<String> = drifted.into_iter().collect();
+        PersonaDriftStatus::Drift { files }
+    }
 }
 
 /// Copy the currently-active team's personas from `.aiplus/agents/personas/`
