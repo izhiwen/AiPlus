@@ -18,6 +18,51 @@ pub const CONFIG_JSON: &str = "config.json";
 
 pub const DEFAULT_MAX_RECORDS: usize = 200;
 pub const DEFAULT_RARE_CASE_MAX_RECORDS: usize = 20;
+
+/// W6: research-native unit types that AEL ships with. The bucket
+/// lookup in `compute_ai_native_estimate` keys off `task_type`, so
+/// adding these as a documented set is enough to make them
+/// queryable. The strings here are the values the CLI expects for
+/// `--task-type`.
+pub const AEL_VELOCITY_UNIT_TYPES: &[&str] = &[
+    "regression-spec",
+    "table",
+    "figure",
+    "replication-package",
+    "referee-response",
+];
+
+/// W6: synthetic per-unit-type seed distribution. Each tuple is
+/// `(task_type, [actual_active_minutes; 5])`. The minute values are
+/// rough rules-of-thumb for an AEL-driven agent workflow (model =
+/// claude-opus class, workflow = MEDIUM); they get flagged as
+/// `seed = true` so doctor knows they are "not calibrated" and the
+/// CLI can mark the resulting p50/p90 as advisory.
+///
+/// The numbers are deliberately conservative — better to over-
+/// estimate at the start than to anchor users on optimistic seeds.
+/// Once the user logs 5+ real runs per type, those displace the
+/// seeds in the bucket lookup (real runs sort by recency).
+pub const AEL_VELOCITY_SEED_RUNS: &[(&str, [u32; 5])] = &[
+    // One specification = one estimator + clustering choice + the
+    // robustness column. Coffee-and-think 12 minutes; AI-assisted
+    // typical 18-30 min.
+    ("regression-spec", [18, 22, 25, 28, 32]),
+    // One paper table = N specifications wired together, formatted
+    // for LaTeX, captioned. Typical 45-90 min including a Replicator
+    // pass.
+    ("table", [45, 55, 65, 75, 90]),
+    // One paper figure = one econometric output + ggplot/matplotlib
+    // styling + caption. Typical 35-75 min.
+    ("figure", [35, 45, 55, 65, 75]),
+    // One AEA-Data-Editor-grade replication package: Makefile,
+    // env pin, README, clean-machine verification pass. Multi-day.
+    ("replication-package", [240, 320, 480, 600, 960]),
+    // One R&R response point: read the referee comment, write the
+    // pointed rebuttal, link to the supporting analysis, route to
+    // co-authors. Typical 25-70 min.
+    ("referee-response", [25, 35, 45, 55, 70]),
+];
 pub const DEFAULT_MAX_BYTES_PER_JSONL: usize = 1_048_576;
 pub const DEFAULT_RETAIN_DAYS: u64 = 90;
 pub const DEFAULT_MIN_BUCKET_SAMPLES: usize = 8;
@@ -146,6 +191,19 @@ pub struct RunRecord {
     pub raw_content_stored: bool,
     pub secret_values_stored: bool,
     pub memory_integration: String,
+    /// W6: true when this is a synthetic seed run installed by an
+    /// `*_init` hook (e.g., aieconlab_init) so brand-new projects
+    /// have *some* p50/p90 distribution before the first real
+    /// measurement. Seed runs participate in the bucket lookup, but
+    /// `doctor` counts them separately and reports
+    /// "estimates not yet calibrated" when the bucket is < 5
+    /// non-seed records.
+    #[serde(default, skip_serializing_if = "is_default_bool")]
+    pub seed: bool,
+}
+
+fn is_default_bool(b: &bool) -> bool {
+    !*b
 }
 
 impl Default for RunRecord {
@@ -182,6 +240,7 @@ impl Default for RunRecord {
             raw_content_stored: false,
             secret_values_stored: false,
             memory_integration: "disabled".to_string(),
+            seed: false,
         }
     }
 }
@@ -406,6 +465,83 @@ pub fn init_velocity(root: &Path) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// W6: seed the velocity store with synthetic AEL unit-type runs.
+/// Called from `aieconlab_init` on the AiPlus CLI side. Each seed is
+/// flagged `seed=true` so doctor knows it does not count toward the
+/// 5-record calibration threshold, and `actual_time_source` is set
+/// to `"synthetic-seed-w6"` so a Replicator-style audit can identify
+/// them later.
+///
+/// Idempotent: re-running `aieconlab_init` will not append duplicate
+/// seeds (we check for existing `seed=true` rows per task_type before
+/// writing).
+pub fn init_aieconlab_velocity_seeds(root: &Path) -> Result<()> {
+    init_velocity(root)?;
+    // Lower the bucket-sample threshold to 5 so the per-task-type
+    // seed cohort (5 rows) actually fires when the user queries
+    // `velocity estimate --task-type table` etc. The default of 8
+    // would otherwise force fallback to the global bucket and
+    // average across all 5 unit types — which gives meaningless
+    // numbers for AEL.
+    let mut config = read_config(root).unwrap_or_default();
+    if config.min_bucket_samples > 5 {
+        config.min_bucket_samples = 5;
+        write_config(root, &config)?;
+    }
+    let existing = read_jsonl::<RunRecord>(root, RUNS_JSONL).unwrap_or_default();
+    let already_seeded: std::collections::BTreeSet<String> = existing
+        .iter()
+        .filter(|r| r.seed)
+        .map(|r| r.task_type.clone())
+        .collect();
+    let now = now_iso();
+    for (task_type, samples) in AEL_VELOCITY_SEED_RUNS {
+        if already_seeded.contains(*task_type) {
+            continue;
+        }
+        for (i, minutes) in samples.iter().enumerate() {
+            let run = RunRecord {
+                schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
+                id: format!("seed-w6-{task_type}-{i}"),
+                estimate_id: String::new(),
+                task_id: format!("seed-w6-{task_type}-{i}"),
+                created_at: now.clone(),
+                project_id: "aieconlab-seed".to_string(),
+                task_type: (*task_type).to_string(),
+                repo_area: String::new(),
+                agent_role: "ra-stata".to_string(),
+                runtime: "synthetic".to_string(),
+                model: "synthetic-seed".to_string(),
+                workflow_level: "MEDIUM".to_string(),
+                original_estimate_minutes: *minutes,
+                human_baseline_minutes: minutes * 3,
+                actual_active_minutes: *minutes,
+                actual_time_source: "synthetic-seed-w6".to_string(),
+                wall_clock_minutes: *minutes,
+                tool_wait_minutes: 0,
+                blocked_minutes: 0,
+                outcome: "pass".to_string(),
+                verification_depth: "standard".to_string(),
+                quality_verdict: "pass".to_string(),
+                rework_count: 0,
+                owner_gate_hit: false,
+                overestimate_ratio: 1.0,
+                human_time_bias: false,
+                slow_reason: String::new(),
+                redaction_status: "clean".to_string(),
+                raw_content_stored: false,
+                secret_values_stored: false,
+                memory_integration: "disabled".to_string(),
+                seed: true,
+            };
+            let line = serde_json::to_string(&run)?;
+            let path = velocity_dir(root).join(RUNS_JSONL);
+            crate::append_jsonl_atomic(&path, &line)?;
+        }
+    }
     Ok(())
 }
 
@@ -1145,6 +1281,11 @@ pub struct DoctorReport {
     pub nan_multipliers: usize,
     pub over_threshold_files: Vec<String>,
     pub sqlite_found: bool,
+    /// W6: task_types whose bucket has fewer than 5 non-seed records.
+    /// `aiplus velocity report` and the CLI doctor surface this so a
+    /// user knows "your p50/p90 for table tasks is still on synthetic
+    /// seeds, treat the estimate as advisory."
+    pub uncalibrated_buckets: Vec<String>,
 }
 
 pub fn doctor(root: &Path) -> Result<DoctorReport> {
@@ -1164,6 +1305,7 @@ pub fn doctor(root: &Path) -> Result<DoctorReport> {
         nan_multipliers: 0,
         over_threshold_files: Vec::new(),
         sqlite_found: false,
+        uncalibrated_buckets: Vec::new(),
     };
 
     if !dir.exists() {
@@ -1253,6 +1395,31 @@ pub fn doctor(root: &Path) -> Result<DoctorReport> {
             // Sensitive pattern scan
             if reject_sensitive_velocity_text(line).is_err() {
                 report.secret_values = "found".to_string();
+            }
+        }
+    }
+
+    // W6: count non-seed runs per AEL task_type. A bucket with fewer
+    // than 5 calibrated (non-seed) records means the user's `velocity
+    // estimate` for that type is still riding on synthetic seeds.
+    // Surface the names so the CLI can tell the user where to spend
+    // their next "complete a real task" action.
+    {
+        let mut counts: std::collections::BTreeMap<&'static str, usize> =
+            AEL_VELOCITY_UNIT_TYPES.iter().map(|t| (*t, 0)).collect();
+        if let Ok(runs) = read_jsonl::<RunRecord>(root, RUNS_JSONL) {
+            for run in &runs {
+                if run.seed {
+                    continue;
+                }
+                if let Some(slot) = counts.get_mut(run.task_type.as_str()) {
+                    *slot += 1;
+                }
+            }
+        }
+        for (t, n) in &counts {
+            if *n < 5 {
+                report.uncalibrated_buckets.push(format!("{t}={n}"));
             }
         }
     }

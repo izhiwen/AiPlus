@@ -6389,6 +6389,12 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // install time — they're added when first invoked.
     init_memory_namespaces(root, AIECONLAB_ROLES)?;
 
+    // W6: seed synthetic velocity runs for the 5 AEL research unit
+    // types. Brand-new projects need *some* p50/p90 before the first
+    // real measurement. Seeds are flagged `seed=true` so doctor knows
+    // they don't count toward the 5-record calibration threshold.
+    aiplus_core::init_aieconlab_velocity_seeds(root)?;
+
     Ok(())
 }
 
@@ -11840,6 +11846,7 @@ fn command_velocity(
                 raw_content_stored: false,
                 secret_values_stored: false,
                 memory_integration: "disabled".to_string(),
+                seed: false,
             };
 
             validate_run_record(&run)?;
@@ -11959,6 +11966,19 @@ fn command_velocity(
                 println!(
                     "over_threshold_files={}",
                     report.over_threshold_files.join(",")
+                );
+            }
+            // W6: surface AEL-unit-type buckets that still ride on
+            // synthetic seeds (fewer than 5 calibrated, non-seed
+            // records). Empty when the project doesn't ship AEL or
+            // when all five buckets have crossed the threshold.
+            if !report.uncalibrated_buckets.is_empty() {
+                println!(
+                    "uncalibrated_buckets={}",
+                    report.uncalibrated_buckets.join(",")
+                );
+                println!(
+                    "note=estimates for these task types are advisory; log 5+ real runs to calibrate"
                 );
             }
         }
