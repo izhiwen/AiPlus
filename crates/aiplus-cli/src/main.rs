@@ -6512,6 +6512,14 @@ fn install_base(
         plan,
         options,
     )?;
+    // S2: append the Secret-Lookup-Protocol section to AGENTS.aiplus.md.
+    // Marker-keyed so re-running install replaces in place (idempotent).
+    // Lives at install_base level, not per-team, because the broker is
+    // a global feature — agents should know about it whether or not a
+    // virtual team is installed.
+    if !plan.dry_run {
+        append_team_section_to_agents_aiplus(root, "BROKER_PROTOCOL", BROKER_PROTOCOL_SECTION)?;
+    }
     if module_names
         .iter()
         .any(|name| name == MODULE_SLUG_COMPACT_REMINDER)
@@ -6958,6 +6966,47 @@ fn read_installed_runtime_adapters(root: &Path) -> Vec<String> {
         })
         .unwrap_or_default()
 }
+
+/// S2: Secret-lookup protocol that every install writes into
+/// `.aiplus/AGENTS.aiplus.md` (marker `BROKER_PROTOCOL`). The whole
+/// point: when an agent needs an API key, the default behavior must
+/// be "check the broker," not "ask the Owner."
+///
+/// Kept bilingual on purpose — the AGENTS file is read by both
+/// English-default and Chinese-default agent runtimes, and a key/token
+/// negotiation is the moment we LEAST want translation drift.
+const BROKER_PROTOCOL_SECTION: &str = r#"## Secret lookup protocol (read before asking the Owner for keys)
+
+AiPlus ships an integrated secret broker. Before asking the Owner for
+any API key, token, or password, ALWAYS:
+
+1. Run `aiplus secret-broker list` to see installed aliases.
+2. If the alias you need exists, NEVER ask the Owner — use one of:
+   - `aiplus secret-broker run --alias <a> -- <child-cmd>` (runtime;
+     injects the value as an env var into the child process)
+   - `aiplus secret-broker push --alias <a> --to <target>` (one-shot
+     write; target = `github-secret:<owner>/<repo>:<NAME>`, `env:<VAR>`,
+     or `dotenv:<path>`)
+3. The only moment the Owner is in the loop is the one-time broker
+   keyring unlock (`aiplus secret-broker token set`), which stores a
+   Bitwarden machine-account access token.
+
+The broker never prints secret values to stdout/log; `--print` requires
+an explicit opt-in env var. Audit log stays metadata-only.
+
+中文版（与英文同义，agent 任择其一阅读）：
+AiPlus 自带 secret broker。需要任何 API key / token 之前，必须先：
+1. `aiplus secret-broker list` 查 alias。
+2. alias 存在就用 broker，**绝不问 Owner**：
+   - 运行时注入：`aiplus secret-broker run --alias <a> -- <子命令>`
+   - 一次性写入：`aiplus secret-broker push --alias <a> --to <target>`
+     target 三种：`github-secret:<owner>/<repo>:<NAME>`、`env:<VAR>`、
+     `dotenv:<path>`
+3. Owner 仅在 broker keyring 首次解锁时入环（`aiplus secret-broker
+   token set` 一次性配置）。
+
+broker 永不向 stdout/log 打印 secret 值；audit 只记元数据。
+"#;
 
 const AGENT_TEAM_SECTION: &str = r#"## Virtual Team: AiPlus Agent Team (software-engineering)
 

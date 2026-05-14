@@ -4338,3 +4338,66 @@ fn install_seeds_memory_namespaces_for_agent_team() {
         doctor2
     );
 }
+
+#[test]
+fn install_writes_broker_protocol_to_agents_aiplus_md() {
+    // S2 contract: every `aiplus install <runtime>` must append the
+    // Secret-Lookup-Protocol section to .aiplus/AGENTS.aiplus.md with
+    // marker BROKER_PROTOCOL. The marker makes the append idempotent
+    // (re-running install replaces the block, doesn't duplicate).
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+    run(target, &["install", "codex"], 0);
+
+    let agents = target.join(".aiplus/AGENTS.aiplus.md");
+    assert!(agents.exists());
+    let body = fs::read_to_string(&agents).unwrap();
+    assert!(
+        body.contains("<!-- BEGIN BROKER_PROTOCOL -->"),
+        "AGENTS.aiplus.md should carry BROKER_PROTOCOL begin marker:\n{body}"
+    );
+    assert!(
+        body.contains("<!-- END BROKER_PROTOCOL -->"),
+        "AGENTS.aiplus.md should carry BROKER_PROTOCOL end marker:\n{body}"
+    );
+    assert!(
+        body.contains("Secret lookup protocol"),
+        "section heading should appear:\n{body}"
+    );
+    // The whole point of this PR: the section must explicitly tell
+    // agents to use the broker and NEVER ask the Owner when an alias
+    // exists.
+    assert!(
+        body.contains("NEVER ask the Owner"),
+        "protocol must say 'NEVER ask the Owner':\n{body}"
+    );
+    assert!(
+        body.contains("aiplus secret-broker list"),
+        "protocol must mention the list command:\n{body}"
+    );
+    assert!(
+        body.contains("aiplus secret-broker push"),
+        "protocol must mention push (S1 wires this):\n{body}"
+    );
+    // Bilingual presence — the AGENTS file is read by both English-
+    // and Chinese-default agent runtimes; we keep both.
+    assert!(
+        body.contains("绝不问 Owner"),
+        "bilingual Chinese half must be present:\n{body}"
+    );
+
+    // Idempotency: re-run install. Begin marker count must stay 1.
+    run(target, &["install", "codex"], 0);
+    let body2 = fs::read_to_string(&agents).unwrap();
+    let begin_count = body2.matches("<!-- BEGIN BROKER_PROTOCOL -->").count();
+    let end_count = body2.matches("<!-- END BROKER_PROTOCOL -->").count();
+    assert_eq!(
+        begin_count, 1,
+        "BROKER_PROTOCOL begin marker should appear exactly once after re-install"
+    );
+    assert_eq!(end_count, 1, "...and end marker exactly once");
+}
