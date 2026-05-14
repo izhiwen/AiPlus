@@ -197,6 +197,111 @@ fn tool_definitions() -> Vec<Value> {
                 "required": ["team"]
             }
         }),
+        json!({
+            "name": "agent_list",
+            "description": "List every role configured on the active virtual team, including stub roles (placeholders) and disabled roles. Use this when you need the complete roster before deciding who to invite or dispatch.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "functional": {
+                        "type": "boolean",
+                        "description": "If true, list only functional (non-stub, non-disabled) roles. Default false."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_doctor",
+            "description": "Run health checks specific to the agent layer: team config integrity, persona files present, runtime adapter mirroring up to date. Use this when something looks off before deciding to escalate to the Owner.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "agent_invite",
+            "description": "Mark a stub / dormant role as 'invited' so it can receive dispatches. Use when bringing an expert (e.g. job-talk-coach, structural-modeler) into the team for a specific scope. Logged to audit.jsonl as an Owner-visible event.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug to invite (typically a stub or v0.2 expert)."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
+        json!({
+            "name": "agent_dismiss",
+            "description": "Reverse an invite — return an expert role to dormant state. Use when the scope they were invited for is done. Logged to audit.jsonl.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug to dismiss."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
+        json!({
+            "name": "agent_disable",
+            "description": "Disable a role so it cannot be dispatched. Different from dismiss — disable is for problem cases (consistently underperforming, identity unclear, identification concerns) and the role stays disabled across sessions until explicitly enabled.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug to disable."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
+        json!({
+            "name": "agent_enable",
+            "description": "Re-enable a previously disabled role. Inverse of agent_disable.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug to enable."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
+        json!({
+            "name": "agent_integrate",
+            "description": "Merge a role's worktree branch (agent/<role>) back into the project's main branch and prune the worktree. Use after a role reports their dispatched task is done AND the work has passed Replicator / Referee gates.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug whose branch should be integrated."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
+        json!({
+            "name": "agent_talk",
+            "description": "Surface the shell command for opening an interactive runtime session focused on a specific role's persona. Note: this tool does NOT spawn a nested runtime (that would conflict with the current MCP host session); it returns the command the Owner should run in a separate terminal to enter a role-focused session.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role slug to surface a talk command for."
+                    }
+                },
+                "required": ["role"]
+            }
+        }),
     ]
 }
 
@@ -209,6 +314,14 @@ fn handle_tools_call(id: Value, params: Value, project_root: &std::path::Path) -
         "agent_route" => call_agent_route(&args, project_root),
         "agent_status" => call_agent_status(project_root),
         "agent_set_team" => call_agent_set_team(&args, project_root),
+        "agent_list" => call_agent_list(&args, project_root),
+        "agent_doctor" => call_agent_doctor(project_root),
+        "agent_invite" => call_agent_single_role(&args, "invite", project_root),
+        "agent_dismiss" => call_agent_single_role(&args, "dismiss", project_root),
+        "agent_disable" => call_agent_single_role(&args, "disable", project_root),
+        "agent_enable" => call_agent_single_role(&args, "enable", project_root),
+        "agent_integrate" => call_agent_single_role(&args, "integrate", project_root),
+        "agent_talk" => call_agent_talk(&args, project_root),
         other => Err(anyhow!("unknown tool: {other}")),
     };
     match result {
@@ -278,19 +391,77 @@ fn call_agent_set_team(args: &Value, project_root: &std::path::Path) -> Result<S
         .get("team")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("agent_set_team requires 'team' (string)"))?;
+    run_cli(project_root, &["agent", "set-team", team])
+}
+
+fn call_agent_list(args: &Value, project_root: &std::path::Path) -> Result<String> {
+    let functional = args
+        .get("functional")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if functional {
+        run_cli(project_root, &["agent", "list", "--functional"])
+    } else {
+        run_cli(project_root, &["agent", "list"])
+    }
+}
+
+fn call_agent_doctor(project_root: &std::path::Path) -> Result<String> {
+    run_cli(project_root, &["agent", "doctor"])
+}
+
+/// Shared helper for agent subcommands that take a single `role` arg and
+/// no other options: invite / dismiss / disable / enable / integrate.
+fn call_agent_single_role(
+    args: &Value,
+    subcommand: &str,
+    project_root: &std::path::Path,
+) -> Result<String> {
+    let role = args
+        .get("role")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("agent_{subcommand} requires 'role' (string)"))?;
+    run_cli(project_root, &["agent", subcommand, role])
+}
+
+/// agent_talk is intentionally NOT a shell-out — `aiplus agent talk <role>`
+/// spawns the runtime CLI (codex/claude/opencode) interactively, which would
+/// conflict with the MCP host's own runtime session. Return the command the
+/// Owner should run in a separate terminal instead.
+fn call_agent_talk(args: &Value, _project_root: &std::path::Path) -> Result<String> {
+    let role = args
+        .get("role")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("agent_talk requires 'role' (string)"))?;
+    Ok(format!(
+        "agent_talk does not spawn a nested runtime session (would conflict with \
+         the current MCP host). To enter a role-focused session, the Owner should \
+         run in a separate terminal:\n\n  aiplus agent talk {role}\n"
+    ))
+}
+
+/// Shell out to the same aiplus binary, in the project root, with the given
+/// args. Centralises the success/failure plumbing so each call_agent_X stays
+/// a 2-line wrapper.
+fn run_cli(project_root: &std::path::Path, args: &[&str]) -> Result<String> {
     let self_exe = std::env::current_exe()?;
     let output = std::process::Command::new(self_exe)
-        .args(["agent", "set-team", team])
+        .args(args)
         .current_dir(project_root)
         .output()?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     if !output.status.success() {
         return Err(anyhow!(
-            "aiplus agent set-team exited non-zero: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "aiplus {} exited non-zero:\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            args.join(" ")
         ));
     }
-    Ok(stdout)
+    Ok(if stderr.trim().is_empty() {
+        stdout
+    } else {
+        format!("{stdout}\n--- stderr ---\n{stderr}")
+    })
 }
 
 #[cfg(test)]
@@ -308,15 +479,29 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_advertises_three_tools_with_required_fields() {
+    fn tools_list_advertises_eleven_tools_with_required_fields() {
         let resp = handle_tools_list(json!(1));
         let result = resp.result.expect("tools/list must return result");
         let tools = result["tools"].as_array().expect("tools is array");
-        assert_eq!(tools.len(), 3);
+        assert_eq!(
+            tools.len(),
+            11,
+            "expected 3 original + 8 new agent tools = 11"
+        );
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        // Original 3.
         assert!(names.contains(&"agent_route"));
         assert!(names.contains(&"agent_status"));
         assert!(names.contains(&"agent_set_team"));
+        // New 8 (P0.3 of v0.5.11 close-out).
+        assert!(names.contains(&"agent_list"));
+        assert!(names.contains(&"agent_doctor"));
+        assert!(names.contains(&"agent_invite"));
+        assert!(names.contains(&"agent_dismiss"));
+        assert!(names.contains(&"agent_disable"));
+        assert!(names.contains(&"agent_enable"));
+        assert!(names.contains(&"agent_integrate"));
+        assert!(names.contains(&"agent_talk"));
         for tool in tools {
             assert!(tool["description"].is_string());
             assert!(tool["inputSchema"]["type"].as_str() == Some("object"));
@@ -330,6 +515,51 @@ mod tests {
         assert!(err.to_string().contains("role"));
         let err = call_agent_route(&json!({"role": "ra-stata"}), &tmp).unwrap_err();
         assert!(err.to_string().contains("task"));
+    }
+
+    #[test]
+    fn agent_single_role_tools_validate_role_arg() {
+        let tmp = std::env::temp_dir();
+        for sub in ["invite", "dismiss", "disable", "enable", "integrate"] {
+            let err = call_agent_single_role(&json!({}), sub, &tmp).unwrap_err();
+            assert!(
+                err.to_string().contains("role"),
+                "expected 'role' validation error for {sub}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn agent_talk_validates_role_and_does_not_spawn_subprocess() {
+        let tmp = std::env::temp_dir();
+        // Missing role → error.
+        let err = call_agent_talk(&json!({}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("role"));
+        // With role → returns instructional text instead of shelling out.
+        let out = call_agent_talk(&json!({"role": "ra-stata"}), &tmp).unwrap();
+        assert!(out.contains("aiplus agent talk ra-stata"));
+        assert!(
+            out.contains("separate terminal") || out.contains("MCP host"),
+            "agent_talk should explain why it doesn't spawn nested runtime: {out}"
+        );
+    }
+
+    #[test]
+    fn agent_list_functional_flag_recognized() {
+        // We can't actually run the underlying CLI from a unit test (no
+        // .aiplus directory), but we can verify the args path is taken via
+        // the public dispatch — handle_tools_call returns isError=true if
+        // the shell-out fails, which it will here because no project is
+        // initialized. What we're checking: the arg parsing doesn't panic
+        // and the response shape is well-formed.
+        let resp = handle_tools_call(
+            json!(1),
+            json!({"name": "agent_list", "arguments": {"functional": true}}),
+            &std::env::temp_dir(),
+        );
+        let result = resp.result.expect("tools/call always returns result");
+        // Either ok or isError — but always a structured envelope.
+        assert!(result["content"].is_array());
     }
 
     #[test]
