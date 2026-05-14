@@ -4757,3 +4757,41 @@ fn install_writes_required_version_into_broker_protocol() {
         "minimum should be pinned to 0.5.18 (K1+K2 cut-in):\n{body}"
     );
 }
+
+#[test]
+fn install_writes_needs_elevated_guidance_into_broker_protocol() {
+    // K8 (#87) part 2: BROKER_PROTOCOL section should document
+    // NEEDS_ELEVATED (exit 76) and the wrapped-shell re-run idiom,
+    // so agents reading the protocol know exactly what to do when
+    // they see the new status.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", "1"),
+        ],
+    );
+
+    let body = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    assert!(
+        body.contains("NEEDS_ELEVATED"),
+        "protocol must name the NEEDS_ELEVATED status:\n{body}"
+    );
+    assert!(
+        body.contains("exit 76"),
+        "protocol must name exit code 76 so agents can branch on it:\n{body}"
+    );
+    assert!(
+        body.contains("zsh -lc"),
+        "protocol must show the wrapped-shell idiom:\n{body}"
+    );
+}

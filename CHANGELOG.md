@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+## 0.5.24
+
+### K8 (#87): NEEDS_ELEVATED status for sandbox-blocked GUI prompts
+
+- **`aiplus secret-broker need|set --auto-prompt` now distinguishes
+  user-cancellation from agent-sandbox GUI-block.** Codex CLI's
+  sandbox blocks osascript from reaching the WindowServer; prior to
+  this fix, the broker collapsed that failure to
+  `SECRET_NEED_STATUS=MISSING` — and the agent (correctly, for that
+  signal) gave up. v0.5.24 emits `NEEDS_ELEVATED` (exit 76) with a
+  hint naming the actual fix: re-run wrapped in `zsh -lc 'eval
+  "\$(aiplus secret-broker need <alias> --auto-prompt)"'`, which the
+  agent's runtime treats as a permission-elevation request.
+- **AGENTS.aiplus.md BROKER_PROTOCOL section now documents
+  `NEEDS_ELEVATED`** alongside the existing PASS / MISSING flows,
+  so agents reading the protocol know to branch on exit 76 without
+  trial-and-error.
+- Detection looks for osascript stderr markers seen in real Codex
+  E2E: `(-1708)` (JXA-under-sandbox), `WindowServer`,
+  `TISFileInterrogator`, `Connection invalid`.
+- Internal: `prompt_secret_via_gui` return type changed from
+  `Result<String>` to `Result<PromptOutcome>` (Value / Cancelled /
+  SandboxBlocked variants). Test override via `AIPLUS_TEST_OSASCRIPT`
+  env var so we can mock all three branches without popping real
+  dialogs.
+  / **K8 (#87)**：sandbox 阻挡 GUI 弹窗的情况现在能被识别。之前 codex
+  用户在 sandbox 里跑 `need --auto-prompt` 会被静默归类为
+  `MISSING`，agent 误以为"没 key 可用"放弃。现在 broker 检测 osascript
+  stderr 里的 sandbox marker，emit `SECRET_NEED_STATUS=NEEDS_ELEVATED`
+  + exit 76，给 agent 一行明确的 wrapped-shell 重跑指令。AGENTS protocol
+  也加了这个状态的说明。
+
 ## 0.5.23
 
 ### Profile-name-agnostic CLI (#86)
