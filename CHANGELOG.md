@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.18
+
 - **Uninstall hygiene (Track A.1)**: `aiplus uninstall --yes` now
   sweeps `.claude/agents/{aieconlab,agent-team,aiplus}-*.md`,
   `.claude/commands/{aiel,aiplus,at}-*.md`, and the matching
