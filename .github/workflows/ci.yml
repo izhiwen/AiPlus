@@ -43,3 +43,80 @@ jobs:
             --skip self_update_and_update_all_are_safe_in_fake_home \
             --skip setup_gpg_end_to_end_with_fake_gpg
           # ^^^ three tests require Linux release binaries or Mac-specific GPG; skipped until release assets exist
+
+  install-smoke:
+    # End-user installer smoke: runs the PR's install.sh / install.ps1 against
+    # the currently published GitHub Release. Catches regressions in installer
+    # scripts and in the cross-platform binary's actual usability. The
+    # glibc 2.31 floor is enforced at release time by cross-rs (Ubuntu 20.04
+    # build container), so we don't re-validate it per PR — Ubuntu 22.04 and
+    # 24.04 give live signal on the current LTS world. ubuntu-20.04 runner
+    # was retired by GitHub, so we don't matrix it here.
+    name: install-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            shell: sh
+          - os: ubuntu-22.04
+            shell: sh
+            linux: true
+          - os: ubuntu-24.04
+            shell: sh
+            linux: true
+          - os: windows-latest
+            shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libdbus runtime (Linux only)
+        if: matrix.linux
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libdbus-1-3
+
+      - name: Run install.sh (Unix)
+        if: matrix.shell == 'sh'
+        env:
+          AIPLUS_INSTALL_DIR: ${{ runner.temp }}/aiplus-bin
+        run: sh install.sh
+
+      - name: Run install.ps1 (Windows)
+        if: matrix.shell == 'pwsh'
+        env:
+          AIPLUS_INSTALL_DIR: ${{ runner.temp }}\aiplus-bin
+        shell: pwsh
+        run: ./install.ps1
+
+      - name: Verify aiplus --version (Unix)
+        if: matrix.shell == 'sh'
+        run: |
+          "$RUNNER_TEMP/aiplus-bin/aiplus" --version
+          echo "INSTALL_SMOKE_${{ matrix.os }}=PASS"
+
+      - name: Verify aiplus --version (Windows)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\aiplus-bin\aiplus.exe" --version
+          Write-Host "INSTALL_SMOKE_${{ matrix.os }}=PASS"
+
+      - name: Verify --dry-run plan output (Unix)
+        if: matrix.shell == 'sh'
+        env:
+          AIPLUS_INSTALL_DIR: ${{ runner.temp }}/aiplus-bin-dry
+        run: sh install.sh --dry-run | tee /tmp/dry.log && grep -q '^DRY_RUN=YES$' /tmp/dry.log
+
+      - name: Verify -DryRun plan output (Windows)
+        if: matrix.shell == 'pwsh'
+        env:
+          AIPLUS_INSTALL_DIR: ${{ runner.temp }}\aiplus-bin-dry
+        shell: pwsh
+        run: |
+          # install.ps1 uses Write-Host for its plan output (stream 6,
+          # Information), so a plain pipe captures nothing. Merge all
+          # streams with *>&1 before piping to Out-String.
+          $out = ./install.ps1 -DryRun *>&1 | Out-String
+          Write-Host "--- captured output ---"
+          Write-Host $out
+          if ($out -notmatch 'DRY_RUN=YES') { throw 'DRY_RUN=YES not found in install.ps1 -DryRun output' }
