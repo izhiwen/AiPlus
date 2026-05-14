@@ -5721,14 +5721,21 @@ fn detect_path_version_skew() -> Option<VersionSkew> {
         if !candidate.is_file() {
             continue;
         }
-        // Skip self — comparing against own absolute path. Use canonical
-        // forms so a symlink ~/.local/bin/aiplus -> .../target/release/aiplus
-        // resolves to the same node as exe and is correctly skipped.
+        // This is the FIRST aiplus on PATH — i.e. what `which aiplus`
+        // would return, and what agents will actually invoke when they
+        // run `aiplus secret-broker ...`. The shell stops at the first
+        // match, so we should too. If we kept walking, we'd refuse on
+        // every stale binary deeper in PATH (e.g. ~/.cargo/bin/aiplus
+        // left over from `cargo install` years ago) even though no real
+        // command would ever resolve to it.
+        //
+        // If the first PATH match IS ourselves (same canonical path),
+        // there's by definition no skew with self — return None.
         if let Some(exe) = &exe {
             let lhs = std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
             let rhs = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.clone());
             if lhs == rhs {
-                continue;
+                return None;
             }
         }
         let out = std::process::Command::new(&candidate)
@@ -5750,8 +5757,6 @@ fn detect_path_version_skew() -> Option<VersionSkew> {
                 installer_version: own_version,
             });
         }
-        // First aiplus we find on PATH dominates (shell PATH search
-        // semantics). Don't keep looking even if it matches/is newer.
         return None;
     }
     None
