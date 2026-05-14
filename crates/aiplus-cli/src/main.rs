@@ -468,6 +468,18 @@ struct Check {
     label: String,
     ok: bool,
     fix: Option<String>,
+    /// Issue #74: severity classification. `NeedsFix` (default) means a
+    /// failing check flips `DOCTOR_STATUS=NEEDS_FIX`. `Info` means the
+    /// check surfaces a recommendation but does NOT affect overall
+    /// status — used for purely-cosmetic issues like stale-registry
+    /// entries pointing at deleted project directories.
+    severity: CheckSeverity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckSeverity {
+    NeedsFix,
+    Info,
 }
 
 struct CompactValidation {
@@ -2434,13 +2446,23 @@ fn command_doctor() -> Result<()> {
     } else {
         0
     };
-    push_check(
+    // Issue #74: stale-registry entries are housekeeping noise (the
+    // global registry tracks every project AiPlus has ever installed
+    // into; entries become "stale" when those project directories are
+    // deleted). The install itself is fine — `prune-projects` cleans
+    // the registry. Surface as INFO so DOCTOR_STATUS stays PASS when
+    // this is the only issue.
+    push_info_check(
         &mut checks,
         format!("registry has {stale_count} stale entries"),
         stale_count == 0,
         Some("run aiplus prune-projects --yes".to_string()),
     );
-    let pass = checks.iter().all(|item| item.ok);
+    // DOCTOR_STATUS computation: a failing INFO check does NOT flip
+    // overall status. Only NeedsFix-severity failures count.
+    let pass = checks
+        .iter()
+        .all(|item| item.ok || item.severity == CheckSeverity::Info);
     println!("AIPLUS_DOCTOR");
     println!("status={}", if pass { "PASS" } else { "NEEDS_FIX" });
     println!(
@@ -2469,9 +2491,12 @@ fn command_doctor() -> Result<()> {
     println!("refreshPrompt={REFRESH_PROMPT}");
     println!("globalConfig=untouched");
     println!("target={}", root.display());
+    // Issue #74: only NeedsFix-severity failures count toward the
+    // "next: see the NEEDS_FIX items below" message. INFO checks
+    // surface their own hint via the `fix` field already.
     let failing: Vec<&str> = checks
         .iter()
-        .filter(|c| !c.ok)
+        .filter(|c| !c.ok && c.severity == CheckSeverity::NeedsFix)
         .map(|c| c.label.as_str())
         .collect();
     println!(
@@ -2491,10 +2516,18 @@ fn command_doctor() -> Result<()> {
     for item in &checks {
         if item.ok {
             println!("PASS {}", item.label);
-        } else if let Some(fix) = item.fix.as_ref() {
-            println!("NEEDS_FIX {} ({fix})", item.label);
         } else {
-            println!("NEEDS_FIX {}", item.label);
+            // Issue #74: INFO-severity failures use a softer prefix
+            // so they read as recommendations, not breakages.
+            let prefix = match item.severity {
+                CheckSeverity::NeedsFix => "NEEDS_FIX",
+                CheckSeverity::Info => "INFO",
+            };
+            if let Some(fix) = item.fix.as_ref() {
+                println!("{prefix} {} ({fix})", item.label);
+            } else {
+                println!("{prefix} {}", item.label);
+            }
         }
     }
     println!("DOCTOR_STATUS={}", if pass { "PASS" } else { "NEEDS_FIX" });
@@ -10487,6 +10520,26 @@ fn push_check(checks: &mut Vec<Check>, label: impl Into<String>, ok: bool, fix: 
         label: label.into(),
         ok,
         fix,
+        severity: CheckSeverity::NeedsFix,
+    });
+}
+
+/// Issue #74: a check whose failure should surface a recommendation
+/// (`INFO ...`) without flipping `DOCTOR_STATUS=NEEDS_FIX`. Use for
+/// cosmetic / housekeeping issues that don't break install
+/// correctness — e.g. stale-registry entries pointing at deleted
+/// project directories.
+fn push_info_check(
+    checks: &mut Vec<Check>,
+    label: impl Into<String>,
+    ok: bool,
+    fix: Option<String>,
+) {
+    checks.push(Check {
+        label: label.into(),
+        ok,
+        fix,
+        severity: CheckSeverity::Info,
     });
 }
 
