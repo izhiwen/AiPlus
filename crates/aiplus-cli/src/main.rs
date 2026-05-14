@@ -11437,6 +11437,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.13"
             | "0.5.14"
             | "0.5.15"
+            | "0.5.16"
     )
 }
 

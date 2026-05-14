@@ -18,7 +18,7 @@ else
       | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/' \
       || echo "")
   fi
-  VERSION="${VERSION:-v0.5.15}"  # fallback if both lookups fail (last-known-good)
+  VERSION="${VERSION:-v0.5.16}"  # fallback if both lookups fail (last-known-good)
 fi
 INSTALL_DIR="${AIPLUS_INSTALL_DIR:-$HOME/.local/bin}"
 DRY_RUN=0

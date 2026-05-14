@@ -79,12 +79,21 @@ jobs:
         if: matrix.shell == 'sh'
         env:
           AIPLUS_INSTALL_DIR: ${{ runner.temp }}/aiplus-bin
+          # Forward GITHUB_TOKEN as GH_TOKEN so install.sh's
+          # `gh api .../releases/latest` lookup is authenticated.
+          # Without this, macos-14 runners hit unauthenticated rate
+          # limits, the curl fallback also rate-limits, and install.sh
+          # falls back to the hard-coded version constant — which is
+          # the version about to be released, not the currently
+          # published Latest, so the binary download 404s.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh install.sh
 
       - name: Run install.ps1 (Windows)
         if: matrix.shell == 'pwsh'
         env:
           AIPLUS_INSTALL_DIR: ${{ runner.temp }}\aiplus-bin
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: ./install.ps1
 
