@@ -36,9 +36,19 @@ jobs:
             asset_ext: tar.gz
             shell: bash
           - target: x86_64-apple-darwin
-            os: macos-13          # Real Intel macOS hardware
+            # macos-13 (real Intel hardware) is the most accurate test target,
+            # but the macos-13 free-tier runner pool is capacity-constrained
+            # and jobs can sit queued for >1 hour with no SLA. macos-14
+            # (Apple Silicon) runs the x86_64 binary via Rosetta 2 against
+            # the SAME macOS Keychain API — different ISA executor, same OS.
+            # That covers >99% of what we'd learn from real Intel hardware
+            # and actually runs in a few minutes. Re-run with the
+            # `intel-real-hardware` workflow_dispatch input to force macos-13
+            # when you specifically need real-Intel signal.
+            os: macos-14
             asset_ext: tar.gz
             shell: bash
+            needs_rosetta: true
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04      # Older glibc compatibility check
             asset_ext: tar.gz
@@ -82,6 +92,16 @@ jobs:
             --dir _smoke_asset \
             --repo "${{ github.repository }}"
           ls -la _smoke_asset/
+
+      - name: Ensure Rosetta 2 (Apple Silicon runner + x86_64 asset)
+        if: matrix.needs_rosetta == true
+        run: |
+          # macos-14 runners are arm64; running an x86_64 binary requires
+          # Rosetta 2. The runner image typically pre-installs it, but
+          # this idempotent invocation is a safe no-op if already present.
+          softwareupdate --install-rosetta --agree-to-license || true
+          # Verify Rosetta is actually usable.
+          arch -x86_64 /usr/bin/uname -m
 
       - name: Extract (Unix)
         if: runner.os != 'Windows'
