@@ -27,6 +27,25 @@ pub fn handle_set_team(team: &str) -> Result<()> {
             ));
         }
     };
+    // Refuse to flip the active marker if the target team isn't actually
+    // installed (no snapshot under .aiplus/agents/_teams/<canonical>/).
+    // Without this check, `set-team aieconlab` on a project that only has
+    // agent-team would silently update active-team.txt but leave the
+    // personas/configs as agent-team's — a confusing half-state where
+    // `aiplus agent route theorist` then fails because theorist.toml
+    // doesn't exist. AEL is opt-in, so this is the typical mistake.
+    let snapshot_dir = project_root.join(SNAPSHOTS_DIR).join(canonical);
+    let is_installed = snapshot_dir.exists()
+        && std::fs::read_dir(&snapshot_dir)
+            .map(|mut it| it.next().is_some())
+            .unwrap_or(false);
+    if !is_installed {
+        return Err(anyhow!(
+            "Team '{canonical}' is not installed in this project (no snapshot \
+             at .aiplus/agents/_teams/{canonical}/). Run `aiplus add {canonical}` \
+             first to install it, then retry `aiplus agent set-team {canonical}`."
+        ));
+    }
     set_active_team(&project_root, canonical)?;
     println!("Active team set to `{canonical}`.");
     println!(

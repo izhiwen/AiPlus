@@ -5441,13 +5441,22 @@ fn write_keychain_token(token: &str) -> Result<()> {
     let entry = keyring_entry()?;
     match entry.set_password(token) {
         Ok(()) => Ok(()),
-        Err(keyring::Error::NoStorageAccess(detail)) => Err(CliError::new(
+        // NoStorageAccess: keyring crate reports no backend available.
+        // PlatformFailure: keyring crate reports a backend was found but
+        // it failed at runtime — on Linux this typically means
+        // libdbus tried to autolaunch dbus-daemon and couldn't reach a
+        // session bus (headless container, no D-Bus session, etc.). Both
+        // are user-facing "no keyring available" cases — surface the same
+        // friendly hint pointing at BWS_ACCESS_TOKEN.
+        Err(keyring::Error::NoStorageAccess(detail))
+        | Err(keyring::Error::PlatformFailure(detail)) => Err(CliError::new(
             1,
             &format!(
                 "TOKEN_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}\n\
-                 No OS keyring backend is available on this system. On Linux this usually \
-                 means no Secret Service daemon (gnome-keyring / kwallet) is running. \
-                 As a workaround set BWS_ACCESS_TOKEN as an environment variable instead."
+                 No usable OS keyring backend on this system. On Linux this usually \
+                 means no Secret Service daemon (gnome-keyring / kwallet) is running, \
+                 or there's no active D-Bus session bus. As a workaround set \
+                 BWS_ACCESS_TOKEN as an environment variable instead."
             ),
         )
         .into()),
