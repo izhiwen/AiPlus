@@ -31,6 +31,11 @@ pub enum AgentSub {
 
     #[command(visible_aliases = ["派单", "分"])]
     Route {
+        /// Approve one or more owner gates before dispatch. Repeatable.
+        /// Must precede the positional role/task so it isn't swallowed
+        /// by the trailing-var-arg task parser.
+        #[arg(long = "owner-approved", action = clap::ArgAction::Append)]
+        owner_approved: Vec<String>,
         role: Option<String>,
         #[arg(long)]
         role_opt: Option<String>,
