@@ -928,10 +928,15 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert!(validate.contains("VALIDATION_PASS"));
     assert!(validate.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
 
-    let checkpoint = run_with_path(target, &["compact", "checkpoint"], 2, Some(&no_node_path));
+    // Issue #34: fresh-install compact state now reports
+    // FRESH_INSTALL_AWAITING_FIRST_USE (exit 0) instead of the noisy
+    // UNKNOWN_NEEDS_REVIEW that historically fired on every host
+    // compact attempt against an unused project. The downstream
+    // CHECKPOINT_LEVEL and CHECKPOINT_CREATED assertions still hold —
+    // the readiness verdict changed, but checkpointing still runs.
+    let checkpoint = run_with_path(target, &["compact", "checkpoint"], 0, Some(&no_node_path));
     let checkpoint_out = stdout(&checkpoint);
-    assert!(checkpoint_out.contains("UNKNOWN_NEEDS_REVIEW"));
-    assert!(checkpoint_out.contains("READINESS_STATE=UNKNOWN_NEEDS_REVIEW"));
+    assert!(checkpoint_out.contains("READINESS_STATE=FRESH_INSTALL_AWAITING_FIRST_USE"));
     assert!(checkpoint_out.contains("CHECKPOINT_LEVEL=standard"));
     assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
     assert!(checkpoint_out.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));

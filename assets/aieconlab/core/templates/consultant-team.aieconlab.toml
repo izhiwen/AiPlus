@@ -54,6 +54,12 @@ triggers = [
   "exclusion-restriction", "weak-instrument", "selection",
   "mechanism", "placebo", "falsification", "external-validity",
   "structural-estimation",
+  # Issue #33: research-task vocabulary that should also engage the
+  # design-credibility seat — scoping a new paper, choosing the
+  # identification strategy, or planning data acquisition all carry
+  # identification risk and deserve this seat's review.
+  "scoping-note", "paper-scope", "identification-strategy",
+  "data-acquisition", "iv-exogeneity",
 ]
 owner_gate = false
 output_artifact = "design-credibility-check.md"
