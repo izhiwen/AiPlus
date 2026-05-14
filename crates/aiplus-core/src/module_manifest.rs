@@ -60,13 +60,15 @@ pub const MODULES: &[ModuleSpec] = &[
     ModuleSpec {
         name: "agent-team",
         vendor_name: "aiplus-agent-team",
-        version: "0.1.0",
+        version: "0.2.0",
         path: ".aiplus/modules/aiplus-agent-team",
         required_files: &[
             "core/templates/advisor.toml",
             "core/templates/ceo.toml",
             "core/templates/agent-team.toml",
             "core/templates/personas/advisor.md",
+            "adapters/claude-code/subagents.toml",
+            "adapters/claude-code/claude-md-block.md",
         ],
         auto_install: true,
     },

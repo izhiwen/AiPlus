@@ -1,0 +1,95 @@
+# AiPlus Agent Team — Claude Code subagent manifest (v0.1 adapter)
+#
+# Each entry below becomes `.claude/agents/<name>.md` after
+# `aiplus install claude-code && aiplus add agent-team`. The
+# `description` field drives Claude Code's auto-routing; the
+# `persona_file` is loaded as the subagent's system prompt.
+#
+# Descriptions follow Claude Code's auto-routing heuristics:
+# 1) include the role display_name plus 2–3 strong aliases
+#    (Chinese + English) so trigger words match user prompts;
+# 2) state WHEN to use this role vs. an adjacent one
+#    (e.g. ceo vs. advisor, engineer-a vs. engineer-b, qa vs. reviewer);
+# 3) keep it to ~2 sentences — short descriptions route better.
+#
+# Persona file paths are relative to the aiplus-agent-team module root.
+
+schema_version = "1.0"
+
+# ============================================================
+# 8 CORE ROLES
+# ============================================================
+
+[[subagent]]
+name = "agent-team-advisor"
+description = "Reflective senior strategist — challenges framing, surfaces risks before resources commit, distinguishes reversible from irreversible decisions. Use for '顾问', 'advisor', '战略', 'second opinion', 'should we', or whenever the question is about whether to do X rather than how to execute X. Pairs with CEO: advisor reflects, CEO executes."
+persona_file = "core/templates/personas/advisor.md"
+
+[[subagent]]
+name = "agent-team-ceo"
+description = "Execution coordinator — owns task scoping, role staffing, sequencing, and status reporting. Use for 'CEO', '协调', '统筹', 'orchestrate', 'who should do this', 'what's the status', or when the Owner has decided WHAT and needs operational ownership and dispatch. Translates intent into specific assignments with clear definitions of done."
+persona_file = "core/templates/personas/ceo.md"
+
+[[subagent]]
+name = "agent-team-architect"
+description = "System architect — data flow, coupling, failure modes, long-term reversibility. Use for '架构', 'architecture', 'design', '系统设计', 'tradeoffs', 'scale', or when a decision is hard to undo and needs structural review. Different from engineer: architect designs the system; engineer implements within it."
+persona_file = "core/templates/personas/architect.md"
+
+[[subagent]]
+name = "agent-team-pm"
+description = "Project manager — scope cuts, acceptance criteria, definition of done. Use for 'PM', '项目经理', '验收', '范围', 'scope', 'acceptance criteria', 'definition of done', or when a request is too vague or too large and needs to be cut into testable bounded tasks."
+persona_file = "core/templates/personas/pm.md"
+
+[[subagent]]
+name = "agent-team-engineer-a"
+description = "Primary implementation specialist — writes code, tests, and clean branches against explicit acceptance criteria. Use for 'engineer', '实现', '写代码', 'implement', 'fix', 'feature', or any task where the deliverable is code in a reviewable diff. The default engineer; use Engineer B only when the CEO wants parallel work."
+persona_file = "core/templates/personas/engineer-a.md"
+
+[[subagent]]
+name = "agent-team-engineer-b"
+description = "Secondary implementation specialist — dormant by default, activated only when the CEO wants two engineers on parallel non-overlapping slices. Use for '并行实现', 'parallel work', 'second engineer', or when CEO has produced a file-ownership map and wants Engineer B to take a distinct slice without colliding with Engineer A."
+persona_file = "core/templates/personas/engineer-b.md"
+
+[[subagent]]
+name = "agent-team-reviewer"
+description = "Adversarial code reviewer — judges design and correctness against acceptance criteria, ends with PASS / REVISE / BLOCKED. Use for 'review', '代码评审', 'PR review', 'code review', or when a diff is ready and you want a second pair of eyes before merge. Different from QA: reviewer judges code; QA validates behavior."
+persona_file = "core/templates/personas/reviewer.md"
+
+[[subagent]]
+name = "agent-team-qa"
+description = "Behavior validator — runs reproducible tests, reports per-criterion PASS/FAIL with exact commands and observed output. Use for 'QA', '测试', 'test', '验证', 'validate', 'does this actually work', or when acceptance criteria need execution evidence rather than code-level review."
+persona_file = "core/templates/personas/qa.md"
+
+# ============================================================
+# 6 FUNCTIONAL EXPERTS (consulted by CEO when a core role isn't enough)
+# ============================================================
+
+[[subagent]]
+name = "agent-team-ai-integration"
+description = "AI integration specialist — token budgets, context windows, prompt engineering, RAG pipelines, embedding choice. Use for 'LLM', 'AI 集成', 'prompt', 'RAG', 'embedding', 'context window', 'token budget', or whenever the system makes a model call and the question is about quality, cost, or latency of that call."
+persona_file = "core/templates/personas/ai-integration.md"
+
+[[subagent]]
+name = "agent-team-security-reviewer"
+description = "Security reviewer — assumes inputs are malicious and dependencies are compromised, reads code adversarially. Use for '安全', 'security', '安全评审', 'threat model', 'vulnerability', 'auth', 'secrets', 'injection', or whenever a change touches authentication, authorization, secrets, untrusted input, or external dependencies."
+persona_file = "core/templates/personas/security-reviewer.md"
+
+[[subagent]]
+name = "agent-team-tech-writer"
+description = "Technical writer — README, docs, error messages, onboarding flow, every sentence is a UI. Use for '文档', 'docs', 'README', 'tech writer', '文案', 'onboarding', 'error message', or when the question is whether a tired engineer at 11pm could skim this and succeed without a support ticket."
+persona_file = "core/templates/personas/tech-writer.md"
+
+[[subagent]]
+name = "agent-team-devops"
+description = "DevOps / SRE — CI/CD, deploy, rollback, monitoring, SLOs, on-call ergonomics. Use for 'DevOps', 'SRE', '运维', 'deploy', '上线', 'CI/CD', 'rollback', 'monitor', 'SLO', or whenever a change reaches production infrastructure or the failure mode is a 3am page."
+persona_file = "core/templates/personas/devops.md"
+
+[[subagent]]
+name = "agent-team-ui-designer"
+description = "UI designer — accessibility, color contrast, emotional micro-moments, screen reader empathy. Use for 'UI', '设计', 'design', '界面', 'a11y', 'accessibility', '无障碍', 'contrast', 'figma', or when a screen, component, or interaction needs first-class design judgment beyond developer defaults."
+persona_file = "core/templates/personas/ui-designer.md"
+
+[[subagent]]
+name = "agent-team-researcher"
+description = "Technical researcher — best-practice hunter, benchmark methodology checker, dissenting-opinion reader. Use for '调研', 'research', 'benchmark', '技术选型', 'evaluate', 'compare', 'best practice', 'literature review', or when the team is choosing between technologies or wants evidence behind a recommendation."
+persona_file = "core/templates/personas/researcher.md"

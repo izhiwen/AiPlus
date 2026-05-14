@@ -91,6 +91,8 @@ const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
 const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
 const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
+const MANAGED_BEGIN_AT: &str = "<!-- BEGIN AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
+const MANAGED_END_AT: &str = "<!-- END AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
 // No hardcoded Bitwarden project UUID in public source — the value is
@@ -1007,7 +1009,13 @@ fn command_install(
         dry_run,
         ..Plan::default()
     };
-    install_base(&root, &mut plan, &effective_options, default_module_names())?;
+    install_base(
+        &root,
+        &mut plan,
+        &effective_options,
+        default_module_names(),
+        &adapters,
+    )?;
     for adapter in &adapters {
         install_runtime_adapter(&root, adapter, &mut plan, &effective_options)?;
     }
@@ -1320,7 +1328,11 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
             memory_init(&root)?;
         }
         if requested == MODULE_SLUG_AGENT_TEAM && !dry_run {
-            agent_team_init(&root)?;
+            // command_add runs after the project's initial install, so
+            // .aiplus/manifest.json exists and is the source of truth
+            // for which runtime adapters are live.
+            let adapters = read_installed_runtime_adapters(&root);
+            agent_team_init(&root, &mut plan, &adapters)?;
         }
         if requested == MODULE_SLUG_AIECONLAB && !dry_run {
             aieconlab_init(&root, &mut plan)?;
@@ -2576,6 +2588,7 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     remove_managed_block(&root, &mut plan)?;
     remove_claude_md_managed_block(&root, &mut plan)?;
     remove_claude_md_aieconlab_block(&root, &mut plan)?;
+    remove_claude_md_agent_team_block(&root, &mut plan)?;
     remove_claude_hooks(&root, &mut plan)?;
     plan.items.push(PlanItem {
         action: "remove".to_string(),
@@ -6733,6 +6746,7 @@ fn install_base(
     plan: &mut Plan,
     options: &Options,
     module_names: Vec<String>,
+    adapters: &[String],
 ) -> Result<()> {
     ensure_dir(root, &rel_to_abs(root, ".aiplus/modules")?, plan)?;
     for name in &module_names {
@@ -6777,7 +6791,7 @@ fn install_base(
         install_consultant_team_config(root, plan, options)?;
     }
     if module_names.iter().any(|name| name == "agent-team") && !plan.dry_run {
-        agent_team_init(root)?;
+        agent_team_init(root, plan, adapters)?;
     }
     if module_names.iter().any(|name| name == "aieconlab") && !plan.dry_run {
         aieconlab_init(root, plan)?;
@@ -7036,7 +7050,7 @@ fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn agent_team_init(root: &Path) -> Result<()> {
+fn agent_team_init(root: &Path, plan: &mut Plan, adapters: &[String]) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir)?;
     std::fs::create_dir_all(root.join(".aiplus").join("agent-team"))?;
@@ -7139,6 +7153,14 @@ fn agent_team_init(root: &Path) -> Result<()> {
     // W3: seed per-role memory namespaces + the cross-role `_team/`
     // dir. Idempotent — re-runs leave existing READMEs intact.
     init_memory_namespaces(root, AGENT_TEAM_ROLES)?;
+
+    // Issue #31: install Claude Code adapter content when the project
+    // has the claude-code runtime adapter. No-op if claude-code isn't
+    // installed (so codex- or opencode-only projects are unaffected).
+    // Writes 14 prefixed subagents with YAML frontmatter, slash
+    // commands, and an agent-team managed block in CLAUDE.md so that
+    // Claude Code's auto-routing can discover the team.
+    install_agent_team_claude_code_adapter(root, plan, adapters)?;
 
     Ok(())
 }
@@ -8086,6 +8108,258 @@ fn install_aieconlab_claude_code_adapter(root: &Path, plan: &mut Plan) -> Result
             )
         })?;
     update_claude_md_aieconlab_block(root, plan, &block_body)?;
+
+    Ok(())
+}
+
+const AGENT_TEAM_SLASH_COMMANDS: &[&str] = &["at-status", "at-route"];
+
+fn agent_team_managed_block(body: &str) -> String {
+    format!(
+        "{begin}\n{body}\n{end}",
+        begin = MANAGED_BEGIN_AT,
+        end = MANAGED_END_AT,
+        body = body.trim()
+    )
+}
+
+fn update_claude_md_agent_team_block(root: &Path, plan: &mut Plan, body: &str) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let current = read_text_if_exists(&abs)?;
+    let block = agent_team_managed_block(body);
+    let next = match current.as_deref() {
+        None => format!("{block}\n"),
+        Some(text) if text.trim().is_empty() => format!("{block}\n"),
+        Some(text) => {
+            let begin_count = text.matches(MANAGED_BEGIN_AT).count();
+            let end_count = text.matches(MANAGED_END_AT).count();
+            if begin_count != end_count
+                || begin_count > 1
+                || (begin_count == 1 && text.find(MANAGED_BEGIN_AT) > text.find(MANAGED_END_AT))
+            {
+                return Err(CliError::new(
+                    1,
+                    "ERROR malformed or duplicate AiPlus Agent Team managed block in CLAUDE.md",
+                )
+                .into());
+            }
+            if begin_count == 1 {
+                replace_between(text, MANAGED_BEGIN_AT, MANAGED_END_AT, &block)?
+            } else {
+                format!(
+                    "{}{}{}\n",
+                    text,
+                    if text.ends_with('\n') { "\n" } else { "\n\n" },
+                    block
+                )
+            }
+        }
+    };
+    if current.is_none() {
+        write_file_safe(
+            root,
+            rel,
+            next.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )
+    } else {
+        write_managed_text(root, rel, &next, plan)
+    }
+}
+
+fn remove_claude_md_agent_team_block(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    let Some(current) = read_text_if_exists(&abs)? else {
+        return Ok(());
+    };
+    if !current.contains(MANAGED_BEGIN_AT) {
+        return Ok(());
+    }
+    let next = replace_between(&current, MANAGED_BEGIN_AT, MANAGED_END_AT, "")?;
+    if next != current {
+        write_managed_text(root, rel, &next, plan)?;
+    }
+    Ok(())
+}
+
+/// Wrap an agent-team persona body with YAML frontmatter so Claude Code's
+/// subagent auto-routing sees `name` and `description`. Reuses the same
+/// shape as the AEL adapter — see `wrap_aieconlab_subagent`.
+fn wrap_agent_team_subagent(entry: &AielSubagentEntry, persona_body: &str) -> String {
+    // Sanitize description: collapse internal newlines and quote-escape so
+    // YAML stays valid even if the manifest entry spans lines.
+    let description = entry
+        .description
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('"', "\\\"");
+    format!(
+        "---\nname: {name}\ndescription: \"{desc}\"\n---\n\n{body}",
+        name = entry.name,
+        desc = description,
+        body = persona_body.trim_start_matches("---\n").trim_start()
+    )
+}
+
+/// Install the AiPlus Agent Team's Claude Code adapter content into the
+/// project. No-op if claude-code is not among the project's runtime
+/// adapters. Mirrors the AEL adapter design (see
+/// `install_aieconlab_claude_code_adapter`) — same shape, different
+/// prefix and managed-block markers, so the two teams coexist cleanly.
+///
+/// Closes #31: before this adapter shipped, `aiplus add agent-team` left
+/// `.claude/agents/<role>.md` files without YAML frontmatter (only the
+/// raw persona body), so Claude Code's auto-routing could not see them.
+///
+/// `adapters` is the live runtime-adapter list for this install operation
+/// — passed in directly instead of reading from `.aiplus/manifest.json`,
+/// because during the auto-install path (`aiplus install claude-code` →
+/// agent-team is auto_install=true) `agent_team_init` runs *before*
+/// `write_manifest`, so a manifest read would return an empty list and
+/// silently no-op this entire adapter.
+fn install_agent_team_claude_code_adapter(
+    root: &Path,
+    plan: &mut Plan,
+    adapters: &[String],
+) -> Result<()> {
+    if !adapters.iter().any(|a| a == "claude-code") {
+        return Ok(());
+    }
+
+    // 1. Read subagent manifest from embedded assets.
+    let manifest_text = embedded_asset_text(
+        "aiplus-agent-team/adapters/claude-code/subagents.toml",
+    )
+    .map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR agent-team claude-code subagents manifest missing: {e}"),
+        )
+    })?;
+    let manifest: AielSubagentManifest = toml::from_str(&manifest_text).map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR parse aiplus-agent-team/adapters/claude-code/subagents.toml: {e}"),
+        )
+    })?;
+    if manifest.subagent.is_empty() {
+        return Err(CliError::new(
+            1,
+            "ERROR agent-team subagent manifest declared zero entries",
+        )
+        .into());
+    }
+
+    // 2. Collect the set of unprefixed role names so we can clean up
+    //    duplicates from the older `mirror_personas_to_runtimes` path.
+    let mut role_basenames: BTreeSet<String> = BTreeSet::new();
+
+    // 3. Write subagent files with YAML frontmatter (one per role).
+    let agents_rel = ".claude/agents";
+    for entry in &manifest.subagent {
+        // entry.name is like "agent-team-engineer-a" → strip the prefix
+        // to get the bare basename "engineer-a" used by the legacy
+        // mirror path.
+        let unprefixed = entry
+            .name
+            .strip_prefix("agent-team-")
+            .unwrap_or(&entry.name);
+        role_basenames.insert(format!("{unprefixed}.md"));
+
+        let persona_asset = format!("aiplus-agent-team/{}", entry.persona_file);
+        let persona_body = embedded_asset_text(&persona_asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR persona file {} missing for subagent {}: {}",
+                    persona_asset, entry.name, e
+                ),
+            )
+        })?;
+        let body = wrap_agent_team_subagent(entry, &persona_body);
+        let rel = format!("{agents_rel}/{}.md", entry.name);
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 4. Clean up duplicate unprefixed persona files that
+    //    mirror_personas_to_runtimes wrote at install time. We have now
+    //    written the prefixed, frontmatter-bearing versions; the bare
+    //    `engineer-a.md` etc. would confuse Claude Code's routing.
+    //    Defensive: only delete a bare file if it does NOT carry
+    //    user-authored frontmatter (we only remove what mirror wrote).
+    for basename in &role_basenames {
+        let target = rel_to_abs(root, &format!("{agents_rel}/{basename}"))?;
+        if target.exists() {
+            if let Some(text) = read_text_if_exists(&target)? {
+                // Mirror writes the raw persona body, which never starts
+                // with a `---` frontmatter delimiter. A user-authored
+                // file (or a re-run of the adapter) would have `---` at
+                // top — leave those alone.
+                let has_user_frontmatter = text.starts_with("---");
+                if !has_user_frontmatter {
+                    let _ = std::fs::remove_file(&target);
+                    plan.items.push(PlanItem {
+                        action: "remove-duplicate".to_string(),
+                        path: format!("{agents_rel}/{basename}"),
+                    });
+                }
+            }
+        }
+    }
+
+    // 5. Copy slash commands.
+    let commands_rel = ".claude/commands";
+    for cmd in AGENT_TEAM_SLASH_COMMANDS {
+        let asset = format!("aiplus-agent-team/adapters/claude-code/commands/{cmd}.md");
+        let body = embedded_asset_text(&asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR agent-team slash command {cmd} missing: {e}"),
+            )
+        })?;
+        let rel = format!("{commands_rel}/{cmd}.md");
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 6. Insert agent-team managed block into CLAUDE.md.
+    let block_body = embedded_asset_text(
+        "aiplus-agent-team/adapters/claude-code/claude-md-block.md",
+    )
+    .map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR agent-team CLAUDE.md block body missing: {e}"),
+        )
+    })?;
+    update_claude_md_agent_team_block(root, plan, &block_body)?;
 
     Ok(())
 }
