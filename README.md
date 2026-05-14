@@ -52,10 +52,20 @@ rules, architectural decisions are stored as local JSONL under
 `.aiplus/memory/`. Twelve redaction patterns strip secrets before any record
 is written, so you can capture preferences without leaking them.
 
-**Compact Reminder** — The agent stops blanking out after compact. It tells
-you when it is a good time to compact (not too early, not too late), prepares
-a structured handoff before compaction, and auto-resumes from a verified
-capsule afterwards. The agent picks up where it left off, not from zero.
+**Compact Reminder** — Save tokens on long sessions. Long Codex / Claude
+Code / OpenCode sessions bleed tokens two ways: agents that don't `/compact`
+in time overflow context and re-read bloated history on every turn, and
+agents that `/compact` at the wrong moment lose state and spend the next
+session re-explaining what they already knew. This module reminds you
+when the timing is right (token threshold + task-handoff-point detection),
+auto-prepares a structured handoff before, and recovers from a
+checksum-verified capsule after — so tokens go into new work, not into
+re-establishing context.
+
+**Agent Key** — The agent stops leaking your API keys. Project code calls
+aliases (`OPENAI_KEY_WORK`); the broker resolves each alias to a real value
+at runtime, injects it into the child process's environment, and forgets
+it. Never written to disk, never printed by default, never in git history.
 
 **Auto Team Consultant** — The agent stops overlooking the important stuff.
 A virtual team (5 expert members + your project's user personas, sitting at
@@ -93,8 +103,10 @@ AiPlus serves two audiences with the same underlying agent substrate:
   Specialist. Replaces the SWE consultant team with one designed from
   first principles for plan-time econ review.
 
-Both audiences share the same `aiplus-agent-memory`,
-`aiplus-compact-reminder`, and `aiplus-auto-team-consultant` substrate.
+Both audiences share six bundled substrate modules:
+`aiplus-agent-memory`, `aiplus-compact-reminder`,
+`aiplus-auto-team-consultant`, `aiplus-agent-team`, `aiplus-agent-key`,
+and `aiplus-agent-velocity`.
 
 ## Install
 
@@ -160,6 +172,55 @@ aiplus doctor
 
 Each adapter is project-local. We do not touch your global config.
 
+### Wire up MCP so the PI can dispatch directly
+
+After installing the runtime adapter, you also want to register the AiPlus
+**MCP server** so the PI persona can call `agent_route` / `agent_status` /
+`agent_set_team` (and 8 more agent tools) as native tools inside your
+runtime — instead of printing bash blocks for you to copy-paste.
+
+```bash
+# Register for every installed runtime at once (auto-detected):
+aiplus mcp-register
+
+# Or be explicit:
+aiplus mcp-register --runtime codex                  # → ~/.codex/config.toml (global)
+aiplus mcp-register --runtime claude                 # → ./.mcp.json (project)
+aiplus mcp-register --runtime opencode               # → ./opencode.json (project)
+
+# Override the per-runtime default scope:
+aiplus mcp-register --runtime claude --scope global  # → ~/.claude/.mcp.json
+aiplus mcp-register --runtime codex  --scope project # → ./.codex/config.toml
+
+# Force-overwrite a corrupted config:
+aiplus mcp-register --force
+```
+
+`install.sh` will offer to do this for you on first run if it sees you
+already have one of the runtimes installed. To do it silently:
+`AIPLUS_REGISTER_MCP=yes curl … | sh` or pass `--register-mcp`.
+
+### Secret storage (BWS / OS keyring / env var)
+
+AiPlus uses the OS keyring (macOS Keychain / Linux Secret Service /
+Windows Credential Manager) to store the optional BWS access token. The
+Linux binary ships with libdbus **statically linked** (v0.5.11+) so
+`aiplus --version` works on minimal containers and headless servers
+without `libdbus-1-3` pre-installed.
+
+Three ways to provide a token, in order of preference:
+
+1. **OS keyring** (default for desktops): `aiplus secret-broker token set`
+   → stored in your platform's native vault. Verify it works:
+   `aiplus doctor --check-keyring` (returns `KEYRING_CHECK_STATUS=PASS`).
+2. **`BWS_ACCESS_TOKEN` env var** (headless / CI / Docker without D-Bus):
+   `export BWS_ACCESS_TOKEN=…` — `aiplus doctor --check-keyring` will
+   show `bws_env_fallback_status=available` and the rest of aiplus
+   transparently uses it.
+3. **No secrets at all**: the secret-broker is opt-in. Most aiplus
+   subcommands (install / route / doctor / status / mcp-register) work
+   without it.
+
 ## Daily commands
 
 ```bash
@@ -205,7 +266,7 @@ MyProject/
 │   ├── agent-memory/            # Agent continuity and context records
 │   ├── consultant-team.toml     # Team routing config
 │   └── velocity/                # Estimate and run records
-├── .codex/compact/              # Compact handoffs and capsules
+├── .aiplus/compact/             # Compact handoffs and capsules
 ├── .claude/                     # Claude Code adapters (if installed)
 ├── .opencode/                   # OpenCode adapters (if installed)
 └── AGENTS.md                    # Codex managed block (if installed)
@@ -219,7 +280,7 @@ docs, and adapter content land under `.aiplus/modules/aiplus-<name>/`
 in every AiPlus project:
 
 - [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory) — local JSONL memory + role identity + skill candidates.
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — token-savings prompts before `/compact` derails long sessions.
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — **save tokens on long sessions**: detect the right moment to `/compact`, package the handoff before, and resume from a checksum-verified capsule after — tokens go into new work, not re-establishing context.
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) — virtual expert team consulted automatically on each task.
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
 - [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — alias-based, zero-persistence secret resolution (`aiplus secret-broker`).

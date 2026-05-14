@@ -1,5 +1,56 @@
 # Changelog
 
+## v0.5.16 — testing close-out (P0 + P1 punch-list)
+
+This block represents the v0.5.11 testing report close-out goal. All
+work shipped as discrete PRs against main between v0.5.11 and v0.5.16.
+
+### Added
+- **`aiplus doctor --check-keyring`** (P0.1): structured probe of the OS
+  keyring backend. Writes/reads/deletes a throwaway entry against a
+  dedicated service ID, reports backend type and per-step outcome, plus
+  `BWS_ACCESS_TOKEN` env-var fallback status. Wired into
+  `post-release-smoke.yml` on all 3 platforms with PASS assertions.
+- **8 new MCP tools** (P0.3): `agent_list`, `agent_doctor`,
+  `agent_invite`, `agent_dismiss`, `agent_disable`, `agent_enable`,
+  `agent_integrate`, `agent_talk`. Total MCP tools 3 → 11. PI persona
+  §3.1 rewritten with full inventory + ASCII sequence diagram.
+- **`aiplus agent dispatch-history`** (P1.3): query interface for the
+  dispatch log with `--role`, `--outcome`, `--since-days`, `--json`
+  filters. Failed and canceled dispatches now also recorded (schema
+  bump 0.1.1 → 0.2.0 adds `outcome`, `dispatchId`, `errorReason`,
+  `errorDetail` fields).
+- **`aiplus mcp-register --scope global|project`** (P1.5): explicit
+  scope override with sensible per-runtime defaults (codex global,
+  claude/opencode project). Path matrix in README.
+- **install.sh runtime detection** (P1.7): detects ~/.codex / ~/.claude
+  / ~/.opencode and either prompts (tty) or prints MCP_HINT (headless).
+  Adds `--register-mcp` / `--no-register-mcp` flags + `AIPLUS_REGISTER_MCP`
+  env var.
+- **CHANGELOG.md + UPGRADE.md + README sections** (P1.4): documented
+  BWS_ACCESS_TOKEN fallback, vendored libdbus, mcp-register scope flag.
+
+### Changed
+- **Release gating** (P0.2): `post-release-smoke.yml` now auto-promotes
+  draft → published only when smoke matrix is green. Failed smoke leaves
+  the release as draft + appends a `SMOKE FAILED` marker to the body.
+  `workflow_dispatch` lets the owner choose `yes` / `no` / `force` for
+  retroactive smoke runs.
+- **Error format catch-all** (P1.2): top-level uncaught-error prefix
+  renamed `INTERNAL_ERROR` → `AIPLUS_UNEXPECTED_ERROR` with structured
+  reason/detail fields. User-visible errors continue to use CliError →
+  `<CMD>_STATUS=FAIL reason=<key> detail=<msg>`.
+- **Binary size** (P1.8): release profile tuned with
+  `strip="symbols"`, `lto="thin"`, `codegen-units=1`, `panic="abort"`.
+  macOS arm64 binary 7.1MB → 5.7MB (-20%); Linux x86_64 10.2MB → 7.4MB
+  (-28%, under 8MB target). Vendored libdbus static link preserved.
+
+### Fixed
+- **30 dead-code warnings → 0** (P1.1): scaffolding modules
+  (canary.rs, bin_aliases.rs, cache.rs) marked module-level
+  `#![allow(dead_code)]` + `TODO(v0.2)` comments. One-off dead items
+  deleted or `#[allow]`-annotated individually.
+
 ## Unreleased
 
 - **Cross-platform keychain (Phase 2 of 3)**: replaces the previous
