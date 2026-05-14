@@ -1,0 +1,126 @@
+# AiEconLab Claude Code subagent manifest (v0.2 adapter)
+#
+# Each entry below becomes `.claude/agents/<name>.md` after
+# `aiplus install claude-code && aiplus add aieconlab`. The
+# `description` field drives Claude Code's auto-routing; the
+# `persona_file` is loaded as the subagent's system prompt.
+#
+# Descriptions follow Claude Code's auto-routing heuristics:
+# 1) include the role's display_name and 2-3 strongest aliases
+#    (both Chinese and English) so trigger words match user prompts;
+# 2) state WHEN to use the subagent vs. an adjacent one
+#    (e.g. ra-stata vs ra-python, theorist vs advisor);
+# 3) keep it to ~2 sentences — short descriptions route better.
+#
+# Persona file paths are relative to the AiEconLab module root.
+
+schema_version = "1.0"
+
+# ============================================================
+# 8 CORE ROLES (advisor / pi / theorist / pm / ra-stata /
+#               ra-python / referee / replicator)
+# ============================================================
+
+[[subagent]]
+name = "aieconlab-advisor"
+description = "Reflective senior advisor — challenges framing, identification, and whether the paper is asking the right question. Use for '顾问', '导师', 'advisor', 'committee', or when the user is questioning the research question itself rather than execution. Pairs with PI: advisor reflects, PI executes."
+persona_file = "core/templates/personas/advisor.md"
+
+[[subagent]]
+name = "aieconlab-pi"
+description = "Principal Investigator — owns task scoping, dispatch to RAs/theorist/referee, and milestone tracking. Use for 'PI', '主作者', '课题负责人', 'lead author', 'orchestrator', or whenever the Owner has decided WHAT and needs operational ownership. Always escalates Owner-gated actions (submission, posting, data sharing, authorship changes) instead of approving."
+persona_file = "core/templates/personas/pi.md"
+
+[[subagent]]
+name = "aieconlab-theorist"
+description = "Theorist — identification strategy, theoretical framing, model construction. Use for '理论', '建模', 'identification', 'model', 'framework', '识别策略', or when choosing between IV / DID / RDD / structural, building a model, or formalizing a mechanism."
+persona_file = "core/templates/personas/theorist.md"
+
+[[subagent]]
+name = "aieconlab-pm"
+description = "Project Manager — scope discipline, deadlines, milestone tracking, status reporting. Use for 'PM', '项目经理', '进度', 'deadline', 'milestone', 'scope', or when the question is about timeline, what's left, or whether scope is creeping."
+persona_file = "core/templates/personas/pm.md"
+
+[[subagent]]
+name = "aieconlab-ra-stata"
+description = "Stata RA — regression specifications, Stata code, main empirical analysis (reghdfe, esttab, ivreg2, did_imputation). Use for 'RA', 'Stata', '回归', 'regression', 'main-spec', or any task where the deliverable is Stata code or a regression table."
+persona_file = "core/templates/personas/ra-stata.md"
+
+[[subagent]]
+name = "aieconlab-ra-python"
+description = "Python RA — data cleaning, scraping, merging, GIS, fuzzy-matching. Use for 'Python', '数据清洗', 'scrape', 'merge', 'GIS', or any data-engineering work BEFORE the regression stage. Hands off to ra-stata once the analysis dataset is ready."
+persona_file = "core/templates/personas/ra-python.md"
+
+[[subagent]]
+name = "aieconlab-referee"
+description = "Internal pre-submission referee — harshest possible read of a draft, rebuttal, or response. Use for 'Referee', '审稿人', '内部审稿', '挑刺', 'pre-review', 'devil's advocate', or whenever something is about to leave the team and the user wants flaws caught BEFORE external review."
+persona_file = "core/templates/personas/referee.md"
+
+[[subagent]]
+name = "aieconlab-replicator"
+description = "Clean-room replicator — reruns the analysis from scratch using only documented inputs. Use for '复现', 'Replicator', '重跑', 'reproducibility', 'clean-room', 'QA', or when preparing an AEA / journal replication package or verifying a published result actually reproduces."
+persona_file = "core/templates/personas/replicator.md"
+
+# ============================================================
+# 12 EXPERTS (consulted by PI when a core role isn't enough)
+# ============================================================
+
+[[subagent]]
+name = "aieconlab-coauthor-liaison"
+description = "Co-author coordination, authorship order, attribution rules, division of labor. Use for '合作者', 'co-author', 'authorship', 'attribution', '分工', whenever multiple co-authors are involved and the question is about credit, sequencing, or workflow split."
+persona_file = "core/templates/personas/coauthor-liaison.md"
+
+[[subagent]]
+name = "aieconlab-computation"
+description = "HPC, clusters, parallelism, big-data simulation, bootstrap parallelization. Use for 'HPC', '集群', 'parallel', 'big data', 'bootstrap', 'simulation', or whenever a job won't fit on a laptop and needs cluster or parallel architecture."
+persona_file = "core/templates/personas/computation.md"
+
+[[subagent]]
+name = "aieconlab-econometrician"
+description = "Deep econometrics specialist — DID frontier, weak-IV diagnostics, inference, SE theory, novel estimators. Use for '计量', 'Econometrician', 'DID frontier', '弱工具变量', 'weak-IV', 'inference', 'SE theory', or when the estimator/inference choice is non-obvious and goes beyond what ra-stata covers."
+persona_file = "core/templates/personas/econometrician.md"
+
+[[subagent]]
+name = "aieconlab-ethics-irb"
+description = "IRB, consent, anonymization, restricted-use data, PII handling, DUA review. Use for '伦理', 'IRB', 'consent', 'anonymization', 'restricted data', 'PII', 'DUA', or whenever the work touches human subjects, restricted archives, or sensitive identifiers."
+persona_file = "core/templates/personas/ethics-irb.md"
+
+[[subagent]]
+name = "aieconlab-historical-sources"
+description = "Historical archives, gazetteers, treaty-port records, OCR'd manuscripts, pre-modern primary sources. Use for '史料', '档案', 'gazetteer', '通商口岸', 'OCR', '历史文献', 'treaty port', or for any historical-economics project working with primary sources before standard datasets begin."
+persona_file = "core/templates/personas/historical-sources.md"
+
+[[subagent]]
+name = "aieconlab-job-talk-coach"
+description = "Job-talk preparation, seminar rehearsal, market-presentation polish. Use for 'job talk', 'seminar', '求职演讲', 'talk-prep', 'job-market', or whenever the user is preparing for an academic job-market presentation or seminar."
+persona_file = "core/templates/personas/job-talk-coach.md"
+
+[[subagent]]
+name = "aieconlab-lit-reviewer"
+description = "Literature reviews, lit-map construction, prior-work placement, contribution framing. Use for '文献综述', '文献', 'literature', 'lit-map', 'prior-work', 'placement', or when mapping how a contribution sits relative to existing literature."
+persona_file = "core/templates/personas/lit-reviewer.md"
+
+[[subagent]]
+name = "aieconlab-llm-measurement"
+description = "LLM-as-measurement specialist — multi-LLM scoring, validity protocols, prompt versioning, text-as-data with proper psychometrics. Use for 'LLM 测量', '多模型评分', 'text-as-data', 'LLM 评分', 'multi-LLM', 'validity-protocol', 'prompt-versioning'. The AEL headline expert; use whenever the measurement step is itself an LLM."
+persona_file = "core/templates/personas/llm-measurement.md"
+
+[[subagent]]
+name = "aieconlab-reproducibility"
+description = "Reproducibility engineering — Docker, Makefiles, DVC, environment pinning, seed control, CI. Use for '复现工程', 'docker', 'Makefile', 'DVC', 'seed', 'pin', 'env', or when packaging code/data for journal submission, archive, or year-later rerun. Different from replicator: this expert builds the apparatus; replicator runs against it."
+persona_file = "core/templates/personas/reproducibility.md"
+
+[[subagent]]
+name = "aieconlab-survey-experiment"
+description = "RCT, survey, field-experiment design — power analysis, pre-registration, sampling, treatment assignment. Use for '实验', 'RCT', 'survey', 'field experiment', 'power analysis', 'pre-registration', or any time the user is designing primary data collection rather than analyzing existing data."
+persona_file = "core/templates/personas/survey-experiment.md"
+
+[[subagent]]
+name = "aieconlab-viz-specialist"
+description = "Figure design, plotting, mapping, publication-quality graphics. Use for '可视化', '作图', 'figure', 'plot', 'map', 'ggplot', 'tikz', or whenever a figure isn't telling its story clearly enough and needs design intervention beyond default plotting calls."
+persona_file = "core/templates/personas/viz-specialist.md"
+
+[[subagent]]
+name = "aieconlab-writer"
+description = "Writing and editing — intro, abstract, rebuttal, copy-edit, prose-level revision. Use for '写作', '编辑', 'Writer', 'rewrite', 'intro', 'abstract', 'rebuttal', 'copy-edit', or whenever the question is about prose expression rather than substance."
+persona_file = "core/templates/personas/writer.md"

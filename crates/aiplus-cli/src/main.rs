@@ -89,6 +89,8 @@ const PRICING_CATALOG_URL: &str =
 const MANAGED_BEGIN: &str = "<!-- BEGIN AIPLUS MANAGED BLOCK -->";
 const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
+const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
+const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
 const DEFAULT_BWS_PROJECT_ID: &str = "ddd15408-b7bd-4230-8df3-b44401403ce3";
@@ -1287,7 +1289,7 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
             agent_team_init(&root)?;
         }
         if requested == MODULE_SLUG_AIECONLAB && !dry_run {
-            aieconlab_init(&root)?;
+            aieconlab_init(&root, &mut plan)?;
         }
     } else {
         message = format!("AiPlus module already installed: {requested}");
@@ -2375,6 +2377,7 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     };
     remove_managed_block(&root, &mut plan)?;
     remove_claude_md_managed_block(&root, &mut plan)?;
+    remove_claude_md_aieconlab_block(&root, &mut plan)?;
     remove_claude_hooks(&root, &mut plan)?;
     plan.items.push(PlanItem {
         action: "remove".to_string(),
@@ -6247,12 +6250,12 @@ fn install_base(
         agent_team_init(root)?;
     }
     if module_names.iter().any(|name| name == "aieconlab") && !plan.dry_run {
-        aieconlab_init(root)?;
+        aieconlab_init(root, plan)?;
     }
     Ok(())
 }
 
-fn aieconlab_init(root: &Path) -> Result<()> {
+fn aieconlab_init(root: &Path, plan: &mut Plan) -> Result<()> {
     // AiEconLab (AEL) populates the same `.aiplus/agents/` namespace that
     // agent-team uses. If both modules are installed, the most recent
     // init wins ("current active team" model). Users switch by re-running
@@ -6394,6 +6397,13 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // real measurement. Seeds are flagged `seed=true` so doctor knows
     // they don't count toward the 5-record calibration threshold.
     aiplus_core::init_aieconlab_velocity_seeds(root)?;
+
+    // v0.2 (AEL repo): install Claude Code adapter content when the
+    // project has the claude-code runtime adapter. No-op if claude-code
+    // isn't installed (so codex- or opencode-only projects are
+    // unaffected). Writes 20 subagents with YAML frontmatter, 4 slash
+    // commands, and an AEL managed block in CLAUDE.md.
+    install_aieconlab_claude_code_adapter(root, plan)?;
 
     Ok(())
 }
@@ -7251,6 +7261,261 @@ fn remove_claude_md_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
     if next != current {
         write_managed_text(root, rel, &next, plan)?;
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AiEconLab (AEL) Claude Code adapter installer
+// ---------------------------------------------------------------------------
+//
+// When `aiplus add aieconlab` runs in a project that has the claude-code
+// adapter installed, AiPlus reads the AEL adapter content from embedded
+// assets and writes:
+//   - 20 subagent files at .claude/agents/aieconlab-*.md (with YAML
+//     frontmatter wrapping the persona body as the system prompt)
+//   - 4 slash commands at .claude/commands/aiel-*.md
+//   - An AEL managed block in CLAUDE.md (separate markers from AiPlus's
+//     block; the two coexist)
+//
+// AEL content uses AIECONLAB markers so the AiPlus block and AEL block
+// can be added or removed independently.
+
+#[derive(serde::Deserialize)]
+struct AielSubagentManifest {
+    #[serde(default)]
+    subagent: Vec<AielSubagentEntry>,
+}
+
+#[derive(serde::Deserialize)]
+struct AielSubagentEntry {
+    name: String,
+    description: String,
+    persona_file: String,
+}
+
+const AIECONLAB_SLASH_COMMANDS: &[&str] = &[
+    "aiel-route",
+    "aiel-talk",
+    "aiel-fire-consultant",
+    "aiel-status",
+];
+
+fn aieconlab_managed_block(body: &str) -> String {
+    format!(
+        "{begin}\n{body}\n{end}",
+        begin = MANAGED_BEGIN_AEL,
+        end = MANAGED_END_AEL,
+        body = body.trim()
+    )
+}
+
+fn update_claude_md_aieconlab_block(root: &Path, plan: &mut Plan, body: &str) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let current = read_text_if_exists(&abs)?;
+    let block = aieconlab_managed_block(body);
+    let next = match current.as_deref() {
+        None => format!("{block}\n"),
+        Some(text) if text.trim().is_empty() => format!("{block}\n"),
+        Some(text) => {
+            let begin_count = text.matches(MANAGED_BEGIN_AEL).count();
+            let end_count = text.matches(MANAGED_END_AEL).count();
+            if begin_count != end_count
+                || begin_count > 1
+                || (begin_count == 1 && text.find(MANAGED_BEGIN_AEL) > text.find(MANAGED_END_AEL))
+            {
+                return Err(CliError::new(
+                    1,
+                    "ERROR malformed or duplicate AiEconLab managed block in CLAUDE.md",
+                )
+                .into());
+            }
+            if begin_count == 1 {
+                replace_between(text, MANAGED_BEGIN_AEL, MANAGED_END_AEL, &block)?
+            } else {
+                format!(
+                    "{}{}{}\n",
+                    text,
+                    if text.ends_with('\n') { "\n" } else { "\n\n" },
+                    block
+                )
+            }
+        }
+    };
+    if current.is_none() {
+        write_file_safe(
+            root,
+            rel,
+            next.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )
+    } else {
+        write_managed_text(root, rel, &next, plan)
+    }
+}
+
+fn remove_claude_md_aieconlab_block(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    let Some(current) = read_text_if_exists(&abs)? else {
+        return Ok(());
+    };
+    if !current.contains(MANAGED_BEGIN_AEL) {
+        return Ok(());
+    }
+    let next = replace_between(&current, MANAGED_BEGIN_AEL, MANAGED_END_AEL, "")?;
+    if next != current {
+        write_managed_text(root, rel, &next, plan)?;
+    }
+    Ok(())
+}
+
+/// Wrap a persona file body with YAML frontmatter so Claude Code's
+/// subagent auto-routing sees `name` and `description`.
+fn wrap_aieconlab_subagent(entry: &AielSubagentEntry, persona_body: &str) -> String {
+    // Sanitize description: collapse internal newlines and quote-escape so
+    // YAML stays valid even if the manifest entry spans lines.
+    let description = entry
+        .description
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('"', "\\\"");
+    format!(
+        "---\nname: {name}\ndescription: \"{desc}\"\n---\n\n{body}",
+        name = entry.name,
+        desc = description,
+        body = persona_body.trim_start_matches("---\n").trim_start()
+    )
+}
+
+/// Install AEL's Claude Code adapter content into the project.
+/// No-op if claude-code is not among the project's runtime adapters.
+fn install_aieconlab_claude_code_adapter(root: &Path, plan: &mut Plan) -> Result<()> {
+    let adapters = read_installed_runtime_adapters(root);
+    if !adapters.iter().any(|a| a == "claude-code") {
+        return Ok(());
+    }
+
+    // 1. Read subagent manifest from embedded assets.
+    let manifest_text = embedded_asset_text("aieconlab/adapters/claude-code/subagents.toml")
+        .map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR aieconlab claude-code subagents manifest missing: {e}"),
+            )
+        })?;
+    let manifest: AielSubagentManifest = toml::from_str(&manifest_text).map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR parse aieconlab/adapters/claude-code/subagents.toml: {e}"),
+        )
+    })?;
+    if manifest.subagent.is_empty() {
+        return Err(
+            CliError::new(1, "ERROR aieconlab subagent manifest declared zero entries").into(),
+        );
+    }
+
+    // 2. Collect the set of unprefixed role names so we can clean up
+    //    duplicates from the older `mirror_personas_to_runtimes` path.
+    let mut role_basenames: BTreeSet<String> = BTreeSet::new();
+
+    // 3. Write 20 subagent files with YAML frontmatter.
+    let agents_rel = ".claude/agents";
+    for entry in &manifest.subagent {
+        // entry.name is like "aieconlab-pi" → drop the prefix to get "pi"
+        let unprefixed = entry.name.strip_prefix("aieconlab-").unwrap_or(&entry.name);
+        role_basenames.insert(format!("{unprefixed}.md"));
+
+        let persona_asset = format!("aieconlab/{}", entry.persona_file);
+        let persona_body = embedded_asset_text(&persona_asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR persona file {} missing for subagent {}: {}",
+                    persona_asset, entry.name, e
+                ),
+            )
+        })?;
+        let body = wrap_aieconlab_subagent(entry, &persona_body);
+        let rel = format!("{agents_rel}/{}.md", entry.name);
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 4. Clean up duplicate unprefixed persona files that mirror_personas_to_runtimes
+    //    wrote at install time. We've now written the prefixed, frontmatter-bearing
+    //    versions; the bare `pi.md` etc. would confuse Claude Code's routing.
+    for basename in &role_basenames {
+        let target = rel_to_abs(root, &format!("{agents_rel}/{basename}"))?;
+        if target.exists() {
+            // Only delete if it doesn't already have aieconlab frontmatter
+            // (defensive: a user-authored file with the same name should not
+            // be removed).
+            if let Some(text) = read_text_if_exists(&target)? {
+                let has_aieconlab_frontmatter = text.starts_with("---")
+                    && text.contains("aieconlab")
+                    && text.lines().take(10).any(|l| l.starts_with("name:"));
+                if !has_aieconlab_frontmatter {
+                    let _ = std::fs::remove_file(&target);
+                    plan.items.push(PlanItem {
+                        action: "remove-duplicate".to_string(),
+                        path: format!("{agents_rel}/{basename}"),
+                    });
+                }
+            }
+        }
+    }
+
+    // 5. Copy 4 slash commands.
+    let commands_rel = ".claude/commands";
+    for cmd in AIECONLAB_SLASH_COMMANDS {
+        let asset = format!("aieconlab/adapters/claude-code/commands/{cmd}.md");
+        let body = embedded_asset_text(&asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR aieconlab slash command {cmd} missing: {e}"),
+            )
+        })?;
+        let rel = format!("{commands_rel}/{cmd}.md");
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 6. Insert AEL managed block into CLAUDE.md.
+    let block_body = embedded_asset_text("aieconlab/adapters/claude-code/claude-md-block.md")
+        .map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR aieconlab CLAUDE.md block body missing: {e}"),
+            )
+        })?;
+    update_claude_md_aieconlab_block(root, plan, &block_body)?;
+
     Ok(())
 }
 
@@ -10242,6 +10507,8 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.10"
             | "0.5.11"
             | "0.5.12"
+            | "0.5.13"
+            | "0.5.14"
     )
 }
 
@@ -10426,6 +10693,82 @@ fn runtime_managed_files(runtime: &str) -> Vec<String> {
     }
 }
 
+/// Read installed module names from `.aiplus/manifest.json`.
+fn installed_module_names(root: &Path) -> Vec<String> {
+    let manifest_path = root.join(".aiplus").join("manifest.json");
+    let Ok(text) = std::fs::read_to_string(&manifest_path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    value
+        .get("modules")
+        .and_then(|m| m.as_object())
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Doctor checks specific to the AEL claude-code adapter. Only fires when
+/// the aieconlab module is installed in this project; otherwise returns
+/// an empty vec so codex/opencode-only or vanilla AiPlus installs aren't
+/// flagged for missing AEL content.
+fn aieconlab_claude_code_doctor_checks(root: &Path) -> Result<Vec<(String, bool)>> {
+    let modules = installed_module_names(root);
+    if !modules.iter().any(|m| m == "aieconlab") {
+        return Ok(Vec::new());
+    }
+    let mut checks = Vec::new();
+    let core_roles = [
+        "advisor",
+        "pi",
+        "theorist",
+        "pm",
+        "ra-stata",
+        "ra-python",
+        "referee",
+        "replicator",
+    ];
+    let experts = [
+        "coauthor-liaison",
+        "computation",
+        "econometrician",
+        "ethics-irb",
+        "historical-sources",
+        "job-talk-coach",
+        "lit-reviewer",
+        "llm-measurement",
+        "reproducibility",
+        "survey-experiment",
+        "viz-specialist",
+        "writer",
+    ];
+    for role in core_roles.iter().chain(experts.iter()) {
+        let rel = format!(".claude/agents/aieconlab-{role}.md");
+        checks.push((
+            format!(".claude/agents/aieconlab-{role}.md exists"),
+            rel_to_abs(root, &rel)?.exists(),
+        ));
+    }
+    for cmd in AIECONLAB_SLASH_COMMANDS {
+        let rel = format!(".claude/commands/{cmd}.md");
+        checks.push((
+            format!(".claude/commands/{cmd}.md exists"),
+            rel_to_abs(root, &rel)?.exists(),
+        ));
+    }
+    checks.push((
+        "CLAUDE.md contains exactly one AiEconLab managed block".to_string(),
+        read_text_if_exists(&rel_to_abs(root, "CLAUDE.md")?)?
+            .as_deref()
+            .map(|t| {
+                t.matches(MANAGED_BEGIN_AEL).count() == 1 && t.matches(MANAGED_END_AEL).count() == 1
+            })
+            .unwrap_or(false),
+    ));
+    Ok(checks)
+}
+
 fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String, bool)>> {
     Ok(match runtime {
         "codex" => vec![
@@ -10520,6 +10863,9 @@ fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String
                         .unwrap_or(false),
                 ),
             ]
+            .into_iter()
+            .chain(aieconlab_claude_code_doctor_checks(root)?)
+            .collect()
         }
         "opencode" => opencode_doctor_requirements(root)?,
         _ => Vec::new(),
@@ -10605,6 +10951,18 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         // aieconlab_init. The dir itself is fixed; per-role
         // subdirectories live inside and uninstall walks the tree.
         ".aiplus/agent-memory".to_string(),
+        // W6: velocity ledger (estimates / runs / rare cases / aggregates /
+        // multipliers / rotation-state / anchor-signals / config). Files are
+        // appended over the project's lifetime; uninstall removes the whole
+        // dir along with `.aiplus/`.
+        ".aiplus/velocity".to_string(),
+        // Uninstall itself creates `.aiplus/backups/<timestamp>/` when it
+        // updates the AiPlus / AiEconLab managed blocks in CLAUDE.md, AGENTS.md,
+        // or settings.local.json. A re-run after a partial uninstall would
+        // otherwise flag the backups it just wrote.
+        ".aiplus/backups".to_string(),
+        // _teams snapshots (Phase D v1, `aiplus agent set-team`).
+        ".aiplus/_teams".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
