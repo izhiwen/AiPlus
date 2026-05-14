@@ -175,6 +175,12 @@ enum Commands {
         /// Print the config diff without writing files.
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
+        /// Overwrite an existing config file even if it fails to parse.
+        /// Without --force, a corrupted .mcp.json / opencode.json / codex
+        /// config.toml causes the registration to abort safely; with
+        /// --force, the broken file is replaced with a fresh aiplus entry.
+        #[arg(long, action = ArgAction::SetTrue)]
+        force: bool,
     },
     Status {
         #[arg(long, action = ArgAction::SetTrue)]
@@ -776,7 +782,11 @@ fn run(command: Commands) -> Result<()> {
         }
         Commands::Doctor => command_doctor(),
         Commands::McpServe => mcp_server::run_server(),
-        Commands::McpRegister { runtime, dry_run } => command_mcp_register(runtime, dry_run),
+        Commands::McpRegister {
+            runtime,
+            dry_run,
+            force,
+        } => command_mcp_register(runtime, dry_run, force),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
@@ -11274,7 +11284,7 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
 // the aiplus entry already exists.
 // ---------------------------------------------------------------------------
 
-fn command_mcp_register(runtime: Option<String>, dry_run: bool) -> Result<()> {
+fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> Result<()> {
     let bin = std::env::current_exe().context("locate current aiplus binary path")?;
     let bin_str = bin.to_string_lossy().into_owned();
 
@@ -11293,14 +11303,17 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool) -> Result<()> {
     if dry_run {
         println!("MCP_REGISTER_MODE=dry-run (no files will be written)");
     }
+    if force {
+        println!("MCP_REGISTER_MODE=force (corrupt configs will be overwritten)");
+    }
     println!("MCP_REGISTER_BIN={bin_str}");
 
     let mut any_change = false;
     for rt in runtimes {
         let changed = match rt {
-            "codex" => register_mcp_codex(&bin_str, dry_run)?,
-            "claude" => register_mcp_claude(&bin_str, dry_run)?,
-            "opencode" => register_mcp_opencode(&bin_str, dry_run)?,
+            "codex" => register_mcp_codex(&bin_str, dry_run, force)?,
+            "claude" => register_mcp_claude(&bin_str, dry_run, force)?,
+            "opencode" => register_mcp_opencode(&bin_str, dry_run, force)?,
             _ => unreachable!(),
         };
         any_change = any_change || changed;
@@ -11316,7 +11329,7 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn register_mcp_codex(bin: &str, dry_run: bool) -> Result<bool> {
+fn register_mcp_codex(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let codex_dir = match home {
         Some(h) => h.join(".codex"),
@@ -11339,8 +11352,24 @@ fn register_mcp_codex(bin: &str, dry_run: bool) -> Result<bool> {
     let mut doc: toml::Value = if existing.trim().is_empty() {
         toml::Value::Table(toml::value::Table::new())
     } else {
-        toml::from_str(&existing)
-            .with_context(|| format!("parse existing {}", config_path.display()))?
+        match toml::from_str::<toml::Value>(&existing) {
+            Ok(v) => v,
+            Err(e) if force => {
+                println!(
+                    "MCP_REGISTER_CODEX=FORCE_OVERWRITE path={} reason=parse_failed detail={e}",
+                    config_path.display()
+                );
+                toml::Value::Table(toml::value::Table::new())
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Cannot parse existing {}: {e}.\n\
+                     Re-run `aiplus mcp-register --force` to overwrite the broken file, \
+                     or fix the file manually first.",
+                    config_path.display()
+                ));
+            }
+        }
     };
     let table = doc
         .as_table_mut()
@@ -11386,7 +11415,7 @@ fn register_mcp_codex(bin: &str, dry_run: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_claude(bin: &str, dry_run: bool) -> Result<bool> {
+fn register_mcp_claude(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     let cwd = std::env::current_dir().context("get cwd for claude registration")?;
     let config_path = cwd.join(".mcp.json");
     let existing = if config_path.exists() {
@@ -11398,8 +11427,24 @@ fn register_mcp_claude(bin: &str, dry_run: bool) -> Result<bool> {
     let mut doc: serde_json::Value = if existing.trim().is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(&existing)
-            .with_context(|| format!("parse existing {}", config_path.display()))?
+        match serde_json::from_str::<serde_json::Value>(&existing) {
+            Ok(v) => v,
+            Err(e) if force => {
+                println!(
+                    "MCP_REGISTER_CLAUDE=FORCE_OVERWRITE path={} reason=parse_failed detail={e}",
+                    config_path.display()
+                );
+                serde_json::json!({})
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Cannot parse existing {}: {e}.\n\
+                     Re-run `aiplus mcp-register --force` to overwrite the broken file, \
+                     or fix the file manually first.",
+                    config_path.display()
+                ));
+            }
+        }
     };
     let root = doc
         .as_object_mut()
@@ -11438,7 +11483,7 @@ fn register_mcp_claude(bin: &str, dry_run: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_opencode(bin: &str, dry_run: bool) -> Result<bool> {
+fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     let cwd = std::env::current_dir().context("get cwd for opencode registration")?;
     let config_path = cwd.join("opencode.json");
     let existing = if config_path.exists() {
@@ -11450,8 +11495,24 @@ fn register_mcp_opencode(bin: &str, dry_run: bool) -> Result<bool> {
     let mut doc: serde_json::Value = if existing.trim().is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(&existing)
-            .with_context(|| format!("parse existing {}", config_path.display()))?
+        match serde_json::from_str::<serde_json::Value>(&existing) {
+            Ok(v) => v,
+            Err(e) if force => {
+                println!(
+                    "MCP_REGISTER_OPENCODE=FORCE_OVERWRITE path={} reason=parse_failed detail={e}",
+                    config_path.display()
+                );
+                serde_json::json!({})
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Cannot parse existing {}: {e}.\n\
+                     Re-run `aiplus mcp-register --force` to overwrite the broken file, \
+                     or fix the file manually first.",
+                    config_path.display()
+                ));
+            }
+        }
     };
     let root = doc
         .as_object_mut()
