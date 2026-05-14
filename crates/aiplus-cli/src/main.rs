@@ -1101,6 +1101,13 @@ fn command_install(
     if let Err(e) = upsert_registry_entry(&root, &runtimes) {
         eprintln!("WARN registry update failed: {}", e);
     }
+    // K5: offer to wire the secret-broker cd-auto-load hook into the
+    // user's shell rc. Append-only, idempotent, and never runs without
+    // either --yes or an interactive Y. Opt out via AIPLUS_SKIP_SHELL_INIT=1
+    // for users who manage their rc files via dotfiles / chezmoi.
+    if std::env::var("AIPLUS_SKIP_SHELL_INIT").is_err() {
+        maybe_install_shell_hook(&effective_options, dry_run);
+    }
     Ok(())
 }
 
@@ -5567,7 +5574,16 @@ fn collect_project_aliases(existing: &str, new_alias: &str) -> Vec<String> {
 // back. Supported shells: zsh, bash, fish.
 fn secret_broker_shell_init(shell: Option<String>) -> Result<()> {
     let shell = shell.as_deref().unwrap_or("").trim().to_lowercase();
-    let snippet = match shell.as_str() {
+    let snippet = render_shell_init_snippet(&shell)?;
+    print!("{snippet}");
+    Ok(())
+}
+
+// K5: shared renderer for the cd-auto-load snippet. Used both by
+// `secret-broker shell-init` (prints to stdout) and `aiplus install`
+// (appends to user's rc file when they consent).
+fn render_shell_init_snippet(shell: &str) -> Result<String> {
+    let body = match shell {
         "zsh" => {
             r#"# AiPlus secret-broker cd-auto-load (zsh)
 _aiplus_broker_hook() {
@@ -5616,8 +5632,170 @@ _aiplus_broker_hook
             .into());
         }
     };
-    print!("{snippet}");
-    Ok(())
+    Ok(body.to_string())
+}
+
+// K5: detect the user's interactive shell from $SHELL. Returns a tuple
+// of (logical shell name, rc-file path under $HOME). Returns None if we
+// can't confidently match — caller falls back to printing a hint.
+fn detect_shell_and_rc() -> Option<(&'static str, PathBuf)> {
+    let home = match std::env::var_os("HOME") {
+        Some(h) if !h.is_empty() => PathBuf::from(h),
+        _ => return None,
+    };
+    let shell_env = std::env::var("SHELL").unwrap_or_default();
+    let basename = Path::new(&shell_env)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match basename.as_str() {
+        "zsh" => Some(("zsh", home.join(".zshrc"))),
+        "bash" => {
+            // macOS bash users typically use ~/.bash_profile; everywhere
+            // else ~/.bashrc is the conventional interactive rc. Pick
+            // ~/.bash_profile if it exists, otherwise ~/.bashrc.
+            let bp = home.join(".bash_profile");
+            if bp.exists() {
+                Some(("bash", bp))
+            } else {
+                Some(("bash", home.join(".bashrc")))
+            }
+        }
+        "fish" => {
+            // Honor XDG_CONFIG_HOME so the parity test (which sets it
+            // under the tempdir) doesn't write outside the sandbox.
+            let xdg = std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".config"));
+            Some(("fish", xdg.join("fish").join("config.fish")))
+        }
+        _ => None,
+    }
+}
+
+// K5: marker we look for to make append idempotent. If a previous
+// `aiplus install` or a manual `shell-init >> rc` run already wrote
+// the hook, we skip silently.
+const SHELL_INIT_MARKER: &str = "_aiplus_broker_hook";
+
+fn shell_rc_already_wired(rc: &Path) -> bool {
+    match fs::read_to_string(rc) {
+        Ok(text) => text.contains(SHELL_INIT_MARKER),
+        Err(_) => false,
+    }
+}
+
+// K5: maybe append the cd-auto-load snippet to the user's shell rc.
+// Called once at the end of `aiplus install`. Behavior:
+//
+//   - In dry_run: print "would offer" and bail without touching rc.
+//   - If rc already contains the hook marker: print "already enabled".
+//   - If shell can't be detected: print manual command and bail.
+//   - With options.yes: auto-append (non-interactive consent).
+//   - Otherwise (interactive tty): prompt "[Y/n]", default Y on enter.
+//   - On non-tty without --yes: skip + print manual hint.
+//
+// Always append-only. Never edits or rewrites existing rc content.
+fn maybe_install_shell_hook(options: &Options, dry_run: bool) {
+    use std::io::IsTerminal;
+    let Some((shell, rc)) = detect_shell_and_rc() else {
+        eprintln!("SHELL_INIT=skipped_unknown_shell");
+        eprintln!(
+            "  Tip: enable cd auto-load manually with `aiplus secret-broker shell-init zsh|bash|fish >> <your shell rc>`"
+        );
+        return;
+    };
+
+    if shell_rc_already_wired(&rc) {
+        eprintln!("SHELL_INIT=already_enabled rc={}", rc.display());
+        return;
+    }
+
+    if dry_run {
+        eprintln!("SHELL_INIT=would_offer shell={} rc={}", shell, rc.display());
+        return;
+    }
+
+    let consent = if options.yes {
+        true
+    } else if std::io::stdin().is_terminal() {
+        eprintln!();
+        eprintln!("AiPlus can wire `cd` auto-load so agents pick up API keys");
+        eprintln!("without re-prompting per session. This appends ~6 lines to:");
+        eprintln!("  {}", rc.display());
+        eprint!("Enable cd auto-load? [Y/n] ");
+        use std::io::Write;
+        std::io::stderr().flush().ok();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).ok();
+        let trimmed = input.trim().to_lowercase();
+        // Default Y: blank line == yes.
+        matches!(trimmed.as_str(), "" | "y" | "yes")
+    } else {
+        eprintln!("SHELL_INIT=skipped_noninteractive");
+        eprintln!(
+            "  Tip: enable cd auto-load with `aiplus secret-broker shell-init {} >> {}`",
+            shell,
+            rc.display()
+        );
+        return;
+    };
+
+    if !consent {
+        eprintln!("SHELL_INIT=declined");
+        eprintln!(
+            "  You can enable later: `aiplus secret-broker shell-init {} >> {}`",
+            shell,
+            rc.display()
+        );
+        return;
+    }
+
+    let snippet = match render_shell_init_snippet(shell) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("SHELL_INIT=render_failed err={}", e);
+            return;
+        }
+    };
+
+    if let Some(parent) = rc.parent() {
+        if !parent.exists() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                eprintln!("SHELL_INIT=mkdir_failed err={}", e);
+                return;
+            }
+        }
+    }
+    // Append with a leading newline so we never butt up against an
+    // existing trailing line without separator.
+    let payload = format!("\n{snippet}");
+    let result = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&rc)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(payload.as_bytes())
+        });
+    match result {
+        Ok(()) => {
+            eprintln!("SHELL_INIT=appended rc={}", rc.display());
+            eprintln!(
+                "  Activate now with: `source {}` (or open a new terminal)",
+                rc.display()
+            );
+        }
+        Err(e) => {
+            eprintln!("SHELL_INIT=append_failed err={}", e);
+            eprintln!(
+                "  Enable manually: `aiplus secret-broker shell-init {} >> {}`",
+                shell,
+                rc.display()
+            );
+        }
+    }
 }
 
 // K4: cd-auto-load hook. Called by the shell rc snippet on every cd.
