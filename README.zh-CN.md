@@ -13,19 +13,21 @@
 如果你每天都在带 AI coding agent，下面这些可能很熟：
 
 1. **Agent 跨 session 就忘。** 周一教过 naming 规则，周三又问。到周五，同一个架构决策已经讲过四遍了。
-2. **长任务 compact 之后丢上下文。** 半路撞上 token 上限，一次 compact 之后回来，agent 问的是你 40 分钟前就回答过的问题，写到一半的 plan 也没了。
+2. **长任务在 `/compact` 上反复烧 token。** 撞 token 上限的真正成本是：要么忘了 `/compact`、agent 几个小时来每轮都在重读越来越长的历史；要么 `/compact` 时机不对、下一个 session 头 20% 全花在重新解释已经决定过的事情。无准备的 compact 是长 coding session 里最大的 token 黑洞之一，每月账单都看得见。
 3. **多个 agent 互相踩脚。** 没人定谁是 CEO、谁评审、谁实现。三个 agent 都想当头。
 4. **估时锚定在"人类工程师小时数"上。** Agent 报"五小时"做 refactor，结果 20 分钟干完。下周类似任务又报五小时，又 20 分钟。没人记账。
 5. **Agent 做 plan 时常常忽略最重要的事** —— 用户上手是否容易、安全和隐私、实际执行的 pitfall、AI 集成考量。这些事要么发版周才发现，要么用户投诉之后才发现。
 6. **一个 Agent 戴所有帽子。** CEO、reviewer、builder、advisor 全塞进同一个上下文窗口。角色**漂移**，上下文在不同帽子间**污染**，每个帽子都戴得很**浅**。真正的工程团队之所以分工，是因为工作本身就是如此结构化。
 
-AiPlus 是五个小模块，加起来正好把这六件事一起治了。
+AiPlus 是六个小模块，加起来正好把这六件事一起治了。
 
 ## 你拿到什么
 
 **Agent Memory** —— Agent 不再失忆。项目约定、命名规则、架构决定，作为本地 JSONL 存在 `.aiplus/memory/`。写入前会过 12 条 redaction 规则剥敏感串，所以你可以放心记偏好，不用担心泄漏。
 
-**Compact Reminder** —— Agent 不再 compact 后断片。它告诉你**什么时候适合 compact**（不太早不太晚），**compact 前**自动准备结构化交接，**compact 后**用校验过的 capsule 自动续上。Agent 从离开的地方继续，不是从零。
+**Compact Reminder** —— **长对话省 token**。长 Codex / Claude Code / OpenCode session 会两头漏 token：忘了 `/compact` 时上下文溢出、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 全花在重新解释上。本模块在 token 阈值 + 任务切点双信号下提醒你恰当时机 compact，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
+
+**Agent Key** —— Agent 不再泄漏你的 API key。代码里只出现 alias（`OPENAI_KEY_WORK`），broker 在运行时把 alias 解析成真值、注入子进程环境变量、然后忘掉。**绝不**写盘，**绝不**默认打印，**绝不**进 git history。
 
 **Auto Team Consultant** —— Agent 不再忽略关键事项。**一个虚拟团队**（5 位专家成员 + 你项目的用户 persona，**坐同一桌**）会在每次重要 plan 之前被咨询。Coordinator 按复杂度和风险决定咨询规模，让你拿到真实评审团队的价值，但不在每次提交都付成本。
 
@@ -42,7 +44,7 @@ AiPlus 同时服务两类受众，底座（substrate）共享：
 - **软件工程师** —— 用 Codex / Claude Code / OpenCode 写代码的。`aiplus install` 默认装 SWE 团队（Advisor / CEO / Architect / PM / 2× Engineer / Reviewer / QA + 11 SWE expert）。
 - **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab)：8 个研究角色（Advisor / PI / Theorist / PM / RA-Stata / RA-Python / Referee / Replicator）+ 12 个 expert（含 LLM-as-Measurement Specialist）。**替换** SWE consultant 团队为应用经济学专属版本。
 
-两类受众共用 `aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` 底座。
+两类受众共用六个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity`。
 
 ## 安装
 
@@ -149,21 +151,23 @@ MyProject/
 │   ├── agent-memory/            # Agent 连续性和上下文记录
 │   ├── consultant-team.toml     # 团队路由配置
 │   └── velocity/                # 估时与运行记录
-├── .codex/compact/              # Compact handoffs 和 capsule
+├── .aiplus/compact/             # Compact handoffs 和 capsule
 ├── .claude/                     # Claude Code adapter (装了的话)
 ├── .opencode/                   # OpenCode adapter (装了的话)
 └── AGENTS.md                    # Codex 托管块 (装了的话)
 ```
 
-## 五个独立子模块
+## 六个独立子模块（bundled）
 
-每个模块也作为独立 GitHub repo 发布，方便你单独看或单独采用：
+每个模块也作为独立 GitHub repo 发布，方便你单独看或单独采用；
+同时 `aiplus install` 会自动把它们装到 `.aiplus/modules/aiplus-<name>/`：
 
-- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
-- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
-- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
-- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
+- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory) —— 本地 JSONL memory + role identity + skill candidate。
+- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) —— **长 session 省 token**：恰当时机提示 `/compact` + 结构化交接 + 自动续接，避免溢出和重建上下文。
+- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) —— 虚拟 expert 团队，每个任务自动 consult。
+- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) —— 常驻 8 core + 11 expert 角色，带 persistent identity。
+- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) —— alias-based、零持久化 secret 解析（`aiplus secret-broker`）。
+- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) —— AI-native 工时估计（`aiplus velocity`，跟踪估时 vs 实际、学习 bias、给校准的 p50/p90）。
 
 ## 安全边界
 
