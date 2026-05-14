@@ -27,7 +27,7 @@ Responsibilities:
   reference, not as an active compact execution path.
 - Document Owner gates and checkpoint/resume flow.
 
-The core is runtime-neutral. It does not depend on Codex, Claude Code, OpenCode, a cloud service, or a remote repository.
+The core is runtime-neutral. It does not depend on Claude Code, Codex, OpenCode, a cloud service, or a remote repository.
 
 ## Codex Adapter
 

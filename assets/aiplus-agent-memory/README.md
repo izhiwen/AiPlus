@@ -15,7 +15,7 @@ Implemented foundation:
 - local project memory store under `.aiplus/memory/`
 - project Role Identity files under `.aiplus/identities/`
 - Skill Candidate governance under `.aiplus/skills/`
-- context packet templates for Codex, Claude Code, and OpenCode
+- context packet templates for Claude Code, Codex, and OpenCode
 - schema-first records and examples
 - redaction and public/private boundary guidance
 
@@ -25,7 +25,7 @@ Not implemented:
 - vector database
 - automatic transcript learning
 - automatic approved skill generation
-- global Codex, Claude Code, or OpenCode config edits
+- global Claude Code, Codex, or OpenCode config edits
 - automatic secret permission inheritance
 - telemetry
 
@@ -37,7 +37,7 @@ aiplus memory status
 aiplus memory doctor
 aiplus memory list
 aiplus memory recent
-aiplus memory context --runtime codex --budget 2000
+aiplus memory context --runtime claude-code --budget 2000
 aiplus memory forget <id>
 aiplus identity list
 aiplus identity init --project
@@ -54,7 +54,7 @@ untouched.
 
 ## Natural Language Mapping
 
-Project-local Codex, Claude Code, and OpenCode guidance maps common Owner
+Project-local Claude Code, Codex, and OpenCode guidance maps common Owner
 phrases to explicit commands:
 
 - `记住这个` / `记住这个偏好`: add a redacted project memory.
