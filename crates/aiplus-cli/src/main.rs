@@ -98,7 +98,7 @@ const DEFAULT_BWS_PROJECT_ID: &str = "ddd15408-b7bd-4230-8df3-b44401403ce3";
     name = "aiplus",
     version = VERSION,
     disable_version_flag = true,
-    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
 )]
 struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue)]
@@ -925,7 +925,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1700,7 +1700,7 @@ fn command_status(terse: bool) -> Result<()> {
     );
     println!(
         "compactState={}",
-        if rel_to_abs(&root, ".codex/compact")?.exists() {
+        if rel_to_abs(&root, ".aiplus/compact")?.exists() {
             "present"
         } else {
             "missing"
@@ -1776,7 +1776,7 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
         let manifest = read_manifest(&root, true).unwrap_or_default();
         let modules = normalize_existing_modules(manifest.modules.as_ref());
         let continuity = continuity_state(&root)?;
-        let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
+        let compact_state = if rel_to_abs(&root, ".aiplus/compact")?.exists() {
             "present"
         } else {
             "missing"
@@ -1800,7 +1800,7 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let modules = normalize_existing_modules(manifest.modules.as_ref());
     let continuity = continuity_state(&root)?;
-    let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
+    let compact_state = if rel_to_abs(&root, ".aiplus/compact")?.exists() {
         "present"
     } else {
         "missing"
@@ -2079,8 +2079,8 @@ fn command_doctor() -> Result<()> {
     if modules.contains_key(MODULE_SLUG_COMPACT_REMINDER) {
         push_check(
             &mut checks,
-            ".codex/compact/ exists".to_string(),
-            rel_to_abs(&root, ".codex/compact")?.exists(),
+            ".aiplus/compact/ exists".to_string(),
+            rel_to_abs(&root, ".aiplus/compact")?.exists(),
             Some("run compact init".to_string()),
         );
     }
@@ -2123,6 +2123,26 @@ fn command_doctor() -> Result<()> {
                     value.get("schema_version").is_some(),
                     Some("add schema_version field".to_string()),
                 );
+                // Drift check: the file might have schema_version set
+                // to a version this binary doesn't know how to consume
+                // (e.g., installed config is newer than the CLI). When
+                // that happens `agent route` silently skips the consult,
+                // so flag it here instead of letting the user notice
+                // only when the artifact never appears.
+                let declared = value
+                    .get("schema_version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml schema_version is supported by this CLI".to_string(),
+                    !declared.is_empty()
+                        && aiplus_core::consult::is_supported_schema(declared),
+                    Some(format!(
+                        "declared='{declared}', supported={:?} — upgrade aiplus or pin the config to a supported version",
+                        aiplus_core::consult::SUPPORTED_CONSULT_SCHEMAS
+                    )),
+                );
                 push_check(
                     &mut checks,
                     "consultant-team.toml has members",
@@ -2160,6 +2180,46 @@ fn command_doctor() -> Result<()> {
                     Some("add ai_integration member for AI-native products".to_string()),
                 );
             }
+        }
+    }
+    // W3: per-role memory namespace coverage. We walk the active
+    // team's role list (whichever team was last installed) and warn
+    // if a namespace dir is missing or empty. Empty == "no .gitkeep
+    // and no README" — that means someone deleted the seed files
+    // manually and the namespace will look invisible to git.
+    if modules.contains_key(MODULE_SLUG_AGENT_TEAM) || modules.contains_key(MODULE_SLUG_AIECONLAB) {
+        let active_team = crate::agent::set_team::read_active_team(&root).unwrap_or_default();
+        let roles: &[&str] = if active_team == "aieconlab" {
+            AIECONLAB_ROLES
+        } else if active_team == "agent-team" {
+            AGENT_TEAM_ROLES
+        } else if modules.contains_key(MODULE_SLUG_AIECONLAB) {
+            AIECONLAB_ROLES
+        } else {
+            AGENT_TEAM_ROLES
+        };
+        let team_dir = root.join(".aiplus/agent-memory/_team");
+        push_check(
+            &mut checks,
+            ".aiplus/agent-memory/_team/ exists".to_string(),
+            team_dir.exists(),
+            Some(format!(
+                "rerun `aiplus add {}` to recreate the namespace",
+                active_team
+            )),
+        );
+        for role in roles {
+            let role_dir = root.join(format!(".aiplus/agent-memory/{role}"));
+            let has_seed =
+                role_dir.join(".gitkeep").exists() || role_dir.join("README.md").exists();
+            push_check(
+                &mut checks,
+                format!(".aiplus/agent-memory/{role}/ exists with seed file"),
+                role_dir.exists() && has_seed,
+                Some(format!(
+                    "rerun `aiplus add {active_team}` to recreate the {role}/ namespace"
+                )),
+            );
         }
     }
     let continuity = continuity_state(&root)?;
@@ -2314,6 +2374,8 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
         ..Plan::default()
     };
     remove_managed_block(&root, &mut plan)?;
+    remove_claude_md_managed_block(&root, &mut plan)?;
+    remove_claude_hooks(&root, &mut plan)?;
     plan.items.push(PlanItem {
         action: "remove".to_string(),
         path: ".aiplus/".to_string(),
@@ -6268,7 +6330,10 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         )?;
     }
 
-    // Copy stub expert configs and stub personas (3 of 12)
+    // W5: the 3 final experts (survey-experiment, computation,
+    // coauthor-liaison) graduated from `_stubs/` to full personas.
+    // Copy them alongside the other shipped 9 — same path layout, no
+    // `_stubs/` subdir.
     for expert in ["survey-experiment", "computation", "coauthor-liaison"] {
         let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
@@ -6277,14 +6342,11 @@ fn aieconlab_init(root: &Path) -> Result<()> {
             content.as_bytes(),
         )?;
 
-        let stub_asset = format!("aieconlab/core/templates/personas/_stubs/{expert}.md");
-        let stub_content = embedded_asset_text(&stub_asset)?;
+        let persona_asset = format!("aieconlab/core/templates/personas/{expert}.md");
+        let persona_content = embedded_asset_text(&persona_asset)?;
         write_file_atomic(
-            &agents_dir
-                .join("personas")
-                .join("_stubs")
-                .join(format!("{expert}.md")),
-            stub_content.as_bytes(),
+            &agents_dir.join("personas").join(format!("{expert}.md")),
+            persona_content.as_bytes(),
         )?;
     }
 
@@ -6321,6 +6383,11 @@ fn aieconlab_init(root: &Path) -> Result<()> {
     // boundary. Codex already reads `.aiplus/agents/` directly, so the
     // mirror is purely additive — it doesn't change codex behavior.
     mirror_personas_to_runtimes(root)?;
+
+    // W3: seed per-role memory namespaces for the 8 AEL core roles.
+    // Experts that get summoned on demand don't get a namespace at
+    // install time — they're added when first invoked.
+    init_memory_namespaces(root, AIECONLAB_ROLES)?;
 
     // W6: seed synthetic velocity runs for the 5 AEL research unit
     // types. Brand-new projects need *some* p50/p90 before the first
@@ -6364,6 +6431,71 @@ the PI commits to a staffing decision to make the dispatch a real artifact
 rather than narrative.
 "#;
 
+const AGENT_TEAM_ROLES: &[&str] = &[
+    "advisor",
+    "ceo",
+    "architect",
+    "pm",
+    "engineer-a",
+    "engineer-b",
+    "reviewer",
+    "qa",
+];
+
+const AIECONLAB_ROLES: &[&str] = &[
+    "advisor",
+    "pi",
+    "theorist",
+    "pm",
+    "ra-stata",
+    "ra-python",
+    "referee",
+    "replicator",
+];
+
+/// W3: seed per-role memory namespaces.
+///
+/// Creates `.aiplus/agent-memory/<role>/` for each role in the active
+/// team + `.aiplus/agent-memory/_team/` for cross-role records (the
+/// same dir that W1 writes consult JSONL into).
+///
+/// Each namespace gets a `.gitkeep` (so git tracks the empty dir) and
+/// a one-line README explaining the isolation rule. We only write the
+/// README when it's missing so re-installing doesn't clobber a user's
+/// edits.
+fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
+    let base = root.join(".aiplus").join("agent-memory");
+    let team_dir = base.join("_team");
+    std::fs::create_dir_all(&team_dir).with_context(|| format!("create {}", team_dir.display()))?;
+    let team_readme = "# _team/ — cross-role records\n\
+                       Consult findings and gate-ledger entries written by\n\
+                       `aiplus agent route` land here. Per-role memory dirs\n\
+                       live in siblings and are isolated.\n";
+    write_if_missing(
+        root,
+        ".aiplus/agent-memory/_team/README.md",
+        team_readme.as_bytes(),
+    )?;
+    write_if_missing(root, ".aiplus/agent-memory/_team/.gitkeep", b"")?;
+    for role in roles {
+        let rdir = base.join(role);
+        std::fs::create_dir_all(&rdir).with_context(|| format!("create {}", rdir.display()))?;
+        let role_readme = format!(
+            "# agent-memory/{role}/ — per-role records\n\
+             Memory written by the `{role}` role lives here. Other roles\n\
+             do not read this dir by default — isolation prevents the\n\
+             context pollution that single-agent setups suffer from.\n"
+        );
+        write_if_missing(
+            root,
+            &format!(".aiplus/agent-memory/{role}/README.md"),
+            role_readme.as_bytes(),
+        )?;
+        write_if_missing(root, &format!(".aiplus/agent-memory/{role}/.gitkeep"), b"")?;
+    }
+    Ok(())
+}
+
 fn agent_team_init(root: &Path) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir)?;
@@ -6373,16 +6505,7 @@ fn agent_team_init(root: &Path) -> Result<()> {
     std::fs::create_dir_all(agents_dir.join("experts"))?;
 
     // Copy core role configs
-    for role in [
-        "advisor",
-        "ceo",
-        "architect",
-        "pm",
-        "engineer-a",
-        "engineer-b",
-        "reviewer",
-        "qa",
-    ] {
+    for role in AGENT_TEAM_ROLES {
         let asset = format!("aiplus-agent-team/core/templates/{role}.toml");
         let content = embedded_asset_text(&asset)?;
         write_file_atomic(&agents_dir.join(format!("{role}.toml")), content.as_bytes())?;
@@ -6472,6 +6595,10 @@ fn agent_team_init(root: &Path) -> Result<()> {
 
     // Mirror to per-runtime agent dirs. See aieconlab_init for rationale.
     mirror_personas_to_runtimes(root)?;
+
+    // W3: seed per-role memory namespaces + the cross-role `_team/`
+    // dir. Idempotent — re-runs leave existing READMEs intact.
+    init_memory_namespaces(root, AGENT_TEAM_ROLES)?;
 
     Ok(())
 }
@@ -6628,6 +6755,10 @@ fn install_runtime_adapter(
     match runtime {
         "codex" => update_agents_md(root, plan, options),
         "claude-code" => {
+            // Bridge .aiplus/AGENTS.aiplus.md into the Claude Code session
+            // via a managed block in top-level AGENTS.md (Claude Code reads
+            // AGENTS.md alongside CLAUDE.md). Same mechanism as codex.
+            update_agents_md(root, plan, options)?;
             write_file_safe(
                 root,
                 ".claude/commands/aiplus-refresh.md",
@@ -6641,9 +6772,41 @@ fn install_runtime_adapter(
                 claude_advisor_agent_content().as_bytes(),
                 plan,
                 options,
-            )
+            )?;
+            write_file_safe(
+                root,
+                ".claude/agents/aiplus-memory.md",
+                claude_memory_subagent_content().as_bytes(),
+                plan,
+                options,
+            )?;
+            write_file_safe(
+                root,
+                ".claude/agents/aiplus-compact.md",
+                claude_compact_subagent_content().as_bytes(),
+                plan,
+                options,
+            )?;
+            write_file_safe(
+                root,
+                ".claude/agents/aiplus-velocity.md",
+                claude_velocity_subagent_content().as_bytes(),
+                plan,
+                options,
+            )?;
+            write_file_safe(
+                root,
+                ".claude/agents/aiplus-team-consultant.md",
+                claude_team_consultant_subagent_content().as_bytes(),
+                plan,
+                options,
+            )?;
+            install_claude_hooks(root, plan)?;
+            update_claude_md(root, plan)
         }
         "opencode" => {
+            // Same bridge for OpenCode — sst/opencode also reads AGENTS.md.
+            update_agents_md(root, plan, options)?;
             install_opencode_config(root, plan, options)?;
             write_file_safe(
                 root,
@@ -6756,12 +6919,17 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
     if plan.dry_run {
         plan.items.push(PlanItem {
             action: "compact-init".to_string(),
-            path: ".codex/compact/".to_string(),
+            path: ".aiplus/compact/".to_string(),
         });
         return Ok(());
     }
-    ensure_dir(root, &rel_to_abs(root, ".codex/compact")?, plan)?;
-    ensure_dir(root, &rel_to_abs(root, ".codex/compact/checkpoints")?, plan)?;
+    migrate_legacy_codex_compact(root)?;
+    ensure_dir(root, &rel_to_abs(root, ".aiplus/compact")?, plan)?;
+    ensure_dir(
+        root,
+        &rel_to_abs(root, ".aiplus/compact/checkpoints")?,
+        plan,
+    )?;
     for file in [
         "current-handoff.md",
         "decision-log.md",
@@ -6774,7 +6942,7 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
             embedded_asset_text(&asset_path)?.replace("<ISO8601_TIMESTAMP>", &timestamp());
         write_compact_template(
             root,
-            &format!(".codex/compact/{file}"),
+            &format!(".aiplus/compact/{file}"),
             content.as_bytes(),
             plan,
             force,
@@ -6782,13 +6950,13 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
     }
     plan.items.push(PlanItem {
         action: "compact-init".to_string(),
-        path: ".codex/compact/".to_string(),
+        path: ".aiplus/compact/".to_string(),
     });
     Ok(())
 }
 
 fn migrate_compact_handoff_if_needed(root: &Path, plan: &mut Plan) -> Result<bool> {
-    let rel = ".codex/compact/current-handoff.md";
+    let rel = ".aiplus/compact/current-handoff.md";
     let path = rel_to_abs(root, rel)?;
     if !path.exists() {
         return Ok(false);
@@ -6875,6 +7043,121 @@ fn update_agents_md(root: &Path, plan: &mut Plan, options: &Options) -> Result<(
 
 fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
     let rel = "AGENTS.md";
+    let abs = rel_to_abs(root, rel)?;
+    let Some(current) = read_text_if_exists(&abs)? else {
+        return Ok(());
+    };
+    if !current.contains(MANAGED_BEGIN) {
+        return Ok(());
+    }
+    let next = replace_between(&current, MANAGED_BEGIN, MANAGED_END, "")?;
+    if next != current {
+        write_managed_text(root, rel, &next, plan)?;
+    }
+    Ok(())
+}
+
+fn claude_md_managed_block() -> String {
+    format!(
+        "{begin}\n{body}\n{end}",
+        begin = MANAGED_BEGIN,
+        end = MANAGED_END,
+        body = CLAUDE_MD_MANAGED_BODY.trim()
+    )
+}
+
+const CLAUDE_MD_MANAGED_BODY: &str = r#"## AiPlus is installed in this project
+
+AiPlus extends this session with persistent memory, compact-resilient handoff,
+plan-time review, velocity estimates, and a team of specialist subagents.
+Full operating manual: `.aiplus/AGENTS.aiplus.md`.
+
+### Auto-triggered hooks (already active)
+- `SessionStart` injects `aiplus memory context` so prior decisions, naming
+  rules, and architectural choices are loaded before the first reply.
+- `PreCompact` runs `aiplus compact prepare` so a structured handoff is saved
+  before context compaction; `aiplus compact resume` reads it back afterwards.
+
+### Manual subcommands you (the agent) should reach for
+- Memory: `aiplus memory status | context | add | forget`
+- Compact: `aiplus compact remind | prepare | resume | savings`
+- Velocity: `aiplus velocity estimate --task-type <feat|fix|chore> --human-estimate <Nh>` before any non-trivial task, then `aiplus velocity complete --task-id <id> --actual <duration> --outcome <success|partial|fail>` after.
+- Team consultant: `aiplus agent route <role>` / `aiplus agent talk <role>`.
+
+### Specialist subagents (route via Agent tool when conditions match)
+- `aiplus-memory` — user said "记住", "以后", "下次别", "忘掉", or preference-statement language.
+- `aiplus-compact` — context approaching limit, mid-task interruption, or session resume after `/clear` or compact.
+- `aiplus-velocity` — user asks "多久" / "estimate this" / before starting a clearly bounded task.
+- `aiplus-team-consultant` — non-trivial plans, multi-stakeholder changes, designs touching security / onboarding / AI-integration / privacy.
+- `aiplus-advisor` — general AiPlus questions or unsure which specialist to pick.
+
+### Natural-language mapping
+- "记住这个" / "下次也这样" → `aiplus memory add` (after redaction).
+- "忘掉这个" → `aiplus memory forget`.
+- "这个要多久" / "estimate this" → `aiplus velocity estimate`.
+- "评审一下这个计划" / "review this plan" → `aiplus-team-consultant`.
+- "新开顾问" / "new advisor" → `aiplus identity context --role advisor`.
+
+### What AiPlus does NOT auto-do
+Owner-gated actions (publish, deploy, push, edit global config, contact
+external accounts, upload private data, add telemetry, expose secrets) stay
+behind explicit user confirmation. AiPlus never clicks the host compact
+button — it prepares the handoff and tells you when to do it manually.
+"#;
+
+fn update_claude_md(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let current = read_text_if_exists(&abs)?;
+    let block = claude_md_managed_block();
+    let next = match current.as_deref() {
+        None => format!("{block}\n"),
+        Some(text) if text.trim().is_empty() => format!("{block}\n"),
+        Some(text) => {
+            let begin_count = text.matches(MANAGED_BEGIN).count();
+            let end_count = text.matches(MANAGED_END).count();
+            if begin_count != end_count
+                || begin_count > 1
+                || (begin_count == 1 && text.find(MANAGED_BEGIN) > text.find(MANAGED_END))
+            {
+                return Err(CliError::new(
+                    1,
+                    "ERROR malformed or duplicate AiPlus managed block in CLAUDE.md",
+                )
+                .into());
+            }
+            if begin_count == 1 {
+                replace_between(text, MANAGED_BEGIN, MANAGED_END, &block)?
+            } else {
+                format!(
+                    "{}{}{}\n",
+                    text,
+                    if text.ends_with('\n') { "\n" } else { "\n\n" },
+                    block
+                )
+            }
+        }
+    };
+    if current.is_none() {
+        write_file_safe(
+            root,
+            rel,
+            next.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )
+    } else {
+        write_managed_text(root, rel, &next, plan)
+    }
+}
+
+fn remove_claude_md_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = "CLAUDE.md";
     let abs = rel_to_abs(root, rel)?;
     let Some(current) = read_text_if_exists(&abs)? else {
         return Ok(());
@@ -7005,7 +7288,7 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String], upgrad
         println!("No files were changed.");
         println!("Will create/update:");
         println!("- .aiplus/");
-        println!("- .codex/compact/");
+        println!("- .aiplus/compact/");
         println!("- .aiplus/memory/");
         println!("- .aiplus/identities/");
         println!("- .aiplus/skills/");
@@ -7027,7 +7310,7 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String], upgrad
     if upgraded {
         println!("AiPlus upgraded for {runtime_text} in this project.");
         println!("Existing AiPlus managed files were backed up before replacement.");
-        println!(".codex/compact/ state was preserved.");
+        println!(".aiplus/compact/ state was preserved.");
     } else {
         println!("AiPlus installed for {runtime_text} in this project.");
     }
@@ -7409,11 +7692,37 @@ fn normalize_existing_modules(
 }
 
 fn compact_dir(root: &Path) -> Result<PathBuf> {
-    rel_to_abs(root, ".codex/compact")
+    rel_to_abs(root, ".aiplus/compact")
+}
+
+// One-time migration for projects installed before v0.5.11 — moves
+// `.codex/compact/` to `.aiplus/compact/`. No-op when the new path already
+// exists or the legacy path is absent. Removes the empty legacy directory
+// (and `.codex` if that's the only thing left under it) so claude-code /
+// opencode-only projects don't keep a stray `.codex/` tree.
+fn migrate_legacy_codex_compact(root: &Path) -> Result<()> {
+    let legacy = rel_to_abs(root, ".codex/compact")?;
+    let new_path = rel_to_abs(root, ".aiplus/compact")?;
+    if !legacy.exists() || new_path.exists() {
+        return Ok(());
+    }
+    ensure_dir(root, &rel_to_abs(root, ".aiplus")?, &mut Plan::default())?;
+    fs::rename(&legacy, &new_path)
+        .with_context(|| format!("failed to migrate {legacy:?} -> {new_path:?}"))?;
+    let legacy_parent = rel_to_abs(root, ".codex")?;
+    if legacy_parent.is_dir() {
+        if let Ok(mut entries) = fs::read_dir(&legacy_parent) {
+            if entries.next().is_none() {
+                let _ = fs::remove_dir(&legacy_parent);
+            }
+        }
+    }
+    println!("MIGRATION=compact .codex/compact/ -> .aiplus/compact/");
+    Ok(())
 }
 
 fn compact_file(root: &Path, rel: &str) -> Result<PathBuf> {
-    rel_to_abs(root, &format!(".codex/compact/{rel}"))
+    rel_to_abs(root, &format!(".aiplus/compact/{rel}"))
 }
 
 fn read_compact_text(root: &Path, file: &str) -> Result<String> {
@@ -7430,7 +7739,7 @@ fn compact_validate_state(root: &Path) -> Result<CompactValidation> {
     let mut denied_gates = Vec::new();
     let compact_dir = compact_dir(root)?;
     if !compact_dir.exists() {
-        errors.push(".codex/compact/ is missing".to_string());
+        errors.push(".aiplus/compact/ is missing".to_string());
         return Ok(CompactValidation {
             ok: false,
             errors,
@@ -7700,7 +8009,7 @@ fn compact_checkpoint_with_options(
         manual_compact_only: true,
     };
     let filename = format!("{}.json", timestamp.replace([':', '.'], "-"));
-    let rel = format!(".codex/compact/checkpoints/{filename}");
+    let rel = format!(".aiplus/compact/checkpoints/{filename}");
     write_file_safe(
         root,
         &rel,
@@ -7751,7 +8060,7 @@ fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
     });
     let capsule_written = save_context_capsule(root, &capsule).is_ok();
     if capsule_written {
-        println!("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json");
+        println!("CONTEXT_CAPSULE_CREATED=.aiplus/compact/context-capsule.json");
     }
 
     if readiness.state == "READY_TO_COMPACT" {
@@ -7938,8 +8247,9 @@ fn compact_reminder_decision(
             estimated_tokens_saved: estimate.tokens_saved,
             estimated_usd_saved,
             reason: handoff.reason.clone(),
-            next_action: "Update .codex/compact/current-handoff.md and run aiplus compact prepare."
-                .to_string(),
+            next_action:
+                "Update .aiplus/compact/current-handoff.md and run aiplus compact prepare."
+                    .to_string(),
             secret_values_printed: "no",
         };
     }
@@ -8158,7 +8468,7 @@ fn set_compact_snooze(root: &Path, duration: &str) -> Result<()> {
     };
     write_file_safe(
         root,
-        ".codex/compact/reminder-snooze.json",
+        ".aiplus/compact/reminder-snooze.json",
         format!("{}\n", serde_json::to_string_pretty(&snooze)?).as_bytes(),
         &mut Plan::default(),
         &Options {
@@ -8383,7 +8693,7 @@ fn compact_readiness(result: &CompactValidation, root: &Path) -> CompactReadines
             state: "NEEDS_HANDOFF_UPDATE",
             pressure: "MEDIUM",
             explanation: "The next safe action is missing from the handoff.",
-            next_action: "Update .codex/compact/current-handoff.md with the next safe action."
+            next_action: "Update .aiplus/compact/current-handoff.md with the next safe action."
                 .to_string(),
             manual_compact_recommended: false,
             reasons: vec!["next safe action is missing".to_string()],
@@ -10045,24 +10355,89 @@ fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String
                 managed_block_target_ok(root)?,
             ),
         ],
-        "claude-code" => vec![
-            (
-                ".claude/commands/aiplus-refresh.md exists".to_string(),
-                rel_to_abs(root, ".claude/commands/aiplus-refresh.md")?.exists(),
-            ),
-            (
-                ".claude/commands/aiplus-refresh.md is AiPlus refresh command".to_string(),
-                file_contains(root, ".claude/commands/aiplus-refresh.md", "AiPlus Refresh")?,
-            ),
-            (
-                ".claude/agents/aiplus-advisor.md exists".to_string(),
-                rel_to_abs(root, ".claude/agents/aiplus-advisor.md")?.exists(),
-            ),
-            (
-                ".claude/agents/aiplus-advisor.md is AiPlus advisor agent".to_string(),
-                file_contains(root, ".claude/agents/aiplus-advisor.md", "AiPlus Advisor")?,
-            ),
-        ],
+        "claude-code" => {
+            let hooks_text =
+                read_text_if_exists(&rel_to_abs(root, ".claude/settings.local.json")?)?
+                    .unwrap_or_default();
+            let hooks_value: Option<serde_json::Value> = serde_json::from_str(&hooks_text).ok();
+            let hooks_have_event = |event: &str| -> bool {
+                let Some(value) = &hooks_value else {
+                    return false;
+                };
+                let Some(arr) = value
+                    .get("hooks")
+                    .and_then(|h| h.get(event))
+                    .and_then(|v| v.as_array())
+                else {
+                    return false;
+                };
+                arr.iter().any(matcher_is_aiplus_managed)
+            };
+            vec![
+                (
+                    ".claude/commands/aiplus-refresh.md exists".to_string(),
+                    rel_to_abs(root, ".claude/commands/aiplus-refresh.md")?.exists(),
+                ),
+                (
+                    ".claude/commands/aiplus-refresh.md is AiPlus refresh command".to_string(),
+                    file_contains(root, ".claude/commands/aiplus-refresh.md", "AiPlus Refresh")?,
+                ),
+                (
+                    ".claude/agents/aiplus-advisor.md exists".to_string(),
+                    rel_to_abs(root, ".claude/agents/aiplus-advisor.md")?.exists(),
+                ),
+                (
+                    ".claude/agents/aiplus-advisor.md is AiPlus advisor agent".to_string(),
+                    file_contains(root, ".claude/agents/aiplus-advisor.md", "AiPlus Advisor")?,
+                ),
+                (
+                    ".claude/agents/aiplus-memory.md exists".to_string(),
+                    rel_to_abs(root, ".claude/agents/aiplus-memory.md")?.exists(),
+                ),
+                (
+                    ".claude/agents/aiplus-compact.md exists".to_string(),
+                    rel_to_abs(root, ".claude/agents/aiplus-compact.md")?.exists(),
+                ),
+                (
+                    ".claude/agents/aiplus-velocity.md exists".to_string(),
+                    rel_to_abs(root, ".claude/agents/aiplus-velocity.md")?.exists(),
+                ),
+                (
+                    ".claude/agents/aiplus-team-consultant.md exists".to_string(),
+                    rel_to_abs(root, ".claude/agents/aiplus-team-consultant.md")?.exists(),
+                ),
+                (
+                    ".claude/settings.local.json exists".to_string(),
+                    rel_to_abs(root, ".claude/settings.local.json")?.exists(),
+                ),
+                (
+                    ".claude/settings.local.json parses as JSON".to_string(),
+                    hooks_value.is_some(),
+                ),
+                (
+                    "settings.local.json has AiPlus SessionStart hook".to_string(),
+                    hooks_have_event("SessionStart"),
+                ),
+                (
+                    "settings.local.json has AiPlus PreCompact hook".to_string(),
+                    hooks_have_event("PreCompact"),
+                ),
+                (
+                    "CLAUDE.md exists".to_string(),
+                    rel_to_abs(root, "CLAUDE.md")?.exists(),
+                ),
+                (
+                    "CLAUDE.md contains exactly one AiPlus managed block".to_string(),
+                    read_text_if_exists(&rel_to_abs(root, "CLAUDE.md")?)?
+                        .as_deref()
+                        .map(|t| {
+                            t.matches(MANAGED_BEGIN).count() == 1
+                                && t.matches(MANAGED_END).count() == 1
+                        })
+                        .unwrap_or(false),
+                ),
+            ]
+        }
         "opencode" => opencode_doctor_requirements(root)?,
         _ => Vec::new(),
     })
@@ -10142,6 +10517,11 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/agents".to_string(),
         ".aiplus/agent-team".to_string(),
         ".aiplus/aieconlab".to_string(),
+        ".aiplus/compact".to_string(),
+        // W3: per-role memory namespaces seeded by agent_team_init /
+        // aieconlab_init. The dir itself is fixed; per-role
+        // subdirectories live inside and uninstall walks the tree.
+        ".aiplus/agent-memory".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
@@ -10306,7 +10686,7 @@ When continuing:
 
 1. Re-read `AGENTS.md`.
 2. Re-read `.aiplus/AGENTS.aiplus.md`.
-3. Re-read `.codex/compact/current-handoff.md` if it exists.
+3. Re-read `.aiplus/compact/current-handoff.md` if it exists.
 4. Enable AiPlus Auto Team Consultant and AiPlus Compact Reminder for the current session.
 5. Run `aiplus compact resume` after compact when work should continue.
 6. Continue the current task without asking the user to repeat the full instruction.
@@ -10415,7 +10795,7 @@ values.
 
 ## Compact Reminder
 
-Read `.codex/compact/current-handoff.md` before long-running work if it exists.
+Read `.aiplus/compact/current-handoff.md` before long-running work if it exists.
 
 Proactive reminder schedule:
 1. HEAVY task: run `aiplus compact remind --event long-session` at least every
@@ -10591,7 +10971,7 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 
 Generic continuation keywords: 刷新, refresh, 继续, continue, resume, go on, 接着
 
-Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume after compact when work should continue, enable AiPlus, and continue the current task.
+Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .aiplus/compact/current-handoff.md if present, run aiplus compact resume after compact when work should continue, enable AiPlus, and continue the current task.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 
@@ -10649,7 +11029,7 @@ Re-read project-local AiPlus instructions:
 
 1. Read AGENTS.md if present.
 2. Read .aiplus/AGENTS.aiplus.md.
-3. Read .codex/compact/current-handoff.md if present.
+3. Read .aiplus/compact/current-handoff.md if present.
 4. Enable AiPlus Auto Team Consultant, AiPlus Compact Reminder, and Agent Continuity for this session.
 5. Proactively use `aiplus compact remind`: HEAVY work every 30 minutes or major phase boundary; MEDIUM work at phase boundary or before review/QA; before subagent bursts, release prep, and Owner handoff. If `REMINDER_DECISION=remind_now`, run/confirm `aiplus compact prepare`, then suggest manual host compact only.
 6. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Compact Reminder, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
@@ -10665,13 +11045,24 @@ Agent Continuity mapping: 记住这个/记住这个偏好 -> project memory add 
 }
 
 fn claude_advisor_agent_content() -> String {
-    r#"# AiPlus Advisor
+    r#"---
+name: aiplus-advisor
+description: General AiPlus orientation, refresh, and status. Use when the user says "AiPlus 刷新", "刷新", "aiplus status", "aiplus refresh", "继续 AiPlus", or asks general AiPlus questions. Routes to specialist subagents (aiplus-memory, aiplus-compact, aiplus-velocity, aiplus-team-consultant) when those match better.
+---
+
+# AiPlus Advisor
 
 Use project-local AiPlus modules from .aiplus/modules/ when relevant.
 
 - Compact Reminder: .aiplus/modules/aiplus-compact-reminder/
 - Auto Team Consultant: .aiplus/modules/aiplus-auto-team-consultant/
 - Agent Memory: .aiplus/modules/aiplus-agent-memory/
+
+When a request fits a specialist better, route to:
+- aiplus-memory for persistence of preferences and decisions
+- aiplus-compact for handoff / resume / context-limit handling
+- aiplus-velocity for task estimation and actuals
+- aiplus-team-consultant for plan-time review
 
 Compact Reminder reminder schedule: run `aiplus compact remind` proactively at safe
 high-value moments. For HEAVY tasks, check every 30 minutes or at major phase
@@ -10690,6 +11081,170 @@ Generic continuation also works when possible:
 继续, 刷新, continue, resume, refresh, go on, 接着.
 
 Agent Continuity: use `aiplus memory status/context/add/forget`, `aiplus identity context --role advisor|ceo`, and `aiplus skill-candidate propose/reject` for natural phrases such as 记住这个, 以后都这样, 只在这个项目用, 忘掉这个, 你记住了什么, 这次用了哪些记忆, 新开顾问, 新开 advisor, 新开 CEO, 把这次经验沉淀成 skill, 不要用我的私人记忆, and 本次忽略我的偏好. Memory is context, identity is not permission, and skill candidates are not approved skills.
+"#
+    .to_string()
+}
+
+fn claude_memory_subagent_content() -> String {
+    r#"---
+name: aiplus-memory
+description: Persists preferences, naming rules, decisions, and project-specific conventions across sessions so the agent stops re-asking the same questions. Use whenever the user states a persistent rule (Chinese signals — "记住", "以后", "下次别", "只在这个项目用", "忘掉这个", "你记住了什么"; English signals — "remember", "from now on", "don't", "the convention is", "what do you remember"). Always run before claiming you will "remember" something.
+---
+
+# AiPlus Memory
+
+This subagent owns the `aiplus memory` surface. Twelve redaction patterns
+strip secrets before any record is written, so capture preferences without
+leaking them.
+
+## Decision map
+
+| User intent | Command |
+|---|---|
+| Record a preference or rule | `aiplus memory add --scope project --kind preference --text "..."` |
+| Record a project decision | `aiplus memory add --scope project --kind decision --title "..." --summary "..."` |
+| Recall persistent context | `aiplus memory context --runtime claude-code --budget 2000` |
+| Audit what is stored | `aiplus memory status` |
+| Drop a stale memory | `aiplus memory forget <id>` (ask if id is ambiguous) |
+
+## Scope discipline
+
+- "只在这个项目用" → `--scope project`.
+- "以后都这样" / "from now on" → propose a profile/global candidate; do not
+  silently approve at global scope. Use `aiplus skill-candidate propose ...`
+  and tell the user it requires their explicit approval.
+- "本次忽略我的偏好" / "don't use my private memory this session" → session-
+  local opt-out; do not write any record.
+
+## Hand-off rules
+
+- After `aiplus memory add`, echo back the record id so the user can `forget`
+  it later.
+- After `aiplus memory context`, summarize what was loaded — never silently
+  inject without acknowledgement.
+- If redaction triggered, surface the redaction count (do not show what was
+  redacted).
+
+Memory is context, not permission. It never authorizes Owner-gated actions.
+"#
+    .to_string()
+}
+
+fn claude_compact_subagent_content() -> String {
+    r#"---
+name: aiplus-compact
+description: Survives context compaction and session interruption by preparing structured handoffs and resuming from them. Use when context is approaching the compact threshold, when a long task is about to be interrupted, when the user says "the agent forgot" / "你又忘了", at session resume after /clear or /compact, or whenever you need to pick up where you left off. Owns `aiplus compact prepare | resume | remind | savings`.
+---
+
+# AiPlus Compact Reminder
+
+This subagent owns the `aiplus compact` surface. It DOES NOT click or trigger
+the host compact action; it only prepares the handoff and tells the user when
+to compact manually.
+
+## Decision map
+
+| Signal | Action |
+|---|---|
+| Long-running task, ~30 min elapsed | `aiplus compact remind --event long-session` |
+| Major phase boundary, before review/QA, before subagent bursts, before release prep, before Owner handoff | `aiplus compact remind --event phase-end` |
+| `REMINDER_DECISION=remind_now` in output | Run `aiplus compact prepare`, then tell the user it is safe to compact manually |
+| Session start with a pending capsule | `aiplus compact resume` first, then proceed |
+| User says "continue" / "继续" / "where were we" after compact | `aiplus compact resume`, summarize what was restored, then continue |
+| Demonstrating token savings | `aiplus compact savings` |
+
+## Task-weight calibration
+
+- HEAVY task — every 30 min or at major phase boundaries.
+- MEDIUM task — at phase boundaries or before review/QA.
+- LIGHT task — only on user request or obvious handoff.
+
+## Hand-off rules
+
+- After `prepare`, surface the handoff path so the user knows where it is.
+- After `resume`, summarize what was restored before continuing — never
+  silently swap context.
+- Never auto-trigger the host's compact action. AiPlus prepares; the user
+  presses the button.
+"#
+    .to_string()
+}
+
+fn claude_velocity_subagent_content() -> String {
+    r#"---
+name: aiplus-velocity
+description: Replaces human-engineer-hour estimates with AI-native p50/p90 numbers calibrated from your own task history. Use BEFORE starting any non-trivial bounded task, when the user asks "how long will this take" / "多久能搞完" / "estimate this", when reviewing past delivery times, or when detecting human-time anchoring bias. Owns `aiplus velocity estimate | complete | bias | report`.
+---
+
+# AiPlus Velocity
+
+This subagent owns the `aiplus velocity` surface. Every estimate and every
+completion is logged as local JSONL under `.aiplus/velocity/`.
+
+## Decision map
+
+| Signal | Action |
+|---|---|
+| About to start a clearly bounded task | `aiplus velocity estimate --task-type <feature|fix|refactor|chore> --human-estimate <Nh>` |
+| Task finished | `aiplus velocity complete --task-id <est_id> --actual <Nm|Nh> --outcome <success|partial|fail>` |
+| User quoted a long human estimate ("this is 2 days") | Run `estimate` to surface the AI-native p50/p90; flag if `HUMAN_ANCHOR_DETECTED=yes` |
+| User asks "are we faster than my old workflow" | `aiplus velocity bias` then `aiplus velocity report` |
+| Sanity-checking the ledger | `aiplus velocity doctor` |
+
+## Confidence calibration
+
+- `MATCHED_RECORDS=0` → `CONFIDENCE=low`. Tell the user the estimate has no
+  history yet and the numbers will tighten after a few runs.
+- `MATCHED_RECORDS>=10` → quote the p50 with confidence; quote the p90 when
+  the user needs a worst-case bound.
+
+## Hand-off rules
+
+- Always echo the `est_id` after an estimate so completion can reference it.
+- Never quote a single number when you can quote the p50/p90 pair.
+- Never overwrite a `complete` record; if the user wants to revise, surface
+  the prior record and ask.
+"#
+    .to_string()
+}
+
+fn claude_team_consultant_subagent_content() -> String {
+    r#"---
+name: aiplus-team-consultant
+description: Plan-time review that catches what single-agent planning misses — onboarding ease, security and privacy, real execution pitfalls, AI integration considerations. Use BEFORE finalizing any non-trivial plan: feature plans, architecture changes, refactors touching multiple modules, anything affecting security / onboarding / privacy / AI integration, anything that will be shipped to users. A coordinator scales the consult by complexity and risk so light tasks stay light. Owns `aiplus agent route | talk | invite | dismiss | audit run | transcript`.
+---
+
+# AiPlus Auto Team Consultant
+
+This subagent owns the `aiplus agent` and team consultant surface, including
+the project-local `consultant-team.toml`. The virtual team is 5 expert
+members + the project's user personas, all seated at the same table.
+
+## Decision map
+
+| Signal | Action |
+|---|---|
+| Drafting a non-trivial plan | `aiplus agent route reviewer` to walk the plan against the table before committing |
+| Plan touches security / privacy | Ensure `ai_integration` and security-aware members are on the consultant-team; surface concerns inline |
+| User asks "is this plan good" / "second opinion" | `aiplus agent talk <role>` for the matching expert |
+| Multi-stakeholder decision | Run the full table, then summarize divergent positions; do not pre-collapse |
+| Acceptance gate | `aiplus agent audit run` |
+| Coordination retrospective | `aiplus agent transcript` |
+
+## Coordinator discipline
+
+- Light task → at most one expert. Don't burn the whole table on a typo fix.
+- Medium task → 2–3 experts matching the risk axes.
+- Heavy task → full table including user personas.
+
+## Hand-off rules
+
+- Always surface dissent. If two experts disagree, name both positions; do
+  not flatten into a single "consensus" line.
+- Never approve Owner-gated actions on the team's behalf. The consultant
+  produces a recommendation; the user gives the green light.
+- After the consult, write a short decision record (via `aiplus memory add
+  --kind decision`) so future sessions can see what was decided.
 "#
     .to_string()
 }
@@ -10742,6 +11297,238 @@ Memory is context, identity is role contract not permission, and skill
 candidates are proposals rather than approved skills.
 "#
     .to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Claude Code settings.local.json hooks installer
+// ---------------------------------------------------------------------------
+//
+// AiPlus writes a small set of Claude Code hooks into .claude/settings.local.json
+// so that the agent automatically loads memory context on session start and
+// prepares a compact handoff before Claude Code compacts. The file is
+// project-local and typically gitignored by Claude Code conventions, so this
+// touches only the host machine.
+//
+// AiPlus-managed matcher entries are tagged with `"aiplus_managed": true` and
+// always use `"matcher": "*"`. Identification is also resilient if Claude Code
+// or another tool strips unknown fields on rewrite: a matcher with `"*"` whose
+// hooks are all `aiplus ...` commands is considered ours.
+//
+// User-defined hooks in the same file are preserved.
+
+fn aiplus_managed_hook_set() -> Vec<(&'static str, Vec<serde_json::Value>)> {
+    vec![
+        (
+            "SessionStart",
+            vec![serde_json::json!({
+                "matcher": "*",
+                "aiplus_managed": true,
+                "hooks": [{
+                    "type": "command",
+                    "command": "aiplus memory context --runtime claude-code --budget 2000",
+                    "aiplus_managed": true
+                }]
+            })],
+        ),
+        (
+            "PreCompact",
+            vec![serde_json::json!({
+                "matcher": "*",
+                "aiplus_managed": true,
+                "hooks": [{
+                    "type": "command",
+                    "command": "aiplus compact prepare",
+                    "aiplus_managed": true
+                }]
+            })],
+        ),
+    ]
+}
+
+fn matcher_is_aiplus_managed(matcher: &serde_json::Value) -> bool {
+    if matcher
+        .get("aiplus_managed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    let Some(hooks) = matcher.get("hooks").and_then(|h| h.as_array()) else {
+        return false;
+    };
+    if hooks.iter().any(|h| {
+        h.get("aiplus_managed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }) {
+        return true;
+    }
+    let matcher_str = matcher
+        .get("matcher")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if matcher_str != "*" {
+        return false;
+    }
+    !hooks.is_empty()
+        && hooks.iter().all(|h| {
+            h.get("command")
+                .and_then(|v| v.as_str())
+                .map(|c| {
+                    let t = c.trim_start();
+                    t == "aiplus" || t.starts_with("aiplus ")
+                })
+                .unwrap_or(false)
+        })
+}
+
+fn apply_aiplus_managed_hooks(value: &mut serde_json::Value) {
+    let object = match value.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+    let hooks_entry = object
+        .entry("hooks".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !hooks_entry.is_object() {
+        *hooks_entry = serde_json::json!({});
+    }
+    let hooks_obj = hooks_entry.as_object_mut().unwrap();
+    for (event, desired) in aiplus_managed_hook_set() {
+        let event_entry = hooks_obj
+            .entry(event.to_string())
+            .or_insert_with(|| serde_json::json!([]));
+        if !event_entry.is_array() {
+            *event_entry = serde_json::json!([]);
+        }
+        let arr = event_entry.as_array_mut().unwrap();
+        arr.retain(|m| !matcher_is_aiplus_managed(m));
+        for m in desired {
+            arr.push(m);
+        }
+    }
+}
+
+fn strip_aiplus_managed_hooks(value: &mut serde_json::Value) {
+    let Some(obj) = value.as_object_mut() else {
+        return;
+    };
+    let Some(hooks) = obj.get_mut("hooks").and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+    let event_keys: Vec<String> = hooks.keys().cloned().collect();
+    for ev in event_keys {
+        if let Some(arr) = hooks.get_mut(&ev).and_then(|v| v.as_array_mut()) {
+            arr.retain(|m| !matcher_is_aiplus_managed(m));
+            let empty = arr.is_empty();
+            if empty {
+                hooks.remove(&ev);
+            }
+        }
+    }
+    if hooks.is_empty() {
+        obj.remove("hooks");
+    }
+}
+
+fn install_claude_hooks(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = ".claude/settings.local.json";
+    let target = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &target)?;
+    if let Some(parent) = target.parent() {
+        ensure_dir(root, parent, plan)?;
+    }
+
+    let current_text = read_text_if_exists(&target)?;
+    let mut value: serde_json::Value = match current_text.as_deref() {
+        Some(t) if !t.trim().is_empty() => serde_json::from_str(t).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR invalid JSON in {rel}: {e}; fix or remove the file and retry install"
+                ),
+            )
+        })?,
+        _ => serde_json::json!({}),
+    };
+    if !value.is_object() {
+        return Err(CliError::new(1, format!("ERROR {rel} root must be a JSON object")).into());
+    }
+
+    apply_aiplus_managed_hooks(&mut value);
+
+    let mut next = serde_json::to_string_pretty(&value)
+        .map_err(|e| CliError::new(1, format!("ERROR serialize {rel}: {e}")))?;
+    next.push('\n');
+
+    if current_text.as_deref() == Some(next.as_str()) {
+        plan.items.push(PlanItem {
+            action: "skip-identical".to_string(),
+            path: rel.to_string(),
+        });
+        return Ok(());
+    }
+
+    plan.items.push(PlanItem {
+        action: if current_text.is_none() {
+            "write"
+        } else {
+            "managed-update"
+        }
+        .to_string(),
+        path: rel.to_string(),
+    });
+    if let Some(text) = current_text.as_ref() {
+        backup_file(
+            root,
+            rel,
+            text.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: true,
+                yes: true,
+            },
+        )?;
+    }
+    if !plan.dry_run {
+        fs::write(&target, next.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn remove_claude_hooks(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = ".claude/settings.local.json";
+    let target = rel_to_abs(root, rel)?;
+    let Some(current_text) = read_text_if_exists(&target)? else {
+        return Ok(());
+    };
+    if current_text.trim().is_empty() {
+        return Ok(());
+    }
+    let mut value: serde_json::Value = match serde_json::from_str(&current_text) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    if !value.is_object() {
+        return Ok(());
+    }
+    strip_aiplus_managed_hooks(&mut value);
+
+    let mut next = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
+    next.push('\n');
+
+    if next == current_text {
+        return Ok(());
+    }
+    plan.items.push(PlanItem {
+        action: "managed-update".to_string(),
+        path: rel.to_string(),
+    });
+    if !plan.dry_run {
+        fs::write(&target, next.as_bytes())?;
+    }
+    Ok(())
 }
 
 fn target_root() -> Result<PathBuf> {

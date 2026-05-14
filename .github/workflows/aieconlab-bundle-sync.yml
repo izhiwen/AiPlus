@@ -1,0 +1,157 @@
+# W4: AEL bundle resync.
+#
+# Before this workflow, syncing `assets/aieconlab/` to the latest
+# AEL repo HEAD was a manual rsync. That meant the in-tree AEL
+# bundle drifted behind the AEL repo whenever Steve forgot. This
+# workflow takes the human out of the loop while keeping the merge
+# step manual (so user-facing AEL behavior changes don't land
+# silently in an AiPlus release).
+#
+# Triggers:
+#   * weekly cron: catches AEL changes between AEL releases
+#   * workflow_dispatch: lets a maintainer force a sync any time
+#   * repository_dispatch[event_type=ael-release-published]: fires
+#     from AEL's release.yml whenever AEL cuts a tag (see W4
+#     follow-up: aieconlab/.github/workflows/release.yml)
+#
+# Output: a PR titled `chore(aieconlab-bundle): sync from AEL <ref>`
+# against the AiPlus default branch. CI catches asset-shape drift;
+# a human reviews + merges.
+
+name: aieconlab bundle sync
+
+on:
+  schedule:
+    - cron: '17 7 * * 1'           # Mondays 07:17 UTC
+  workflow_dispatch:
+    inputs:
+      ael_ref:
+        description: 'AEL ref to sync from (branch, tag, or commit SHA). Defaults to main.'
+        required: false
+        default: main
+  repository_dispatch:
+    types: [ael-release-published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AiPlus (default branch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve AEL ref
+        id: ref
+        run: |
+          set -euo pipefail
+          # Order: explicit workflow_dispatch input > repository_dispatch payload > default 'main'.
+          AEL_REF="${{ github.event.inputs.ael_ref }}"
+          if [ -z "$AEL_REF" ]; then
+            AEL_REF="${{ github.event.client_payload.ref }}"
+          fi
+          if [ -z "$AEL_REF" ]; then
+            AEL_REF="main"
+          fi
+          echo "ref=$AEL_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Clone AEL at $AEL_REF
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${{ steps.ref.outputs.ref }}" \
+            https://github.com/izhiwen/AiEconLab.git /tmp/ael || \
+          git clone https://github.com/izhiwen/AiEconLab.git /tmp/ael
+          cd /tmp/ael
+          # Best-effort checkout: if the branch/--depth-1 path failed
+          # (e.g. ref is a SHA), fall back to a full clone + explicit
+          # checkout. Either way we end up at the requested ref.
+          git fetch --tags --depth=1 origin "${{ steps.ref.outputs.ref }}" || true
+          git checkout "${{ steps.ref.outputs.ref }}" || git checkout FETCH_HEAD
+          echo "AEL_HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Rsync into assets/aieconlab/
+        run: |
+          set -euo pipefail
+          mkdir -p assets/aieconlab
+          # Mirror everything the consumer needs to consume AEL: core/,
+          # adapters/, ROADMAP, DESIGN.md, LICENSE, README. Skip CI
+          # artifacts (.github/), .git, top-level node_modules, and
+          # anything under .aiplus/ (project-local state). Trailing
+          # slash on src means contents, not the dir itself.
+          rsync -av --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.aiplus/' \
+            --exclude='node_modules/' \
+            --exclude='*.pyc' \
+            --exclude='__pycache__/' \
+            /tmp/ael/ assets/aieconlab/
+
+      - name: Detect diff
+        id: diff
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain assets/aieconlab/)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            # Capture status + diffstat into a single env block so the
+            # PR body can interpolate it via ${{ env.DIFF_STAT }}.
+            # GitHub Actions YAML doesn't shell-expand body strings,
+            # so we have to feed it pre-rendered text.
+            {
+              echo "DIFF_STAT<<__DIFF_EOF__"
+              git status --short assets/aieconlab/
+              echo "---"
+              git diff --stat assets/aieconlab/ || true
+              echo "__DIFF_EOF__"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Open or update PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/aieconlab-bundle-sync
+          delete-branch: true
+          base: main
+          # Bilingual title per repo hook contract; <ref> is whatever
+          # the trigger resolved to (commit short SHA when input was
+          # 'main', a tag string when triggered by AEL release).
+          title: |
+            chore(aieconlab-bundle): sync from AEL ${{ steps.ref.outputs.ref }} / 同步 AEL bundle
+          commit-message: |
+            chore(aieconlab-bundle): sync from AEL ${{ steps.ref.outputs.ref }} / 同步 AEL bundle
+
+            AEL HEAD: ${{ env.AEL_HEAD_SHA }}
+          body: |
+            Auto-generated by `.github/workflows/aieconlab-bundle-sync.yml`.
+
+            **Source ref**: `${{ steps.ref.outputs.ref }}`
+            **AEL HEAD SHA**: `${{ env.AEL_HEAD_SHA }}`
+            **Trigger**: `${{ github.event_name }}`
+
+            ### Diffstat
+            ```
+            ${{ env.DIFF_STAT }}
+            ```
+
+            ### Review checklist
+            - [ ] Persona files: scan for accidental private-data or IRB paths
+            - [ ] `consultant-team.aieconlab.toml` schema_version unchanged or bumped intentionally
+            - [ ] `econ-team.toml` member list matches AEL DESIGN.md §3
+            - [ ] No new files outside `assets/aieconlab/` accidentally rsynced
+
+            Do **not** merge without skimming the diff: AEL persona
+            changes feed directly into consumers' `.aiplus/agents/`
+            namespace on next `aiplus add aieconlab`.
+
+      - name: No changes
+        if: steps.diff.outputs.changed != 'true'
+        run: |
+          echo "AEL bundle is already in sync with ${{ steps.ref.outputs.ref }} — no PR opened."
