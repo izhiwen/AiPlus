@@ -8323,8 +8323,9 @@ eval "$(aiplus secret-broker need <alias> --auto-prompt)"
 之后所有项目里 `need <alias>` 都从 keyring 静默取出。**用户绝不需要
 重输入同一把 key**。
 
-**严禁直接向 Owner 索取 key 明文**。永远走 `need` / `set`。值只在
-OS keyring 里，agent 永远只能通过 env var 在自己子进程范围内见到。
+**绝不问 Owner 要 key 明文**（严禁直接索取）。永远走 `need` / `set`。
+值只在 OS keyring 里，agent 永远只能通过 env var 在自己子进程范围内
+见到。
 
 其他命令：
 
