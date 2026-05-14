@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+### Cross-project velocity sharing (v2) (#71)
+
+A new global ledger at `~/.config/aiplus/velocity/` (mode `0700`,
+files `0600`) collects the structural projection of every project's
+velocity records. Brand-new projects calibrate AI-native time
+estimates from your cross-project history immediately instead of
+starting at `MATCHED_RECORDS=0 CONFIDENCE=low`. Default per-project
+mode is `read_write`; switch to `read_only` (learn but don't share —
+for IRB-restricted or client work) or `none` (full isolation) via
+`share_to_global_mode` in `.aiplus/velocity/config.json`. New
+commands: `aiplus velocity import-from-project <path>` for one-shot
+migration of an existing project's records; `aiplus velocity report
+--scope local|global|both` (default `both`). The global ledger is
+**structurally incapable** of holding free-text task descriptions,
+file paths, project names, runtime, or machine identifiers — only
+structured labels (`task_type`, `model`, `workflow`), durations,
+outcomes, IDs, timestamps. New doctor fields:
+`local_records_count`, `global_records_count`,
+`synced_records_count`, `local_only_records_count`,
+`share_to_global_mode`, `global_ledger_health` (PASS/NEEDS_FIX/FAIL
+— iCloud/Dropbox sync paths flagged NEEDS_FIX). New IDs are
+ULID-shaped (forward-compat for future multi-machine sync); old
+`est_{unix_ms}` IDs remain readable. velocity types never use
+`serde(deny_unknown_fields)` so an older CLI reading a future
+config doesn't panic.
+/ **跨项目 velocity 共享（v2）**：新增全局 ledger
+`~/.config/aiplus/velocity/`（目录 `0700`、文件 `0600`），汇总每个
+项目的结构化 velocity 投影。新项目立即用你跨项目的历史校准 AI 速度，
+不再从 `MATCHED_RECORDS=0` 起步。每个项目可独立选择
+`read_write`（默认）/`read_only`（学不写，IRB 项目用）/`none`（完全
+隔离）。新命令：`aiplus velocity import-from-project <path>`
+一次性迁移，`aiplus velocity report --scope local|global|both`
+默认 both。全局 ledger 在**结构上**就无法存任务文本、文件路径、
+项目名、runtime 或机器标识——只有结构化标签。doctor 新增 6 个字段
+描述全局 ledger 健康度。新 ID 是 ULID 形状（为未来多机同步留接口）；
+老的 `est_{unix_ms}` 仍可读。velocity schema 永远不用
+`deny_unknown_fields`，旧 CLI 读未来字段不会 panic。
+
 ## 0.5.25
 
 ### K9: agent-key follow-ups (#79, #80, #81)

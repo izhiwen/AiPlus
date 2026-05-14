@@ -45,13 +45,16 @@ aiplus velocity init
 然后 CLI：
 
 ```bash
-aiplus velocity init                       # 初始化追踪
-aiplus velocity estimate                   # 给出 AI-native 估时
-aiplus velocity complete                   # 记录实际完成时间
-aiplus velocity bias --task <id>           # 检查特定任务的 bias
-aiplus velocity report                     # 整体 bias 和 adjustment 报告
-aiplus velocity doctor                     # 健康检查
-aiplus velocity purge --yes                # 手动清理老记录
+aiplus velocity init                                # 初始化追踪
+aiplus velocity estimate                            # 给出 AI-native 估时
+aiplus velocity complete                            # 记录实际完成时间
+aiplus velocity bias --task <id>                    # 检查特定任务的 bias
+aiplus velocity report                              # 整体 bias 和 adjustment 报告（默认 --scope both）
+aiplus velocity report --scope local                # 仅本项目
+aiplus velocity report --scope global               # 仅跨项目
+aiplus velocity doctor                              # 健康检查（含全局 ledger）
+aiplus velocity purge --yes                         # 手动清理老记录
+aiplus velocity import-from-project <path>         # 把已有项目数据回填到全局 ledger
 ```
 
 ## 仓库结构
@@ -62,22 +65,48 @@ aiplus velocity purge --yes                # 手动清理老记录
 
 ## 存储
 
-所有数据都留在 `.aiplus/velocity/`，就是本地 JSONL：
+两层 —— 项目本地 + 跨项目共享。
 
 ```
-.aiplus/velocity/
-  config.json           # 配置
-  estimates.jsonl       # 估时记录
+<project>/.aiplus/velocity/
+  config.json           # 配置（含 share_to_global_mode）
+  estimates.jsonl       # 估时记录（完整，含自由文本 task）
   runs.jsonl            # 完成记录
   rare-cases.jsonl      # rare case (大幅高估、owner gate 命中等)
   multipliers.json      # 聚合 adjustment multiplier
   rotation-state.json   # 滚动状态
+
+~/.config/aiplus/velocity/          # XDG；Windows 上是 %APPDATA%\aiplus\velocity\
+  config.json           # 全局 retention + health 配置
+  estimates.jsonl       # 结构化投影 —— 不含自由文本、路径、项目名
+  runs.jsonl            # 结构化投影
+  rare-cases.jsonl      # 结构化投影
+  anchor-signals.jsonl  # 结构化投影
 ```
 
 - **没有 SQLite，没有 database**。
-- Normal 记录：保留最新 **200** 条。
-- Rare cases：保留最新 **20** 条。
+- 项目级：保留最新 **200** normal + **20** rare。
+- 全局：保留最新 **1000** normal + **100** rare。
+- 目录 `0700`，文件 `0600`。每条记录 `< 4096` 字节（atomic `O_APPEND`）。
 - 聚合 multiplier 会在原始记录滚动之后存活下来，所以校准**不会因为老记录被淘汰而重置**。
+
+### 跨项目共享
+
+默认每个项目对全局 ledger 既读又写——这样新项目一上来就能用上你的
+bias 历史。在 `config.json` 里切换：
+
+```jsonc
+{
+  "schemaVersion": "2",
+  // ...
+  "shareToGlobalMode": "read_write"  // read_write | read_only | none
+}
+```
+
+全局 ledger **物理上不可能装下**自由文本 `task`、文件路径、项目名或
+任何源自 cwd 的字段——这些字段在投影阶段就被丢弃。估时时的合并规则
+是 "project-recent-heavy"：取本项目最新 50 条 + 全局最新 150 条，按
+id 去重。
 
 ## 安全边界
 

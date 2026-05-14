@@ -20,6 +20,11 @@
     "retainDays": { "type": "integer", "minimum": 1 },
     "minBucketSamples": { "type": "integer", "minimum": 1 },
     "rawContentAllowed": { "type": "boolean" },
-    "memoryIntegration": { "type": "string", "enum": ["disabled", "enabled"] }
+    "memoryIntegration": { "type": "string", "enum": ["disabled", "enabled"] },
+    "shareToGlobalMode": {
+      "type": "string",
+      "enum": ["read_write", "read_only", "none"],
+      "description": "Controls cross-project velocity ledger participation. read_write: contribute to and read from ~/.config/aiplus/velocity/. read_only: read only. none: project is invisible to / does not consult the global ledger. Default: read_write."
+    }
   }
 }

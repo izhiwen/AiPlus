@@ -398,6 +398,9 @@ enum Commands {
     },
     Velocity {
         subcommand: Option<String>,
+        /// Second positional arg. Used by `import-from-project` as the
+        /// source project path; unused elsewhere.
+        path: Option<String>,
         #[arg(long)]
         task_type: Option<String>,
         #[arg(long)]
@@ -414,6 +417,9 @@ enum Commands {
         outcome: Option<String>,
         #[arg(long)]
         task: Option<String>,
+        /// Spec v2 §10: `report --scope local|global|both` (default both).
+        #[arg(long)]
+        scope: Option<String>,
         #[arg(long, action = ArgAction::SetTrue)]
         yes: bool,
     },
@@ -1011,6 +1017,7 @@ fn run(command: Commands) -> Result<()> {
         } => command_self(subcommand, dry_run, yes, auto),
         Commands::Velocity {
             subcommand,
+            path,
             task_type,
             human_estimate,
             model,
@@ -1019,9 +1026,11 @@ fn run(command: Commands) -> Result<()> {
             actual,
             outcome,
             task,
+            scope,
             yes,
         } => command_velocity(
             subcommand,
+            path,
             task_type,
             human_estimate,
             model,
@@ -1030,6 +1039,7 @@ fn run(command: Commands) -> Result<()> {
             actual,
             outcome,
             task,
+            scope,
             yes,
         ),
         Commands::Agent(args) => agent::dispatch(args),
@@ -15368,6 +15378,7 @@ fn timestamp() -> String {
 #[allow(clippy::too_many_arguments)]
 fn command_velocity(
     subcommand: Option<String>,
+    path: Option<String>,
     task_type: Option<String>,
     human_estimate: Option<String>,
     model: Option<String>,
@@ -15376,10 +15387,11 @@ fn command_velocity(
     actual: Option<String>,
     outcome: Option<String>,
     task: Option<String>,
+    scope: Option<String>,
     yes: bool,
 ) -> Result<()> {
     let subcommand = subcommand.unwrap_or_else(|| {
-        println!("Usage: aiplus velocity init|estimate|complete|bias|report|doctor|purge");
+        println!("Usage: aiplus velocity init|estimate|complete|bias|report|doctor|purge|import-from-project");
         process::exit(2);
     });
 
@@ -15534,9 +15546,33 @@ fn command_velocity(
             reject_sensitive_velocity_text(&serde_json::to_string(&run)?)?;
             append_velocity_jsonl(&root, "runs.jsonl", &run)?;
 
-            if is_rare_case(&run) {
-                if let Some(rare) = classify_rare_case(&run) {
-                    append_velocity_jsonl(&root, "rare-cases.jsonl", &rare)?;
+            let rare_for_global = if is_rare_case(&run) {
+                let r = classify_rare_case(&run);
+                if let Some(ref rare) = r {
+                    append_velocity_jsonl(&root, "rare-cases.jsonl", rare)?;
+                }
+                r
+            } else {
+                None
+            };
+
+            // Spec v2 §3: dual-write to global. Project write is
+            // authoritative; global is best-effort. share_to_global_mode
+            // = `read_write` → write; anything else → skip.
+            let cfg = aiplus_core::read_velocity_config(&root).unwrap_or_default();
+            let mut global_write = "skipped".to_string();
+            if cfg.share_to_global_mode.writes_global() {
+                match aiplus_core::append_run_to_global(&run) {
+                    Ok(true) => global_write = "appended".to_string(),
+                    Ok(false) => global_write = "skipped_duplicate".to_string(),
+                    Err(e) => {
+                        // Best-effort: project write already landed.
+                        eprintln!("VELOCITY_GLOBAL_WRITE_WARN reason={e}");
+                        global_write = "failed".to_string();
+                    }
+                }
+                if let Some(ref rare) = rare_for_global {
+                    let _ = aiplus_core::append_rare_case_to_global(rare);
                 }
             }
 
@@ -15553,6 +15589,7 @@ fn command_velocity(
                 println!("HUMAN_TIME_BIAS=not_detected");
             }
             println!("RETENTION_STATUS=applied");
+            println!("GLOBAL_WRITE={global_write}");
         }
         "bias" => {
             let task_id = task.ok_or_else(|| anyhow!("--task required"))?;
@@ -15600,21 +15637,69 @@ fn command_velocity(
             }
         }
         "report" => {
-            let aggregates: aiplus_core::Aggregates =
-                read_velocity_json(&root, "aggregates.json").unwrap_or_default();
+            // Spec v2 §10: `--scope local|global|both`. Default both.
+            let scope_str = scope
+                .as_deref()
+                .map(|s| s.to_ascii_lowercase())
+                .unwrap_or_else(|| "both".to_string());
+            let show_local = scope_str == "local" || scope_str == "both";
+            let show_global = scope_str == "global" || scope_str == "both";
+
             println!("VELOCITY_REPORT_STATUS=PASS");
-            println!("CALIBRATION_WINDOW=latest_200");
-            println!("TOTAL_ESTIMATES={}", aggregates.total_estimates);
-            println!("TOTAL_RUNS={}", aggregates.total_runs);
-            println!("TOTAL_RARE_CASES={}", aggregates.total_rare_cases);
-            println!(
-                "MEDIAN_OVERESTIMATE_RATIO={:.1}",
-                aggregates.median_overestimate_ratio
-            );
-            println!(
-                "HUMAN_TIME_BIAS_RATE={:.2}",
-                aggregates.human_time_bias_rate
-            );
+            println!("scope={scope_str}");
+
+            if show_local {
+                let aggregates: aiplus_core::Aggregates =
+                    read_velocity_json(&root, "aggregates.json").unwrap_or_default();
+                println!("LOCAL_CALIBRATION_WINDOW=latest_200");
+                println!("LOCAL_TOTAL_ESTIMATES={}", aggregates.total_estimates);
+                println!("LOCAL_TOTAL_RUNS={}", aggregates.total_runs);
+                println!("LOCAL_TOTAL_RARE_CASES={}", aggregates.total_rare_cases);
+                println!(
+                    "LOCAL_MEDIAN_OVERESTIMATE_RATIO={:.1}",
+                    aggregates.median_overestimate_ratio
+                );
+                println!(
+                    "LOCAL_HUMAN_TIME_BIAS_RATE={:.2}",
+                    aggregates.human_time_bias_rate
+                );
+            }
+
+            if show_global {
+                // Spec §10: global block doesn't reuse aggregates.json
+                // (that's project-local). Compute on the fly from
+                // global JSONL — cheap at ≤1000 records.
+                let global_runs: Vec<aiplus_core::RunRecord> =
+                    aiplus_core::read_global_jsonl("runs.jsonl").unwrap_or_default();
+                let global_estimates: Vec<aiplus_core::EstimateRecord> =
+                    aiplus_core::read_global_jsonl("estimates.jsonl").unwrap_or_default();
+                let global_rare: Vec<aiplus_core::RareCaseRecord> =
+                    aiplus_core::read_global_jsonl("rare-cases.jsonl").unwrap_or_default();
+
+                println!("GLOBAL_CALIBRATION_WINDOW=latest_1000");
+                println!("GLOBAL_TOTAL_ESTIMATES={}", global_estimates.len());
+                println!("GLOBAL_TOTAL_RUNS={}", global_runs.len());
+                println!("GLOBAL_TOTAL_RARE_CASES={}", global_rare.len());
+                let bias_count = global_runs.iter().filter(|r| r.human_time_bias).count();
+                let bias_rate = if global_runs.is_empty() {
+                    0.0
+                } else {
+                    bias_count as f64 / global_runs.len() as f64
+                };
+                let mut ratios: Vec<f64> = global_runs
+                    .iter()
+                    .filter(|r| r.overestimate_ratio.is_finite() && r.overestimate_ratio > 0.0)
+                    .map(|r| r.overestimate_ratio)
+                    .collect();
+                ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let median = if ratios.is_empty() {
+                    0.0
+                } else {
+                    ratios[ratios.len() / 2]
+                };
+                println!("GLOBAL_MEDIAN_OVERESTIMATE_RATIO={median:.1}");
+                println!("GLOBAL_HUMAN_TIME_BIAS_RATE={bias_rate:.2}");
+            }
         }
         "doctor" => {
             let report = velocity_doctor(&root)?;
@@ -15662,6 +15747,44 @@ fn command_velocity(
                     "note=estimates for these task types are advisory; log 5+ real runs to calibrate"
                 );
             }
+            // Spec v2 §9: global ledger telemetry.
+            println!("local_records_count={}", report.local_records_count);
+            println!("global_records_count={}", report.global_records_count);
+            println!("synced_records_count={}", report.synced_records_count);
+            println!(
+                "local_only_records_count={}",
+                report.local_only_records_count
+            );
+            println!("share_to_global_mode={}", report.share_to_global_mode);
+            println!("global_ledger_health={}", report.global_ledger_health);
+        }
+        "import-from-project" => {
+            let src = path
+                .clone()
+                .ok_or_else(|| anyhow!("ERROR: import-from-project requires a path argument"))?;
+            let src_path = std::path::PathBuf::from(&src);
+            if !src_path.exists() {
+                return Err(anyhow!("ERROR: source project path does not exist: {src}"));
+            }
+            let stats = aiplus_core::import_from_project(&src_path)?;
+            println!("VELOCITY_IMPORT_STATUS=PASS");
+            println!("source={src}");
+            println!(
+                "runs_imported={} runs_skipped_duplicate={}",
+                stats.runs_imported, stats.runs_skipped_duplicate
+            );
+            println!(
+                "estimates_imported={} estimates_skipped_duplicate={}",
+                stats.estimates_imported, stats.estimates_skipped_duplicate
+            );
+            println!(
+                "anchor_signals_imported={} anchor_signals_skipped_duplicate={}",
+                stats.anchor_signals_imported, stats.anchor_signals_skipped_duplicate
+            );
+            println!(
+                "rare_cases_imported={} rare_cases_skipped_duplicate={}",
+                stats.rare_cases_imported, stats.rare_cases_skipped_duplicate
+            );
         }
         "purge" => {
             if !yes {
