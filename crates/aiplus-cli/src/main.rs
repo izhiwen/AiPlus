@@ -5173,8 +5173,10 @@ fn command_secret_broker(
             env_var,
         ),
         Some("delete") => secret_broker_delete(alias_flags.first().cloned().or(arg)),
+        Some("shell-init") => secret_broker_shell_init(arg),
+        Some("hook") => secret_broker_hook(),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--env <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--env <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|shell-init zsh|bash|fish|hook|token set|delete");
             process::exit(2);
         }
     }
@@ -5524,6 +5526,183 @@ fn collect_project_aliases(existing: &str, new_alias: &str) -> Vec<String> {
         out.push(new_alias.to_string());
     }
     out
+}
+
+// K4: cd-auto-load shell-init. Prints a hook snippet the user appends
+// to their shell rc. The snippet calls `aiplus secret-broker hook` on
+// every directory change, evaluates the export/unset lines that come
+// back. Supported shells: zsh, bash, fish.
+fn secret_broker_shell_init(shell: Option<String>) -> Result<()> {
+    let shell = shell.as_deref().unwrap_or("").trim().to_lowercase();
+    let snippet = match shell.as_str() {
+        "zsh" => {
+            r#"# AiPlus secret-broker cd-auto-load (zsh)
+_aiplus_broker_hook() {
+  if command -v aiplus >/dev/null 2>&1; then
+    eval "$(aiplus secret-broker hook 2>/dev/null)"
+  fi
+}
+typeset -ga chpwd_functions
+[[ -z "${chpwd_functions[(r)_aiplus_broker_hook]}" ]] && chpwd_functions+=(_aiplus_broker_hook)
+# Run once for the shell's starting directory.
+_aiplus_broker_hook
+"#
+        }
+        "bash" => {
+            r#"# AiPlus secret-broker cd-auto-load (bash)
+_aiplus_broker_hook() {
+  if [ "${PWD}" != "${_AIPLUS_BROKER_LAST_PWD:-}" ]; then
+    _AIPLUS_BROKER_LAST_PWD="${PWD}"
+    if command -v aiplus >/dev/null 2>&1; then
+      eval "$(aiplus secret-broker hook 2>/dev/null)"
+    fi
+  fi
+}
+case ":${PROMPT_COMMAND:-}:" in
+  *":_aiplus_broker_hook:"*) ;;
+  *) PROMPT_COMMAND="_aiplus_broker_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+esac
+_aiplus_broker_hook
+"#
+        }
+        "fish" => {
+            r#"# AiPlus secret-broker cd-auto-load (fish)
+function _aiplus_broker_hook --on-variable PWD
+    if command -v aiplus >/dev/null 2>&1
+        aiplus secret-broker hook 2>/dev/null | source
+    end
+end
+_aiplus_broker_hook
+"#
+        }
+        _ => {
+            return Err(CliError::new(
+                2,
+                "ERROR aiplus secret-broker shell-init requires <shell> (zsh|bash|fish). Example: `aiplus secret-broker shell-init zsh >> ~/.zshrc`",
+            )
+            .into());
+        }
+    };
+    print!("{snippet}");
+    Ok(())
+}
+
+// K4: cd-auto-load hook. Called by the shell rc snippet on every cd.
+// Reads .aiplus/keys.toml from the cwd (walking up to find one), emits
+// `export <ENV>='<value>'` for every alias that resolves from keyring,
+// and `unset <ENV>` for any alias loaded by a previous run but not in
+// the current project's keys.toml. Tracks state in
+// `_AIPLUS_BROKER_LOADED` so the next hook firing knows what to clear.
+//
+// Soft-fail: missing aliases get a single stderr `# missing: ...`
+// comment line, not exit 75 — we don't want to break the user's shell
+// prompt just because a key isn't set yet.
+fn secret_broker_hook() -> Result<()> {
+    if provider_name() != "keyring" {
+        // Bitwarden flow doesn't use cd-auto-load; output nothing.
+        return Ok(());
+    }
+    let cwd = std::env::current_dir()?;
+    let project_keys = find_project_keys_toml(&cwd);
+    let desired: Vec<String> = match project_keys {
+        Some(path) => read_project_aliases(&path).unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let previously_loaded: Vec<String> = std::env::var("_AIPLUS_BROKER_LOADED")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    // Unset aliases that were loaded but are no longer desired.
+    let desired_set: BTreeSet<&str> = desired.iter().map(|s| s.as_str()).collect();
+    for old in &previously_loaded {
+        if !desired_set.contains(old.as_str()) {
+            let env_name = format!("{}_API_KEY", old.to_ascii_uppercase());
+            println!("unset {env_name}");
+        }
+    }
+
+    // Load each currently-desired alias.
+    let mut loaded: Vec<String> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+    for alias in &desired {
+        let entry = match keyring_alias_entry(alias) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        match entry.get_password() {
+            Ok(value) => {
+                let env_name = format!("{}_API_KEY", alias.to_ascii_uppercase());
+                let escaped = value.replace('\'', "'\\''");
+                println!("export {env_name}='{escaped}'");
+                loaded.push(alias.clone());
+            }
+            Err(keyring::Error::NoEntry) => {
+                missing.push(alias.clone());
+            }
+            Err(_) => {
+                // Treat backend errors as silent miss to keep prompt fast.
+            }
+        }
+    }
+
+    // Persist the new loaded list so the next hook firing can unset.
+    println!("export _AIPLUS_BROKER_LOADED='{}'", loaded.join(":"));
+
+    if !missing.is_empty() {
+        eprintln!(
+            "# aiplus: missing keys in keyring: {}. Run `aiplus secret-broker set {} --auto-prompt` to set.",
+            missing.join(", "),
+            missing[0]
+        );
+    } else if !loaded.is_empty() {
+        eprintln!(
+            "# aiplus: loaded {} alias(es): {}",
+            loaded.len(),
+            loaded.join(", ")
+        );
+    }
+    Ok(())
+}
+
+// Walk up from `start` looking for `.aiplus/keys.toml`. Stop at $HOME
+// or the filesystem root, whichever comes first. Returns the path to
+// the first match found.
+fn find_project_keys_toml(start: &Path) -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+    let mut current = Some(start.to_path_buf());
+    while let Some(dir) = current {
+        let candidate = dir.join(".aiplus").join("keys.toml");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if let Some(h) = &home {
+            if dir == *h {
+                return None;
+            }
+        }
+        current = dir.parent().map(|p| p.to_path_buf());
+    }
+    None
+}
+
+fn read_project_aliases(path: &Path) -> Result<Vec<String>> {
+    let text = fs::read_to_string(path)?;
+    let parsed: toml::Value = text.parse().map_err(|e| anyhow!("parse {path:?}: {e}"))?;
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    if let Some(arr) = parsed.get("aliases").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                if seen.insert(s.to_string()) {
+                    out.push(s.to_string());
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn secret_broker_delete(alias_name: Option<String>) -> Result<()> {
