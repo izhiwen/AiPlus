@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 0.5.22
+
+### K7 (#83): `aiplus install` refuses on PATH version skew
+
+- **`aiplus install <runtime>` now refuses when `which aiplus` is older
+  than the binary running the install.** Previously, a user with stale
+  `aiplus` on PATH would get an AGENTS.aiplus.md whose BROKER protocol
+  references `secret-broker need --auto-prompt` (v0.5.18+ subcommand);
+  agents dutifully ran it and hit `error: unexpected argument '--auto-prompt' found`,
+  silently falling back to asking the Owner — defeating the agent-key
+  zero-touch promise. Now refused with `INSTALL_STATUS=NEEDS_UPGRADE`
+  and a copy-pasteable fix line. Override with `--allow-version-skew`
+  flag or `AIPLUS_SKIP_VERSION_CHECK=1` env (for advanced users who
+  are about to overwrite the PATH binary anyway).
+- **AGENTS.aiplus.md BROKER protocol now self-describes its minimum
+  required `aiplus` version (≥ 0.5.18)** at the top of the section, so
+  agents reading the file can refuse to call `need --auto-prompt`
+  when their PATH binary is too old.
+  / **K7 (#83) install 检测 PATH 版本 skew**：装在用户机器上的老 aiplus
+  会让新写的 AGENTS protocol 静默失败。现在 install 检测到 PATH 上 aiplus
+  比自己旧就拒绝写文件，给一行 cp/install.sh 修复命令。`--allow-version-skew`
+  / `AIPLUS_SKIP_VERSION_CHECK=1` 可绕过。AGENTS protocol 段落本身
+  也声明 "Required aiplus version on PATH: ≥ 0.5.18"。
+
 ## 0.5.21
 
 ### K5: `aiplus install` auto-wires the cd-auto-load hook
