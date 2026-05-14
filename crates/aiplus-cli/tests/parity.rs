@@ -4593,3 +4593,167 @@ fn install_skips_shell_init_when_env_opts_out() {
         ".zshrc must not be created when env opts out"
     );
 }
+
+#[test]
+fn install_refuses_when_path_aiplus_is_older() {
+    // K7 (#83): when `which aiplus` resolves to an older binary than
+    // the one running install, refuse with NEEDS_UPGRADE. Otherwise
+    // agents would dutifully follow the AGENTS protocol's
+    // `secret-broker need --auto-prompt` and hit a clap error on the
+    // PATH binary.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    // Plant a fake `aiplus` shim that reports an old version.
+    let fake_bin_dir = target.join("fake-bin");
+    fs::create_dir_all(&fake_bin_dir).unwrap();
+    let fake_aiplus = fake_bin_dir.join("aiplus");
+    fs::write(&fake_aiplus, "#!/bin/sh\necho \"0.5.10\"\n").unwrap();
+    let mut perms = fs::metadata(&fake_aiplus).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+    }
+    fs::set_permissions(&fake_aiplus, perms).unwrap();
+
+    // Run install with PATH=fake-bin (so `which aiplus` resolves to
+    // our 0.5.10 shim). Expect refuse + exit 1. Helper base env sets
+    // AIPLUS_SKIP_VERSION_CHECK=1; override with "" to enable the check.
+    let out = run_with_env_and_path(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        1,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", ""),
+        ],
+        &fake_bin_dir,
+    );
+    let stderr_text = stderr(&out);
+    assert!(
+        stderr_text.contains("INSTALL_STATUS=NEEDS_UPGRADE"),
+        "stderr should announce NEEDS_UPGRADE:\n{stderr_text}"
+    );
+    assert!(
+        stderr_text.contains("path_version=0.5.10"),
+        "stderr should name the stale PATH version:\n{stderr_text}"
+    );
+    assert!(
+        stderr_text.contains("--allow-version-skew"),
+        "stderr should mention the bypass flag:\n{stderr_text}"
+    );
+
+    // Re-run with --allow-version-skew flag (env still opted-in to check).
+    let out2 = run_with_env_and_path(
+        target,
+        &[
+            "install",
+            "codex",
+            "--yes",
+            "--backup",
+            "--allow-version-skew",
+        ],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", ""),
+        ],
+        &fake_bin_dir,
+    );
+    let stdout2 = stdout(&out2);
+    assert!(
+        stdout2.contains("INSTALL_STATUS=PASS"),
+        "--allow-version-skew should bypass and pass:\n{stdout2}"
+    );
+
+    // Wipe and try again with env-var bypass.
+    let _ = fs::remove_dir_all(target.join(".aiplus"));
+    let out3 = run_with_env_and_path(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", "1"),
+        ],
+        &fake_bin_dir,
+    );
+    let stdout3 = stdout(&out3);
+    assert!(
+        stdout3.contains("INSTALL_STATUS=PASS"),
+        "AIPLUS_SKIP_VERSION_CHECK=1 should bypass and pass:\n{stdout3}"
+    );
+}
+
+#[test]
+fn install_passes_when_no_aiplus_on_path() {
+    // K7 (#83): no PATH `aiplus` at all → no skew comparison possible,
+    // fail open. This is the typical case when install is invoked from
+    // install.sh, which downloads then runs the binary before installing
+    // it to PATH. Opt-in to the check (override base env) so we prove
+    // that the check itself fails open, not just that we bypass it.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let empty_bin_dir = target.join("empty-bin");
+    fs::create_dir_all(&empty_bin_dir).unwrap();
+
+    let out = run_with_env_and_path(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", ""),
+        ],
+        &empty_bin_dir,
+    );
+    let stdout_text = stdout(&out);
+    assert!(
+        stdout_text.contains("INSTALL_STATUS=PASS"),
+        "no PATH aiplus should fail open and pass:\n{stdout_text}"
+    );
+}
+
+#[test]
+fn install_writes_required_version_into_broker_protocol() {
+    // K7 (#83) part 2: AGENTS.aiplus.md BROKER_PROTOCOL section should
+    // self-describe the minimum aiplus version required by the protocol
+    // it teaches. That way agents reading the file can refuse to run
+    // commands when their PATH binary is too old.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", "1"),
+        ],
+    );
+
+    let body = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    assert!(
+        body.contains("Required `aiplus` version on PATH"),
+        "BROKER_PROTOCOL should self-describe required version:\n{body}"
+    );
+    assert!(
+        body.contains("≥ 0.5.18"),
+        "minimum should be pinned to 0.5.18 (K1+K2 cut-in):\n{body}"
+    );
+}

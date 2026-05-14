@@ -134,6 +134,14 @@ enum Commands {
         backup: bool,
         #[arg(long, action = ArgAction::SetTrue)]
         yes: bool,
+        /// K7 (#83): override the PATH version-skew check. By default
+        /// `aiplus install` refuses when `which aiplus` is older than
+        /// the binary running the install, because the AGENTS protocol
+        /// it writes would reference subcommands the PATH binary lacks.
+        /// Use this flag only when you're SURE the PATH binary will
+        /// shortly be upgraded (e.g. install.sh is about to overwrite it).
+        #[arg(long = "allow-version-skew", action = ArgAction::SetTrue)]
+        allow_version_skew: bool,
     },
     Update {
         module: Option<String>,
@@ -816,6 +824,7 @@ fn run(command: Commands) -> Result<()> {
             force,
             backup,
             yes,
+            allow_version_skew,
         } => command_install(
             runtime,
             runtime_opt,
@@ -823,6 +832,7 @@ fn run(command: Commands) -> Result<()> {
             dry_run,
             verbose,
             Options { force, backup, yes },
+            allow_version_skew,
         ),
         Commands::Update {
             module,
@@ -1033,12 +1043,62 @@ fn command_install(
     dry_run: bool,
     verbose: bool,
     options: Options,
+    allow_version_skew: bool,
 ) -> Result<()> {
     if options.force && !options.yes {
         return Err(CliError::new(1, "ERROR --force requires --yes").into());
     }
     if options.force && !options.backup {
         return Err(CliError::new(1, "ERROR --force requires --backup --yes").into());
+    }
+    // K7 (#83): refuse to write an AGENTS protocol that references
+    // subcommands the user's PATH binary doesn't have. The AGENTS file
+    // is read by agents and run via `aiplus` from PATH, not via the
+    // absolute path of whoever wrote it. Version skew silently breaks
+    // the broker protocol for the entire project.
+    // K7 (#83) decision matrix for "should we run the check":
+    //   --allow-version-skew flag              → no (explicit override)
+    //   AIPLUS_SKIP_VERSION_CHECK="<nonempty>" → no (explicit env opt-out)
+    //   AIPLUS_SKIP_VERSION_CHECK=""           → YES (force; test opt-in)
+    //   $CARGO is set (cargo test subprocess)  → no (dev iteration)
+    //   default                                → YES
+    let should_run_check = if allow_version_skew {
+        false
+    } else {
+        match std::env::var("AIPLUS_SKIP_VERSION_CHECK").as_deref() {
+            Ok("") => true,
+            Ok(_) => false,
+            Err(_) => std::env::var("CARGO").is_err(),
+        }
+    };
+    if should_run_check {
+        if let Some(skew) = detect_path_version_skew() {
+            eprintln!("INSTALL_STATUS=NEEDS_UPGRADE");
+            eprintln!(
+                "  path_binary={} path_version={} installer_version={}",
+                skew.path_binary.display(),
+                skew.path_version,
+                skew.installer_version,
+            );
+            eprintln!("  The AGENTS.aiplus.md protocol this installer writes references");
+            eprintln!("  subcommands (`secret-broker need --auto-prompt`) added in v0.5.18+.");
+            eprintln!("  Agents follow the protocol via `aiplus` on PATH — which is older here.");
+            eprintln!("  Fix one of:");
+            eprintln!(
+                "    cp {} {}   # adopt this installer as the PATH binary",
+                std::env::current_exe()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "<this binary>".to_string()),
+                skew.path_binary.display(),
+            );
+            eprintln!(
+                "    curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | sh"
+            );
+            eprintln!(
+                "  Override (NOT recommended): re-run with --allow-version-skew, or set AIPLUS_SKIP_VERSION_CHECK=1"
+            );
+            return Err(CliError::new(1, "INSTALL_STATUS=NEEDS_UPGRADE").into());
+        }
     }
     let runtime_arg = if all_runtimes {
         Some("all".to_string())
@@ -5635,6 +5695,95 @@ _aiplus_broker_hook
     Ok(body.to_string())
 }
 
+// K7 (#83): outcome of PATH version-skew detection.
+struct VersionSkew {
+    path_binary: PathBuf,
+    path_version: String,
+    installer_version: String,
+}
+
+// K7 (#83): look for `aiplus` on PATH, ask it `--version`, compare
+// against our own embedded version. Returns Some(VersionSkew) only
+// when the PATH binary is strictly OLDER than us — meaning agents
+// invoking the AGENTS protocol via PATH would hit unknown subcommands.
+//
+// Returns None when:
+//   - no `aiplus` on PATH
+//   - PATH `aiplus` IS this binary (same inode / path)
+//   - PATH version >= our version (no skew, or newer than us — fine)
+//   - any parse / exec failure (fail open: don't block install)
+fn detect_path_version_skew() -> Option<VersionSkew> {
+    let own_version = env!("CARGO_PKG_VERSION").to_string();
+    let path = std::env::var_os("PATH")?;
+    let exe = std::env::current_exe().ok();
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join("aiplus");
+        if !candidate.is_file() {
+            continue;
+        }
+        // Skip self — comparing against own absolute path. Use canonical
+        // forms so a symlink ~/.local/bin/aiplus -> .../target/release/aiplus
+        // resolves to the same node as exe and is correctly skipped.
+        if let Some(exe) = &exe {
+            let lhs = std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
+            let rhs = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.clone());
+            if lhs == rhs {
+                continue;
+            }
+        }
+        let out = std::process::Command::new(&candidate)
+            .arg("--version")
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let path_version = stdout.trim().to_string();
+        // `aiplus --version` prints just "0.5.16" — no prefix. Be lenient.
+        let path_v = parse_semver(&path_version)?;
+        let own_v = parse_semver(&own_version)?;
+        if path_v < own_v {
+            return Some(VersionSkew {
+                path_binary: candidate,
+                path_version,
+                installer_version: own_version,
+            });
+        }
+        // First aiplus we find on PATH dominates (shell PATH search
+        // semantics). Don't keep looking even if it matches/is newer.
+        return None;
+    }
+    None
+}
+
+// K7 (#83): parse "X.Y.Z" (optionally `vX.Y.Z`) into a comparable
+// 3-tuple. Returns None for anything we don't recognize so the caller
+// falls open. Pre-release / build metadata is ignored — we only care
+// about the release-train ordering.
+fn parse_semver(s: &str) -> Option<(u32, u32, u32)> {
+    let s = s.trim();
+    let s = s.strip_prefix('v').unwrap_or(s);
+    // Strip anything after the first whitespace (some `--version` impls
+    // print "aiplus 0.5.16" with a leading name).
+    let s = s.split_whitespace().last().unwrap_or(s);
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let patch_raw = parts[2];
+    // Drop pre-release / build metadata suffix on the patch component.
+    let patch_str: String = patch_raw
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        patch_str.parse().ok()?,
+    ))
+}
+
 // K5: detect the user's interactive shell from $SHELL. Returns a tuple
 // of (logical shell name, rc-file path under $HOME). Returns None if we
 // can't confidently match — caller falls back to printing a hint.
@@ -8638,6 +8787,12 @@ fn read_installed_runtime_adapters(root: &Path) -> Vec<String> {
 /// English-default and Chinese-default agent runtimes, and a key/token
 /// negotiation is the moment we LEAST want translation drift.
 const BROKER_PROTOCOL_SECTION: &str = r#"## Secret lookup protocol (read before asking the Owner for keys)
+
+**Required `aiplus` version on PATH**: ≥ 0.5.18 (for `need` + `--auto-prompt`).
+If `aiplus --version` reports older, ask the Owner to upgrade
+(`curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | sh`)
+before running any command in this section. Do NOT silently fall back to
+asking the Owner for plaintext keys.
 
 AiPlus ships an integrated secret broker. **Default backend (v0.5.16+):
 the user's OS keyring** (macOS Keychain / Linux Secret Service / Windows
