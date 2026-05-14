@@ -4,7 +4,7 @@
 
 [English README](README.md)
 
-我用 AI coding agent 全职写代码已经有大半年 —— 一天 Codex，一天 Claude Code，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍，然后意识到每天都在烧时间的是这六件事：跨 session 失忆、compact 之后丢上下文、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子。AiPlus 就是我为治这六件事写的五个小 Rust 模块。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
+我用 AI coding agent 全职写代码已经有大半年 —— 一天 Codex，一天 Claude Code，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍 —— 顺带把同一把 API key 也对同一个 agent 重新粘贴了第四遍。每天都在烧时间的是这七件事：跨 session 失忆、`/compact` 上反复烧 token、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子，还有每次 session 都要重新给 agent 配 key。AiPlus 就是我为治这七件事写的六个小 Rust 模块（Agent Team 同时治两件）。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
 
 ![AiPlus 30 秒演示](docs/demo.gif)
 
@@ -18,8 +18,9 @@
 4. **估时锚定在"人类工程师小时数"上。** Agent 报"五小时"做 refactor，结果 20 分钟干完。下周类似任务又报五小时，又 20 分钟。没人记账。
 5. **Agent 做 plan 时常常忽略最重要的事** —— 用户上手是否容易、安全和隐私、实际执行的 pitfall、AI 集成考量。这些事要么发版周才发现，要么用户投诉之后才发现。
 6. **一个 Agent 戴所有帽子。** CEO、reviewer、builder、advisor 全塞进同一个上下文窗口。角色**漂移**，上下文在不同帽子间**污染**，每个帽子都戴得很**浅**。真正的工程团队之所以分工，是因为工作本身就是如此结构化。
+7. **每次 agent session 都要重新给 agent 配 key。** 新项目、新对话、新 wrapper 脚本 —— 又一次要 copy-paste `OPENAI_API_KEY=...`、在新 shell 里 `export` env、改 `.env`，或者直接把 key 贴进 prompt"就这一次"。每次都从头来过，永远不能摊销。更糟的是 key 会留在 transcript、`.env`、shell history、截图、CI 日志里 —— 一次误 commit、一次共享屏幕，就泄出去了。
 
-AiPlus 是六个小模块，加起来正好把这六件事一起治了。
+AiPlus 是六个小模块，加起来正好治这七件事（Agent Team 同时治 #3 多 agent 互相踩脚 和 #6 单 agent 角色漂移）。另加一个 opt-in 模块 AiEconLab，给应用经济学研究用，详见下。
 
 ## 你拿到什么
 
@@ -27,7 +28,7 @@ AiPlus 是六个小模块，加起来正好把这六件事一起治了。
 
 **Compact Reminder** —— **长对话省 token**。长 Codex / Claude Code / OpenCode session 会两头漏 token：忘了 `/compact` 时上下文溢出、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 全花在重新解释上。本模块在 token 阈值 + 任务切点双信号下提醒你恰当时机 compact，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
 
-**Agent Key** —— Agent 不再泄漏你的 API key。代码里只出现 alias（`OPENAI_KEY_WORK`），broker 在运行时把 alias 解析成真值、注入子进程环境变量、然后忘掉。**绝不**写盘，**绝不**默认打印，**绝不**进 git history。
+**Agent Key** —— **不再每个 session 重配 key**。每台机器一次性设置：把真实 key 放进 Bitwarden Secrets Manager、用 TSV 把短 alias 映射到后端路径、Bitwarden access token 存 OS keyring。**从此每次** Codex / Claude Code / OpenCode session 都能自动拿到对的 key —— `aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py` 运行时解析 alias、注入子进程 env、退出即忘。不再 copy-paste，不再改 `.env`，不再把 key 贴进 prompt，不再在 8 个项目里追着轮换。（顺带：值默认不写盘、默认不打印、绝不进 git。）
 
 **Auto Team Consultant** —— Agent 不再忽略关键事项。**一个虚拟团队**（5 位专家成员 + 你项目的用户 persona，**坐同一桌**）会在每次重要 plan 之前被咨询。Coordinator 按复杂度和风险决定咨询规模，让你拿到真实评审团队的价值，但不在每次提交都付成本。
 
@@ -166,7 +167,7 @@ MyProject/
 - [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) —— **长 session 省 token**：恰当时机提示 `/compact` + 结构化交接 + 自动续接，避免溢出和重建上下文。
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) —— 虚拟 expert 团队，每个任务自动 consult。
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) —— 常驻 8 core + 11 expert 角色，带 persistent identity。
-- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) —— alias-based、零持久化 secret 解析（`aiplus secret-broker`）。
+- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) —— **不再每个 session 重配 key**：每台机器一次性配 alias（Bitwarden Secrets Manager + OS keyring），从此任何项目的任何 agent session 都自动拿到 key。不 copy-paste、不改 `.env`、不把 key 贴进 prompt。
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) —— AI-native 工时估计（`aiplus velocity`，跟踪估时 vs 实际、学习 bias、给校准的 p50/p90）。
 
 ## 安全边界

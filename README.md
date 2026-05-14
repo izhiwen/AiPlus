@@ -8,14 +8,17 @@ I've been pair-programming with AI coding agents full-time for the better
 part of a year — Codex one day, Claude Code the next, OpenCode for the
 long-running stuff. About four months in, I caught myself explaining the
 same architectural decision to the same agent for the fourth time that
-week, and I realized I was losing hours every day to the same six
-coordination failures: cross-session amnesia, post-compact context loss,
-agents racing to lead the same task, estimates anchored to human-engineer
-hours, plans that skipped security until release week, and one agent
-wearing every hat in one context window. AiPlus is the five small Rust
-modules I built to treat all six. The honest meta-frame: **I used AI agents
-to build the toolchain that manages AI agents.** What's here works for my
-workflow today; what isn't yet is in `docs/roadmap/`.
+week — and noticed I was also re-pasting the same API key into the same
+agent for the fourth time that week. I was losing hours every day to the
+same seven coordination failures: cross-session amnesia, tokens burned
+fighting `/compact`, agents racing to lead the same task, estimates
+anchored to human-engineer hours, plans that skipped security until
+release week, one agent wearing every hat in one context window, and
+re-handing the agent my API keys every session. AiPlus is the six small
+Rust modules I built to treat all seven (Agent Team treats two of them).
+The honest meta-frame: **I used AI agents to build the toolchain that
+manages AI agents.** What's here works for my workflow today; what isn't
+yet is in `docs/roadmap/`.
 
 ![AiPlus 30-second tour](docs/demo.gif)
 
@@ -46,8 +49,18 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    into the same context window. Roles **drift**, context **pollutes** across
    hats, and the agent does each hat **shallowly**. Real engineering teams
    divide labor because the work *is* that structured.
+7. **Every agent session, you re-hand the agent your API keys.** New project,
+   new chat, new wrapper script — and every time you are back to
+   copy-pasting `OPENAI_API_KEY=...`, exporting env vars in a fresh shell,
+   editing a `.env`, or pasting the key directly into a prompt "just for
+   this task". The setup never amortizes. Worse, the key ends up in
+   transcripts, `.env` files, shell history, screenshots, and CI logs —
+   one accidental commit or screen-share and it's exposed.
 
-AiPlus is six core Rust modules that together fix all six. (Plus one optional, opt-in module — AiEconLab — for applied-economics research, see below.)
+AiPlus is six core Rust modules that together fix all seven failure modes
+(Agent Team treats both #3 multi-agent collision and #6 single-agent
+role-drift). Plus one optional, opt-in module — AiEconLab — for
+applied-economics research, see below.
 
 ## What you get
 
@@ -66,10 +79,17 @@ auto-prepares a structured handoff before, and recovers from a
 checksum-verified capsule after — so tokens go into new work, not into
 re-establishing context.
 
-**Agent Key** — The agent stops leaking your API keys. Project code calls
-aliases (`OPENAI_KEY_WORK`); the broker resolves each alias to a real value
-at runtime, injects it into the child process's environment, and forgets
-it. Never written to disk, never printed by default, never in git history.
+**Agent Key** — Stop telling the agent your keys every time. One-time
+setup per machine: store your real keys in Bitwarden Secrets Manager,
+map short aliases to backend paths in a TSV, store the Bitwarden
+access token in your OS keyring. From then on every Codex / Claude
+Code / OpenCode session in this project picks up the right key
+automatically — `aiplus secret-broker run --aliases openai,anthropic
+-- python my_agent.py` resolves each alias at runtime, injects the
+value into the child process's environment, and forgets it on exit.
+No copy-paste, no `.env` shuffling, no key in prompts, no rotation
+chase across eight projects. (Bonus: values never hit disk by default,
+never print by default, never enter git history.)
 
 **Auto Team Consultant** — The agent stops overlooking the important stuff.
 A virtual team (5 expert members + your project's user personas, sitting at
@@ -238,7 +258,7 @@ in every AiPlus project:
 - [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder) — **save tokens on long sessions**: detect the right moment to `/compact`, package the handoff before, and resume from a checksum-verified capsule after — tokens go into new work, not re-establishing context.
 - [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant) — virtual expert team consulted automatically on each task.
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
-- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — alias-based, zero-persistence secret resolution (`aiplus secret-broker`).
+- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — **stop telling the agent your keys every time**: configure aliases once per machine (Bitwarden Secrets Manager + OS keyring), then every agent session in any project picks up keys automatically. No copy-paste, no `.env` shuffling, no key in prompts.
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) — AI-native time estimation (`aiplus velocity` — track estimated vs actual, learn bias, surface calibrated p50/p90).
 
 ## Optional opt-in module
