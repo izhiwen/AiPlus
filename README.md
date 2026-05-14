@@ -26,9 +26,13 @@ If you spend your days driving AI coding agents, these probably feel familiar:
 1. **The agent forgets everything between sessions.** Monday you teach it your
    naming conventions. Wednesday it asks again. By Friday you have explained
    the same architectural decision four times.
-2. **Long tasks lose context after compact.** You hit the token wall mid-feature.
-   Compact happens. The agent comes back asking the question you answered
-   forty minutes ago, and the half-finished plan is gone.
+2. **Long tasks burn tokens fighting `/compact`.** You hit the token wall
+   mid-feature. Either you waited too long to `/compact` and the agent has
+   been re-reading bloated history on every turn for hours, or you
+   `/compact`-ed at the wrong moment and the next session burns its first
+   20% re-explaining what was already decided. Compact-without-preparation
+   is one of the highest token costs in long coding sessions, and it shows
+   up on every monthly bill.
 3. **Multiple agents step on each other's feet.** No one defined who is the
    CEO, who reviews, who builds. Three agents try to lead the same task.
 4. **Estimates anchor on human-engineer hours.** The agent says "five hours"
@@ -43,7 +47,7 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    hats, and the agent does each hat **shallowly**. Real engineering teams
    divide labor because the work *is* that structured.
 
-AiPlus is five core Rust modules that together fix all six. (Plus one optional, opt-in module — AiEconLab — for applied-economics research, see below.)
+AiPlus is six core Rust modules that together fix all six. (Plus one optional, opt-in module — AiEconLab — for applied-economics research, see below.)
 
 ## What you get
 
