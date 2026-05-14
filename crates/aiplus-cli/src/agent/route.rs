@@ -3,25 +3,32 @@ use crate::agent::core::get_role_config;
 use crate::agent::state;
 use crate::agent::worktree;
 use aiplus_core::consult;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use std::collections::BTreeSet;
 
-pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
-    // Heuristic for "is this arg a role name?":
-    //   - If the user passed only one positional and no task, the arg might
-    //     either be a role (`aiplus agent route advisor`) or a single-word
-    //     free-form task (`aiplus agent route "estimate IV"`).
-    //   - If we can resolve it as a role via get_role_config, treat it as
-    //     a direct role dispatch.
-    //   - Otherwise, treat the role token as part of the free-form task
-    //     description and route it through the PI/CEO for scoring.
+pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -> Result<()> {
+    let approved: BTreeSet<String> = owner_approved.iter().cloned().collect();
     if let Some(candidate) = role {
         match get_role_config(candidate) {
             Ok(config) => {
+                let project_root = std::env::current_dir()?;
+
+                // W2: run the gate check *before* worktree provisioning
+                // and before recording dispatch. A pending gate means
+                // the dispatch itself doesn't happen — we don't want
+                // .aiplus/agents/dispatch-log.jsonl to record a dispatch
+                // that the gate refused.
+                let gate_state = enforce_gates(&project_root, candidate, task, &approved)?;
+                if gate_state == GateOutcome::PendingBlocked {
+                    return Err(anyhow!(
+                        "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
+                    ));
+                }
+
                 println!("Routing task to {}: {}", candidate, task);
                 if let Ok(cache) = cache::global_cache().lock() {
                     cache.invalidate(candidate, cache::InvalidationReason::RoleRouteCalled);
                 }
-                let project_root = std::env::current_dir()?;
                 if config.needs_worktree {
                     // Worktree provisioning requires a git repo. If the project
                     // isn't one, surface a clear note but still record the
@@ -77,17 +84,125 @@ pub fn handle_route(role: Option<&str>, task: &str) -> Result<()> {
                 } else {
                     format!("{candidate} {task}")
                 };
-                println!("Routing task to PI/CEO for scoring and dispatch: {full_task}");
                 let project_root = std::env::current_dir()?;
+                let gate_state = enforce_gates(&project_root, "pi", &full_task, &approved)?;
+                if gate_state == GateOutcome::PendingBlocked {
+                    return Err(anyhow!(
+                        "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
+                    ));
+                }
+                println!("Routing task to PI/CEO for scoring and dispatch: {full_task}");
                 run_consult(&project_root, "pi", &full_task)?;
                 return Ok(());
             }
         }
     }
-    println!("Routing task to PI/CEO for scoring and dispatch: {task}");
     let project_root = std::env::current_dir()?;
+    let gate_state = enforce_gates(&project_root, "pi", task, &approved)?;
+    if gate_state == GateOutcome::PendingBlocked {
+        return Err(anyhow!(
+            "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
+        ));
+    }
+    println!("Routing task to PI/CEO for scoring and dispatch: {task}");
     run_consult(&project_root, "pi", task)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GateOutcome {
+    NoGates,
+    AllApproved,
+    PendingBlocked,
+}
+
+/// W2 contract: check whether the task crosses any owner gate. Writes
+/// `gate_pending` or `gate_approved` records to
+/// `.aiplus/agent-memory/_team/gates-<task-id>.jsonl` either way so the
+/// audit trail captures both refusals and approvals. The function
+/// returns the outcome but does NOT exit — the caller propagates the
+/// block (Err return → CLI exit non-zero).
+fn enforce_gates(
+    project_root: &std::path::Path,
+    role: &str,
+    task: &str,
+    approved: &BTreeSet<String>,
+) -> Result<GateOutcome> {
+    if task.is_empty() {
+        return Ok(GateOutcome::NoGates);
+    }
+    let team = match consult::load_consult_team(project_root) {
+        Ok(Some(team)) => team,
+        Ok(None) => return Ok(GateOutcome::NoGates),
+        Err(_) => return Ok(GateOutcome::NoGates),
+    };
+    if !consult::is_supported_schema(&team.schema_version) {
+        return Ok(GateOutcome::NoGates);
+    }
+    let today = aiplus_core::now_iso();
+    let date_salt: String = today.chars().take(10).collect();
+    let task_id = consult::derive_task_id(role, task, &date_salt);
+    let complexity = consult::score_complexity(task);
+    let risk = consult::score_risk(task);
+    let tier = consult::select_tier(complexity, risk);
+    let matched_members = consult::match_members(&team, task, tier);
+    let fired = consult::match_gates(&team, &matched_members, task);
+
+    if fired.is_empty() {
+        return Ok(GateOutcome::NoGates);
+    }
+
+    let approver = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_default();
+
+    let mut records: Vec<consult::GateRecord> = Vec::new();
+    let mut any_pending = false;
+    println!("  Owner gate(s) fired for this task:");
+    for gate in &fired {
+        let is_approved = approved.contains(&gate.gate_id);
+        let status = if is_approved { "approved" } else { "pending" };
+        if !is_approved {
+            any_pending = true;
+        }
+        println!(
+            "    [{}] {}: {} ({})",
+            status, gate.gate_id, gate.description, gate.source,
+        );
+        records.push(consult::GateRecord {
+            schema_version: consult::GATE_RECORD_SCHEMA_VERSION.to_string(),
+            timestamp: today.clone(),
+            task_id: task_id.clone(),
+            task: task.to_string(),
+            gate_id: gate.gate_id.clone(),
+            description: gate.description.clone(),
+            source: gate.source.clone(),
+            status: status.to_string(),
+            approved_by: if is_approved {
+                approver.clone()
+            } else {
+                String::new()
+            },
+        });
+    }
+    if let Err(e) = consult::write_gate_ledger(project_root, &task_id, &records) {
+        eprintln!("  WARN: failed to write gate ledger: {e}");
+    } else {
+        let path = consult::gates_path(project_root, &task_id);
+        let rel = path
+            .strip_prefix(project_root)
+            .map(|p| p.to_path_buf())
+            .unwrap_or(path.clone());
+        println!("  Gate ledger: {}", rel.display());
+    }
+
+    if any_pending {
+        eprintln!(
+            "  Dispatch refused: pass `--owner-approved <gate-id>` (one flag per gate) to authorize."
+        );
+        return Ok(GateOutcome::PendingBlocked);
+    }
+    Ok(GateOutcome::AllApproved)
 }
 
 /// Walk the consultant team for `task` and persist per-member findings

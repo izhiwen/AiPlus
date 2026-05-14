@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 pub const CONSULT_TEAM_PATH: &str = ".aiplus/consultant-team.toml";
 pub const CONSULT_FINDINGS_DIR: &str = ".aiplus/agent-memory/_team";
 pub const CONSULT_RECORD_SCHEMA_VERSION: &str = "0.1.0";
+pub const GATE_RECORD_SCHEMA_VERSION: &str = "0.1.0";
 
 /// Versions of `consultant-team.toml` that this build knows how to
 /// load. The doctor uses this list to flag drift early instead of
@@ -95,6 +96,24 @@ pub struct ConsultTeam {
     pub members: Vec<Member>,
     pub user_personas: Vec<UserPersona>,
     pub owner_gates: Vec<OwnerGate>,
+    /// SWE-shape configs declare per-trigger STOP gates via
+    /// `[[triggers]] stop_gate = true`. We keep those distinct from
+    /// `member.owner_gate` (which we reserve for AEL-shape inline
+    /// declarations on the member itself) so a stop_gate fires only
+    /// when the trigger pattern actually matches the task, not as a
+    /// permanent property of every member that trigger names.
+    pub stop_gate_triggers: Vec<StopGateTrigger>,
+}
+
+/// A `[[triggers]]` block whose `stop_gate = true`. Used by match_gates
+/// to fire a gate when (a) one of the patterns substring-matches the
+/// task and (b) at least one of the trigger's named members is in the
+/// matched-members set.
+#[derive(Debug, Clone)]
+pub struct StopGateTrigger {
+    pub id: String,
+    pub patterns: Vec<String>,
+    pub members: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +133,42 @@ pub struct ConsultFinding {
     pub kind: String,
 }
 
+/// One row in the gate ledger written by `aiplus agent route` whenever
+/// an owner-gated action would have to be taken. `status` is one of
+/// `"pending"` (dispatch was refused, gate must be approved) or
+/// `"approved"` (the user passed `--owner-approved <gate-id>` and the
+/// run proceeded). Distinct status values matter for downstream audits:
+/// pending blocks dispatch; approved is the audit trail showing who
+/// authorized the irreversible step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GateRecord {
+    pub schema_version: String,
+    pub timestamp: String,
+    pub task_id: String,
+    pub task: String,
+    pub gate_id: String,
+    pub description: String,
+    /// "member_owner_gate" if the gate fired because a matched member
+    /// has owner_gate=true, "declared_gate" if the gate id came from
+    /// the [owner_gates] block matching the task description.
+    pub source: String,
+    /// "pending" or "approved".
+    pub status: String,
+    /// Username from `USER`/`USERNAME` env at approval time. Empty
+    /// when status="pending".
+    pub approved_by: String,
+}
+
+/// One fired gate, ready to be turned into a `GateRecord` once a status
+/// (pending vs approved) is known.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FiredGate {
+    pub gate_id: String,
+    pub description: String,
+    pub source: String,
+}
+
 pub fn consult_team_path(project_root: &Path) -> PathBuf {
     project_root.join(CONSULT_TEAM_PATH)
 }
@@ -122,6 +177,12 @@ pub fn findings_path(project_root: &Path, task_id: &str) -> PathBuf {
     project_root
         .join(CONSULT_FINDINGS_DIR)
         .join(format!("consult-{task_id}.jsonl"))
+}
+
+pub fn gates_path(project_root: &Path, task_id: &str) -> PathBuf {
+    project_root
+        .join(CONSULT_FINDINGS_DIR)
+        .join(format!("gates-{task_id}.jsonl"))
 }
 
 /// Load and normalize the consult team config. Returns `Ok(None)` if
@@ -162,9 +223,20 @@ fn parse_team(value: &toml::Value) -> ConsultTeam {
     // SWE-shape: trigger keywords are declared in a top-level
     // [[triggers]] block, each pointing at a list of member ids.
     // Merge those into the matching member's trigger vec so downstream
-    // matching is uniform across schemas.
+    // matching is uniform across schemas. `stop_gate = true` on a
+    // trigger block is kept as its own data structure (see W2): we
+    // can't flip `member.owner_gate` permanently, because the same
+    // member typically appears in multiple [[triggers]] blocks, only
+    // one of which is a gate. The gate must fire only when that
+    // specific trigger's pattern matches the task.
+    let mut stop_gate_triggers: Vec<StopGateTrigger> = Vec::new();
     if let Some(trigger_blocks) = value.get("triggers").and_then(|t| t.as_array()) {
         for block in trigger_blocks {
+            let id = block
+                .get("id")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string();
             let patterns: Vec<String> = block
                 .get("patterns")
                 .and_then(|p| p.as_array())
@@ -203,10 +275,18 @@ fn parse_team(value: &toml::Value) -> ConsultTeam {
                             member.default_tiers.push(t);
                         }
                     }
-                    if stop_gate {
-                        member.owner_gate = true;
-                    }
                 }
+            }
+            if stop_gate {
+                stop_gate_triggers.push(StopGateTrigger {
+                    id: if id.is_empty() {
+                        format!("trigger-{}", stop_gate_triggers.len() + 1)
+                    } else {
+                        id
+                    },
+                    patterns,
+                    members: target_members,
+                });
             }
         }
     }
@@ -221,6 +301,7 @@ fn parse_team(value: &toml::Value) -> ConsultTeam {
     let owner_gates = parse_owner_gates(value);
 
     ConsultTeam {
+        stop_gate_triggers,
         schema_version,
         members,
         user_personas,
@@ -648,6 +729,143 @@ pub fn build_findings(
     (tier, complexity, risk, out)
 }
 
+/// Identify the owner gates that fire for `task`, given the consult
+/// team. Two sources contribute:
+///   * Members whose own `owner_gate=true` and whose triggers match the
+///     task. These come back tagged with `source="member_owner_gate"`.
+///   * Top-level `[owner_gates]` entries whose `id` (or, for SWE-shape
+///     flat gates, the gate name) appears as a substring of the task.
+///     Tagged with `source="declared_gate"`.
+///
+/// The same gate id can fire from both sources; we keep the first
+/// occurrence (member-driven), since that's the higher-fidelity signal
+/// (it knows which member raised the flag).
+pub fn match_gates<'a>(
+    team: &'a ConsultTeam,
+    matched_members: &[&'a Member],
+    task: &str,
+) -> Vec<FiredGate> {
+    let mut fired: Vec<FiredGate> = Vec::new();
+    let task_lower = task.to_lowercase();
+
+    for member in matched_members {
+        if !member.owner_gate {
+            continue;
+        }
+        if fired.iter().any(|g| g.gate_id == member.id) {
+            continue;
+        }
+        fired.push(FiredGate {
+            gate_id: member.id.clone(),
+            description: format!("{} member flagged owner gate", member.name),
+            source: "member_owner_gate".to_string(),
+        });
+    }
+
+    // Declared gates: [owner_gates].gates[]: trigger if the gate id is
+    // a substring of the task. Treat hyphens as soft separators so
+    // "authorship-change" fires on either token, not just the exact id.
+    for gate in &team.owner_gates {
+        if gate.id.is_empty() {
+            continue;
+        }
+        let gate_lower = gate.id.to_lowercase();
+        let normalized = gate_lower.replace('-', " ");
+        let hit = task_lower.contains(&gate_lower) || task_lower.contains(&normalized);
+        if !hit {
+            continue;
+        }
+        if fired.iter().any(|g| g.gate_id == gate.id) {
+            continue;
+        }
+        fired.push(FiredGate {
+            gate_id: gate.id.clone(),
+            description: if gate.description.is_empty() {
+                format!("owner gate '{}' declared in consult team", gate.id)
+            } else {
+                gate.description.clone()
+            },
+            source: "declared_gate".to_string(),
+        });
+    }
+
+    // SWE-shape stop_gate triggers: a [[triggers]] block with
+    // `stop_gate = true` fires when (a) one of its patterns matches the
+    // task and (b) at least one of its named members is in
+    // matched_members. The second condition is what distinguishes
+    // "this trigger could in principle apply" from "this trigger
+    // actually applies right now."
+    let matched_ids: std::collections::BTreeSet<&str> =
+        matched_members.iter().map(|m| m.id.as_str()).collect();
+    for trig in &team.stop_gate_triggers {
+        let pattern_hit = trig
+            .patterns
+            .iter()
+            .any(|p| task_matches_trigger(&task_lower, p));
+        if !pattern_hit {
+            continue;
+        }
+        let member_hit = trig
+            .members
+            .iter()
+            .any(|m| matched_ids.contains(m.as_str()));
+        if !member_hit {
+            continue;
+        }
+        if fired.iter().any(|g| g.gate_id == trig.id) {
+            continue;
+        }
+        fired.push(FiredGate {
+            gate_id: trig.id.clone(),
+            description: format!(
+                "stop_gate trigger '{}' fired on task keyword + matched member",
+                trig.id
+            ),
+            source: "stop_gate_trigger".to_string(),
+        });
+    }
+    fired
+}
+
+/// Append gate ledger records for one consult run. Idempotency rule:
+/// each (task_id, gate_id, status) combination is written at most
+/// once per file. This lets a `pending` entry from an earlier attempt
+/// sit alongside an `approved` entry from a follow-up run.
+pub fn write_gate_ledger(
+    project_root: &Path,
+    task_id: &str,
+    records: &[GateRecord],
+) -> Result<PathBuf> {
+    let dir = project_root.join(CONSULT_FINDINGS_DIR);
+    std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    let path = gates_path(project_root, task_id);
+    let mut seen: std::collections::BTreeSet<String> = Default::default();
+    if path.exists() {
+        let existing = std::fs::read_to_string(&path).unwrap_or_default();
+        for line in existing.lines() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                if let (Some(tid), Some(gid), Some(st)) = (
+                    v.get("taskId").and_then(|x| x.as_str()),
+                    v.get("gateId").and_then(|x| x.as_str()),
+                    v.get("status").and_then(|x| x.as_str()),
+                ) {
+                    seen.insert(format!("{tid}::{gid}::{st}"));
+                }
+            }
+        }
+    }
+    for record in records {
+        let key = format!("{}::{}::{}", record.task_id, record.gate_id, record.status);
+        if seen.contains(&key) {
+            continue;
+        }
+        let line = serde_json::to_string(record)?;
+        crate::append_jsonl_atomic(&path, &line)?;
+        seen.insert(key);
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -763,12 +981,79 @@ tag = true
             .iter()
             .find(|m| m.id == "trust_safety")
             .unwrap();
-        // stop_gate on the release trigger should have lifted owner_gate.
-        assert!(ts.owner_gate);
+        // W2: stop_gate on the release trigger does NOT permanently
+        // flip member.owner_gate (the same member can sit in many
+        // [[triggers]] blocks, only one of which is the gate). The
+        // gate now lives on team.stop_gate_triggers and fires only
+        // when the trigger's pattern matches the task.
+        assert!(!ts.owner_gate);
+        let release_gate = team
+            .stop_gate_triggers
+            .iter()
+            .find(|t| t.id == "release")
+            .expect("release stop_gate trigger should be recorded");
+        assert!(release_gate.patterns.iter().any(|p| p == "release"));
+        assert!(release_gate.members.iter().any(|m| m == "trust_safety"));
         // SWE owner_gates is flat dict — expect at least push/tag.
         let ids: Vec<&str> = team.owner_gates.iter().map(|g| g.id.as_str()).collect();
         assert!(ids.contains(&"push"));
         assert!(ids.contains(&"tag"));
+    }
+
+    #[test]
+    fn stop_gate_trigger_fires_only_on_pattern_match() {
+        // W2 regression: a [[triggers]] block with stop_gate=true
+        // must only fire when its own pattern matches. A different
+        // [[triggers]] block (e.g. ai_feature with no stop_gate) that
+        // also names the same member must NOT cause the gate to fire.
+        let cfg = r#"
+schema_version = "0.1"
+[[members]]
+id = "ai_integration"
+name = "AI Integration"
+default_tiers = ["MEDIUM", "HEAVY"]
+[[members]]
+id = "trust_safety"
+name = "Trust / Safety"
+default_tiers = ["MEDIUM", "HEAVY"]
+
+[[triggers]]
+id = "ai_feature"
+patterns = ["LLM", "tool use"]
+tier = "MEDIUM"
+members = ["ai_integration", "trust_safety"]
+
+[[triggers]]
+id = "release"
+patterns = ["release", "tag", "publish"]
+tier = "HEAVY"
+members = ["trust_safety"]
+stop_gate = true
+"#;
+        let team = parse(cfg);
+
+        // Task that matches ai_feature ("LLM") but not release: gate
+        // must NOT fire (this is exactly the W1 test regression).
+        let task = "rewrite the LLM tool use context pipeline";
+        let matched = match_members(&team, task, Tier::Heavy);
+        let gates = match_gates(&team, &matched, task);
+        let ids: Vec<&str> = gates.iter().map(|g| g.gate_id.as_str()).collect();
+        assert!(
+            !ids.contains(&"release"),
+            "release stop_gate must not fire without 'release' keyword: {:?}",
+            gates
+        );
+
+        // Task that matches release: gate must fire.
+        let task = "tag and release the LLM tool pipeline";
+        let matched = match_members(&team, task, Tier::Heavy);
+        let gates = match_gates(&team, &matched, task);
+        let ids: Vec<&str> = gates.iter().map(|g| g.gate_id.as_str()).collect();
+        assert!(
+            ids.contains(&"release"),
+            "release stop_gate must fire on release keyword + matched member: {:?}",
+            gates
+        );
     }
 
     #[test]
@@ -849,5 +1134,98 @@ triggers = ["submission", "identification"]
         assert_eq!(a, b);
         let c = derive_task_id("pi", "draft intro", "2026-05-14");
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn gates_fire_from_both_sources() {
+        // AEL-shape: a member with owner_gate=true + [owner_gates].gates[]
+        // with explicit id/description. A task that hits both should
+        // produce two FiredGate entries with distinct sources, and an
+        // unrelated declared gate should not fire.
+        let cfg = r#"
+schema_version = "2.1"
+[[members]]
+id = "irb"
+name = "IRB Gate"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = ["IRB", "consent"]
+owner_gate = true
+
+[[members]]
+id = "design"
+name = "Design"
+default_tiers = ["MEDIUM", "HEAVY"]
+triggers = ["identification"]
+owner_gate = false
+
+[owner_gates]
+gates = [
+  { id = "submission",        description = "Any journal submission" },
+  { id = "authorship-change", description = "Authorship-order change" },
+]
+"#;
+        let team = parse(cfg);
+        let task = "draft submission letter and IRB protocol";
+        let matched = match_members(&team, task, Tier::Medium);
+        let gates = match_gates(&team, &matched, task);
+
+        let ids: Vec<&str> = gates.iter().map(|g| g.gate_id.as_str()).collect();
+        assert!(
+            ids.contains(&"irb"),
+            "irb member gate should fire: {:?}",
+            gates
+        );
+        assert!(
+            ids.contains(&"submission"),
+            "submission declared gate should fire: {:?}",
+            gates
+        );
+        assert!(
+            !ids.contains(&"authorship-change"),
+            "authorship-change should not fire: {:?}",
+            gates
+        );
+        let irb = gates.iter().find(|g| g.gate_id == "irb").unwrap();
+        assert_eq!(irb.source, "member_owner_gate");
+        let sub = gates.iter().find(|g| g.gate_id == "submission").unwrap();
+        assert_eq!(sub.source, "declared_gate");
+    }
+
+    #[test]
+    fn gate_ledger_idempotent_per_status() {
+        // Writing the same gate twice with the same status must dedupe;
+        // a status flip (pending → approved) must produce a new line.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let r1 = GateRecord {
+            schema_version: GATE_RECORD_SCHEMA_VERSION.to_string(),
+            timestamp: "2026-05-13T00:00:00Z".to_string(),
+            task_id: "abc".to_string(),
+            task: "submit".to_string(),
+            gate_id: "submission".to_string(),
+            description: "x".to_string(),
+            source: "declared_gate".to_string(),
+            status: "pending".to_string(),
+            approved_by: String::new(),
+        };
+        write_gate_ledger(root, "abc", std::slice::from_ref(&r1)).unwrap();
+        write_gate_ledger(root, "abc", std::slice::from_ref(&r1)).unwrap();
+        let body = std::fs::read_to_string(gates_path(root, "abc")).unwrap();
+        assert_eq!(
+            body.lines().count(),
+            1,
+            "same (task,gate,status) should dedupe"
+        );
+
+        let mut r2 = r1.clone();
+        r2.status = "approved".to_string();
+        r2.approved_by = "steve".to_string();
+        write_gate_ledger(root, "abc", std::slice::from_ref(&r2)).unwrap();
+        let body2 = std::fs::read_to_string(gates_path(root, "abc")).unwrap();
+        assert_eq!(
+            body2.lines().count(),
+            2,
+            "status flip pending→approved should append"
+        );
     }
 }
