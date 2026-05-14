@@ -26,3 +26,7 @@ write_team_memory = true
 [invocation]
 chinese_aliases = ["CEO", "首席执行官"]
 english_aliases = ["ceo", "chief", "orchestrator", "leader"]
+
+# S5: CEO orchestrates dispatches (github status, PR coordination).
+[secret_needs]
+aliases = ["github"]
