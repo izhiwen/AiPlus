@@ -34,3 +34,30 @@ shell-words = "1.1"
 # `apple-native`/`windows-native` are no-ops for `vendored` (it only
 # affects the dbus-secret-service path on Linux).
 keyring = { version = "3", features = ["apple-native", "linux-native-sync-persistent", "windows-native", "vendored"] }
+
+# P1.8: release profile tuned for smaller binaries on the user's
+# download path. Defaults (codegen-units=16, lto=false, strip=false)
+# produce a 9.6–10.2 MB binary after the v0.5.11 vendored-libdbus
+# bump. The settings below:
+#   strip = "symbols"   strip debug symbols + symbol table from the
+#                       binary (≈1.5–2 MB on Linux release builds).
+#   lto = "thin"        thin link-time optimization. Slower link
+#                       (~1.5×) but ≈10–15% smaller binaries because
+#                       the linker can drop dead code across crate
+#                       boundaries that codegen-units leaves behind.
+#   codegen-units = 1   maximize cross-crate inlining at the cost of
+#                       compile time. Pairs with thin LTO to give the
+#                       optimizer the widest possible view.
+# opt-level stays at the cargo default "3" — going to "z" (size
+# optimization) shrinks more but disables inlining heuristics that
+# matter for the audit/run hot loop. Acceptable tradeoff.
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
+# panic=abort drops the unwinding tables (~200–500 KB). aiplus is a
+# CLI binary — if a panic happens we want to exit anyway, not unwind
+# and run destructors that print nothing useful. Pairs with the
+# AIPLUS_UNEXPECTED_ERROR catch-all in main.rs for any error path that
+# can be mapped through anyhow.
+panic = "abort"
