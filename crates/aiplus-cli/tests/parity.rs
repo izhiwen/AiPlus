@@ -3083,6 +3083,13 @@ fn velocity_cli_human_time_bias_end_to_end() {
     assert!(est_out.contains("HUMAN_ANCHOR_DETECTED=yes"));
     assert!(est_out.contains("HUMAN_ESTIMATE_MINUTES=300"));
     assert!(est_out.contains("STOP_WHEN_DONE=yes"));
+    // L1 close-the-loop reminder: estimate output must include a
+    // runnable `aiplus velocity complete` command so the agent that
+    // reads its own tool output is far more likely to close the loop.
+    assert!(
+        est_out.contains("NEXT_STEP=when done, run: aiplus velocity complete --task-id task_"),
+        "estimate must emit NEXT_STEP hint; got:\n{est_out}"
+    );
 
     let estimates_jsonl = fs::read_to_string(velocity_dir.join("estimates.jsonl")).unwrap();
     assert!(estimates_jsonl.contains("\"taskId\":\"task_e2e_1\""));
@@ -3185,7 +3192,9 @@ fn velocity_cli_human_time_bias_end_to_end() {
         );
     }
 
-    for dir in ["fake-home", "fake-xdg", "fake-codex-home"] {
+    // fake-home and fake-codex-home should stay untouched (no profile
+    // writes, no host runtime side effects from `velocity complete`).
+    for dir in ["fake-home", "fake-codex-home"] {
         let entries: Vec<_> = fs::read_dir(target.join(dir))
             .unwrap()
             .map(|e| e.unwrap().path())
@@ -3193,6 +3202,31 @@ fn velocity_cli_human_time_bias_end_to_end() {
         assert!(
             entries.is_empty(),
             "{dir} unexpectedly received files: {entries:?}"
+        );
+    }
+    // Spec v2 §3: `velocity complete` now dual-writes the run to the
+    // global ledger at `<XDG_CONFIG_HOME>/aiplus/velocity/`. In the
+    // fake env that's `target/fake-xdg/aiplus/velocity/`. Assert that
+    // the *only* directory that landed under fake-xdg is the
+    // expected velocity ledger — anything else is a leak.
+    let xdg_entries: Vec<_> = fs::read_dir(target.join("fake-xdg"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    if !xdg_entries.is_empty() {
+        for p in &xdg_entries {
+            let rel = p.strip_prefix(target.join("fake-xdg")).unwrap();
+            let rel_str = rel.to_string_lossy();
+            assert!(
+                rel_str == "aiplus",
+                "fake-xdg leak: {rel_str} (only aiplus/velocity is expected after spec v2)"
+            );
+        }
+        // Verify the dir is exactly aiplus/velocity/runs.jsonl + sibling files.
+        let velocity = target.join("fake-xdg/aiplus/velocity");
+        assert!(
+            velocity.exists(),
+            "global velocity dir should exist after complete"
         );
     }
 }

@@ -27,6 +27,46 @@ pub fn skills_dir(root: &Path) -> Result<PathBuf> {
     project_local_path(root, ".aiplus/skills")
 }
 
+/// Resolve the user's configuration root (e.g. `~/.config` on
+/// macOS/Linux, `%APPDATA%` on Windows). Mirrors the CLI-side helper
+/// but lives in core so `aiplus-core` callers don't need a layering
+/// inversion. Order: `XDG_CONFIG_HOME` → `APPDATA` (Windows) →
+/// `HOME/.config` → `USERPROFILE/.config`.
+pub fn config_home() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("XDG_CONFIG_HOME") {
+        if !path.trim().is_empty() {
+            return Ok(PathBuf::from(path));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        if !appdata.trim().is_empty() {
+            return Ok(PathBuf::from(appdata));
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.trim().is_empty() {
+            return Ok(PathBuf::from(home).join(".config"));
+        }
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        if !profile.trim().is_empty() {
+            return Ok(PathBuf::from(profile).join(".config"));
+        }
+    }
+    Err(anyhow!(
+        "Cannot determine config directory: none of XDG_CONFIG_HOME, APPDATA, HOME, USERPROFILE \
+         are set"
+    ))
+}
+
+/// User-level global velocity ledger directory at
+/// `<config_home>/aiplus/velocity/`. Parallel to per-project
+/// `.aiplus/velocity/`. Spec v2 §1.
+pub fn global_velocity_dir() -> Result<PathBuf> {
+    Ok(config_home()?.join("aiplus").join("velocity"))
+}
+
 pub fn is_allowed_project_write(rel: &str) -> bool {
     rel == "AGENTS.md"
         || rel.starts_with(".aiplus/")

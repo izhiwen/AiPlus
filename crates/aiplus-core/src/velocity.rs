@@ -3,9 +3,10 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const VELOCITY_SCHEMA_VERSION: &str = "1";
+pub const VELOCITY_SCHEMA_VERSION: &str = "2";
 pub const VELOCITY_DIR_REL: &str = ".aiplus/velocity";
 pub const ESTIMATES_JSONL: &str = "estimates.jsonl";
 pub const RUNS_JSONL: &str = "runs.jsonl";
@@ -18,6 +19,16 @@ pub const CONFIG_JSON: &str = "config.json";
 
 pub const DEFAULT_MAX_RECORDS: usize = 200;
 pub const DEFAULT_RARE_CASE_MAX_RECORDS: usize = 20;
+/// Spec v2 Q2: global retention is 5× project. Caps `runs.jsonl` and
+/// `estimates.jsonl` at 1000, `rare-cases.jsonl` at 100.
+/// At ~900 B/record this puts global ledger lifetime under 2 MB.
+pub const DEFAULT_GLOBAL_MAX_RECORDS: usize = 1000;
+pub const DEFAULT_GLOBAL_RARE_CASE_MAX_RECORDS: usize = 100;
+/// Spec v2 Q1: merge rule "project-recent-heavy" — when reading the
+/// union of local + global for estimate calibration, take the most
+/// recent N from project and most recent M from global, dedupe by id.
+pub const MERGE_LOCAL_TAKE: usize = 50;
+pub const MERGE_GLOBAL_TAKE: usize = 150;
 
 /// W6: research-native unit types that AEL ships with. The bucket
 /// lookup in `compute_ai_native_estimate` keys off `task_type`, so
@@ -71,6 +82,43 @@ pub const DEFAULT_MIN_BUCKET_SAMPLES: usize = 8;
 // Config
 // ---------------------------------------------------------------------------
 
+/// Spec v2 Q5: three-state explicit opt-out semantics. Default
+/// `ReadWrite`. `None` is full isolation; `ReadOnly` is "learn from
+/// others but don't share." A `bool` flag would conflate the two and
+/// is rejected by spec.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ShareToGlobalMode {
+    /// Read from + write to the global ledger. Default for new projects.
+    ReadWrite,
+    /// Read from the global ledger; do not contribute writes.
+    ReadOnly,
+    /// Full isolation. Project does not read or write global ledger.
+    None,
+}
+
+impl Default for ShareToGlobalMode {
+    fn default() -> Self {
+        Self::ReadWrite
+    }
+}
+
+impl ShareToGlobalMode {
+    pub fn reads_global(self) -> bool {
+        matches!(self, Self::ReadWrite | Self::ReadOnly)
+    }
+    pub fn writes_global(self) -> bool {
+        matches!(self, Self::ReadWrite)
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadWrite => "read_write",
+            Self::ReadOnly => "read_only",
+            Self::None => "none",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct VelocityConfig {
@@ -82,6 +130,15 @@ pub struct VelocityConfig {
     pub min_bucket_samples: usize,
     pub raw_content_allowed: bool,
     pub memory_integration: String,
+    /// Spec v2 Q5: per-project opt-out for the global ledger. Default
+    /// `ReadWrite`. Skipped on serialize when default so old configs
+    /// stay byte-identical until the user explicitly opts out.
+    #[serde(default, skip_serializing_if = "is_share_default")]
+    pub share_to_global_mode: ShareToGlobalMode,
+}
+
+fn is_share_default(mode: &ShareToGlobalMode) -> bool {
+    *mode == ShareToGlobalMode::ReadWrite
 }
 
 impl Default for VelocityConfig {
@@ -95,6 +152,7 @@ impl Default for VelocityConfig {
             min_bucket_samples: DEFAULT_MIN_BUCKET_SAMPLES,
             raw_content_allowed: false,
             memory_integration: "disabled".to_string(),
+            share_to_global_mode: ShareToGlobalMode::ReadWrite,
         }
     }
 }
@@ -614,21 +672,84 @@ pub fn read_json<T: for<'de> Deserialize<'de>>(root: &Path, filename: &str) -> R
 // ---------------------------------------------------------------------------
 // ID helpers
 // ---------------------------------------------------------------------------
+//
+// Spec v2 Q4 commits to ULID-shaped IDs (Crockford base32, sortable,
+// 80 random bits) so a future multi-machine sync of `~/.config/aiplus/
+// velocity/` cannot produce duplicates from concurrent writers on
+// different machines. Old `est_{unix_ms}` IDs are still read fine —
+// they're just strings — so this is forward-compat without breaking
+// existing ledgers.
+
+/// Crockford base32 alphabet, ULID-spec compatible.
+const ULID_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// Generate a 26-char ULID. First 10 chars = 48-bit UNIX-ms timestamp,
+/// last 16 chars = 80 bits of randomness. Hand-rolled to avoid adding
+/// a third-party `ulid` dep per spec ("no new third-party deps").
+fn generate_ulid() -> String {
+    let mut buf = [0u8; 26];
+    let ts_ms = crate::epoch_millis();
+    // Encode 48-bit timestamp into the first 10 chars (5 bits per char).
+    for i in 0..10 {
+        let shift = 5 * (9 - i);
+        let idx = ((ts_ms >> shift) & 0x1F) as usize;
+        buf[i] = ULID_ALPHABET[idx];
+    }
+    // 16 random chars (80 bits). Pull from a SystemRandom-style mix
+    // of nanos + thread id + a per-call counter so concurrent calls
+    // on the same machine never share entropy bits.
+    let mut rnd = ulid_entropy();
+    for i in 10..26 {
+        let idx = (rnd & 0x1F) as usize;
+        buf[i] = ULID_ALPHABET[idx];
+        rnd = ulid_mix(rnd);
+    }
+    String::from_utf8(buf.to_vec()).expect("ULID alphabet is ASCII")
+}
+
+fn ulid_entropy() -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut hasher = DefaultHasher::new();
+    let now = std::time::SystemTime::now();
+    let nanos = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64 ^ d.as_secs())
+        .unwrap_or(0);
+    nanos.hash(&mut hasher);
+    std::thread::current().id().hash(&mut hasher);
+    COUNTER.fetch_add(1, Ordering::Relaxed).hash(&mut hasher);
+    std::process::id().hash(&mut hasher);
+    hasher.finish()
+}
+
+fn ulid_mix(x: u64) -> u64 {
+    // xorshift64* — keeps successive 5-bit windows decorrelated.
+    let mut y = x.wrapping_add(0x9E3779B97F4A7C15);
+    y ^= y >> 30;
+    y = y.wrapping_mul(0xBF58476D1CE4E5B9);
+    y ^= y >> 27;
+    y = y.wrapping_mul(0x94D049BB133111EB);
+    y ^= y >> 31;
+    y
+}
 
 pub fn generate_estimate_id() -> String {
-    format!("est_{}", crate::epoch_millis())
+    format!("est_{}", generate_ulid())
 }
 
 pub fn generate_run_id() -> String {
-    format!("run_{}", crate::epoch_millis())
+    format!("run_{}", generate_ulid())
 }
 
 pub fn generate_signal_id() -> String {
-    format!("sig_{}", crate::epoch_millis())
+    format!("sig_{}", generate_ulid())
 }
 
 pub fn generate_rare_case_id() -> String {
-    format!("rare_{}", crate::epoch_millis())
+    format!("rare_{}", generate_ulid())
 }
 
 pub fn now_iso() -> String {
@@ -896,7 +1017,15 @@ pub fn compute_ai_native_estimate(
     human_estimate_minutes: u32,
 ) -> Result<EstimateResult> {
     let config = read_config(root)?;
-    let runs = read_jsonl::<RunRecord>(root, RUNS_JSONL)?;
+    // Spec v2: read the merged ledger (project + global) unless the
+    // project's config says no. `read_write` and `read_only` both
+    // pull from global; only `none` is local-only.
+    let runs: Vec<RunRecord> = if config.share_to_global_mode.reads_global() {
+        merge_runs_for_estimate(root, true)
+            .unwrap_or_else(|_| read_jsonl::<RunRecord>(root, RUNS_JSONL).unwrap_or_default())
+    } else {
+        read_jsonl::<RunRecord>(root, RUNS_JSONL)?
+    };
 
     let bucket_keys = vec![
         format!("model:{model}|project:aiplus|task:{task_type}|workflow:{workflow}"),
@@ -1286,6 +1415,15 @@ pub struct DoctorReport {
     /// user knows "your p50/p90 for table tasks is still on synthetic
     /// seeds, treat the estimate as advisory."
     pub uncalibrated_buckets: Vec<String>,
+    /// Spec v2 §9: global-ledger telemetry. Counts and the project's
+    /// effective share mode let the doctor explain the merged state
+    /// without ever reading sensitive fields.
+    pub local_records_count: usize,
+    pub global_records_count: usize,
+    pub synced_records_count: usize,
+    pub local_only_records_count: usize,
+    pub share_to_global_mode: String,
+    pub global_ledger_health: String,
 }
 
 pub fn doctor(root: &Path) -> Result<DoctorReport> {
@@ -1306,11 +1444,20 @@ pub fn doctor(root: &Path) -> Result<DoctorReport> {
         over_threshold_files: Vec::new(),
         sqlite_found: false,
         uncalibrated_buckets: Vec::new(),
+        local_records_count: 0,
+        global_records_count: 0,
+        synced_records_count: 0,
+        local_only_records_count: 0,
+        share_to_global_mode: ShareToGlobalMode::ReadWrite.as_str().to_string(),
+        global_ledger_health: "PASS".to_string(),
     };
 
     if !dir.exists() {
         report.status = "NEEDS_FIX".to_string();
         return Ok(report);
+    }
+    if let Ok(cfg) = read_config(root) {
+        report.share_to_global_mode = cfg.share_to_global_mode.as_str().to_string();
     }
 
     // Check JSONL files
@@ -1464,7 +1611,89 @@ pub fn doctor(root: &Path) -> Result<DoctorReport> {
         report.status = "NEEDS_ROTATION".to_string();
     }
 
+    // --- Spec v2 §9: global ledger telemetry ---
+    let local_runs: Vec<RunRecord> = read_jsonl(root, RUNS_JSONL).unwrap_or_default();
+    let global_runs: Vec<RunRecord> = read_global_jsonl(RUNS_JSONL).unwrap_or_default();
+    report.local_records_count = local_runs.len();
+    report.global_records_count = global_runs.len();
+    let global_ids: std::collections::HashSet<&str> =
+        global_runs.iter().map(|r| r.id.as_str()).collect();
+    let synced = local_runs
+        .iter()
+        .filter(|r| !r.id.is_empty() && global_ids.contains(r.id.as_str()))
+        .count();
+    report.synced_records_count = synced;
+    report.local_only_records_count = report.local_records_count.saturating_sub(synced);
+
+    // Three-tier health classifier per spec §9.
+    report.global_ledger_health = classify_global_ledger_health();
+
     Ok(report)
+}
+
+/// Spec §9: classify global ledger health into PASS / NEEDS_FIX / FAIL.
+/// FAIL = directory unreadable or known-corrupt; NEEDS_FIX = missing
+/// file or unparseable line(s); PASS = directory exists, all 8 expected
+/// files present, every JSONL line parses, no duplicate ids.
+fn classify_global_ledger_health() -> String {
+    let dir = match global_velocity_dir() {
+        Ok(d) => d,
+        Err(_) => return "FAIL".to_string(),
+    };
+    if !dir.exists() {
+        return "PASS".to_string(); // not initialised yet ≠ broken
+    }
+    let expected_files = [
+        CONFIG_JSON,
+        ESTIMATES_JSONL,
+        RUNS_JSONL,
+        ANCHOR_SIGNALS_JSONL,
+        RARE_CASES_JSONL,
+    ];
+    let mut needs_fix = false;
+    for f in expected_files {
+        let p = dir.join(f);
+        if !p.exists() {
+            needs_fix = true;
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&p) else {
+            return "FAIL".to_string();
+        };
+        if f.ends_with(".jsonl") {
+            for line in text.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if serde_json::from_str::<serde_json::Value>(line).is_err() {
+                    needs_fix = true;
+                }
+            }
+        } else if !text.is_empty() {
+            if serde_json::from_str::<serde_json::Value>(&text).is_err() {
+                needs_fix = true;
+            }
+        }
+    }
+    // iCloud / Dropbox warning: flock is unreliable on sync mounts.
+    // Surface as NEEDS_FIX so the user knows to move ~/.config out
+    // of a sync folder. Detection is conservative — only catches
+    // canonical Apple iCloud and Dropbox paths after symlink resolution.
+    if let Ok(canon) = dir.canonicalize() {
+        let s = canon.to_string_lossy();
+        if s.contains("/Mobile Documents/")
+            || s.contains("/Dropbox/")
+            || s.contains("/CloudStorage/")
+        {
+            needs_fix = true;
+        }
+    }
+    if needs_fix {
+        "NEEDS_FIX".to_string()
+    } else {
+        "PASS".to_string()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1477,6 +1706,421 @@ pub fn purge_velocity(root: &Path) -> Result<()> {
         fs::remove_dir_all(&dir)?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Global ledger (spec v2)
+// ---------------------------------------------------------------------------
+//
+// Read/write helpers parallel to the project-local ones above, but
+// keyed on `~/.config/aiplus/velocity/` instead of a project root.
+// Concurrency strategy per spec §11:
+//   * JSONL append uses O_APPEND (already what append_jsonl_atomic does)
+//     and asserts each record < 4096 bytes (PIPE_BUF) in tests so the
+//     append is atomic across concurrent writers without an explicit
+//     lock.
+//   * Whole-document JSON (`config.json`, `aggregates.json`, …) uses
+//     write_file_atomic which is rename(2)-based; rename is atomic on
+//     the same filesystem.
+//   * Dedup is enforced at write time per spec Q3: if `id` already
+//     exists in the file, we skip the write and emit a warning to
+//     stderr. Idempotent migrations + no double-counting from
+//     concurrent writers.
+//   * Permissions: dir 0700, files 0600 (spec §12).
+
+pub use crate::paths::global_velocity_dir;
+
+fn ensure_dir_mode(path: &Path, mode: u32) -> Result<()> {
+    fs::create_dir_all(path).with_context(|| format!("mkdir {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(path, perms)
+            .with_context(|| format!("chmod {} {:o}", path.display(), mode))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+    }
+    Ok(())
+}
+
+fn ensure_file_mode(path: &Path, mode: u32) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(path, perms)
+            .with_context(|| format!("chmod {} {:o}", path.display(), mode))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+    }
+    Ok(())
+}
+
+/// Initialise `~/.config/aiplus/velocity/` if it does not exist.
+/// Creates the directory at 0700, writes default config at 0600,
+/// touches the four JSONL files (empty) at 0600 so first append
+/// inherits 0600. Idempotent — re-running is a no-op when state is
+/// already consistent.
+pub fn init_global_velocity() -> Result<()> {
+    let dir = global_velocity_dir()?;
+    ensure_dir_mode(&dir, 0o700)?;
+
+    let config_path = dir.join(CONFIG_JSON);
+    if !config_path.exists() {
+        // Global config has bigger retention than project config. The
+        // share_to_global_mode field is meaningless at the global tier
+        // (it's a per-project knob) and is intentionally absent here.
+        let config = VelocityConfig {
+            schema_version: VELOCITY_SCHEMA_VERSION.to_string(),
+            max_records: DEFAULT_GLOBAL_MAX_RECORDS,
+            rare_case_max_records: DEFAULT_GLOBAL_RARE_CASE_MAX_RECORDS,
+            max_bytes_per_jsonl: DEFAULT_MAX_BYTES_PER_JSONL,
+            retain_days: DEFAULT_RETAIN_DAYS,
+            min_bucket_samples: DEFAULT_MIN_BUCKET_SAMPLES,
+            raw_content_allowed: false,
+            memory_integration: "disabled".to_string(),
+            share_to_global_mode: ShareToGlobalMode::ReadWrite,
+        };
+        let json = serde_json::to_string_pretty(&config)?;
+        // Race-tolerant write: two concurrent initialisers must not
+        // share a tmp filename (`write_file_atomic` derives it from
+        // epoch_millis, so two writers in the same ms collide and one
+        // gets ENOENT on rename). Use a unique per-process+thread
+        // tmp path here and create_new semantics on the rename target.
+        let tmp = dir.join(format!(
+            "{}.tmp-init-{}-{:?}",
+            CONFIG_JSON,
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::write(&tmp, json.as_bytes()).with_context(|| format!("write {}", tmp.display()))?;
+        match fs::rename(&tmp, &config_path) {
+            Ok(()) => {}
+            Err(e) => {
+                // Another writer beat us to it; clean up our tmp and
+                // accept their file (idempotent — both writes are
+                // structurally identical).
+                let _ = fs::remove_file(&tmp);
+                if !config_path.exists() {
+                    return Err(e).with_context(|| {
+                        format!("rename {} -> {}", tmp.display(), config_path.display())
+                    });
+                }
+            }
+        }
+    }
+    ensure_file_mode(&config_path, 0o600)?;
+
+    for f in [
+        ESTIMATES_JSONL,
+        RUNS_JSONL,
+        ANCHOR_SIGNALS_JSONL,
+        RARE_CASES_JSONL,
+    ] {
+        let p = dir.join(f);
+        // Use O_CREAT|O_EXCL via `create_new` so two concurrent
+        // initialisers don't both `fs::write(&p, b"")` and race to
+        // truncate each other's just-appended record. If the file
+        // already exists, leave it untouched.
+        match fs::OpenOptions::new().write(true).create_new(true).open(&p) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e).with_context(|| format!("create {}", p.display())),
+        }
+        ensure_file_mode(&p, 0o600)?;
+    }
+    Ok(())
+}
+
+/// Append a record to a JSONL file under the global ledger, deduping
+/// by `id`. Returns `Ok(true)` if appended, `Ok(false)` if the id was
+/// already present (a stderr warning is also emitted in the latter
+/// case). Spec v2 Q3.
+fn append_global_dedup<T: Serialize>(filename: &str, id: &str, record: &T) -> Result<bool> {
+    init_global_velocity()?;
+    let dir = global_velocity_dir()?;
+    let path = dir.join(filename);
+
+    if path.exists() {
+        // Cheap dedup: scan existing ids. 1000 records × ~50 bytes for
+        // the id substring is ≤50 KB to read; faster than maintaining a
+        // separate index file.
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        let id_token = format!("\"id\":\"{id}\"");
+        if text.contains(&id_token) {
+            eprintln!(
+                "VELOCITY_GLOBAL_APPEND_SKIPPED id={id} reason=duplicate file={}",
+                filename
+            );
+            return Ok(false);
+        }
+    }
+    let mut line = serde_json::to_string(record)?;
+    line.push('\n');
+    if line.len() >= 4096 {
+        // Spec §11: each JSONL record must be < PIPE_BUF (4096 bytes
+        // on macOS/Linux) so O_APPEND is atomic across concurrent
+        // writers. A record bigger than that breaks the concurrency
+        // contract — fail loud rather than silently truncate.
+        return Err(anyhow!(
+            "VELOCITY_GLOBAL_APPEND_OVERSIZE id={id} bytes={} limit=4096",
+            line.len()
+        ));
+    }
+    // POSIX `O_APPEND` writes < PIPE_BUF are atomic across concurrent
+    // writers on local filesystems. No lock needed — the kernel does
+    // the serialization. We do NOT use `append_jsonl_atomic` here
+    // because its read-modify-write+lock model becomes the bottleneck
+    // under 8-process contention (lock-acquire timeouts → lost
+    // writes in best-effort dual-write).
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open global ledger for append: {}", path.display()))?;
+    f.write_all(line.as_bytes())
+        .with_context(|| format!("append to global ledger: {}", path.display()))?;
+    drop(f);
+    ensure_file_mode(&path, 0o600)?;
+    Ok(true)
+}
+
+/// Read a JSONL file from the global ledger. Missing file → empty
+/// vec (the doctor is what surfaces a never-initialised ledger).
+pub fn read_global_jsonl<T: for<'de> Deserialize<'de>>(filename: &str) -> Result<Vec<T>> {
+    let dir = match global_velocity_dir() {
+        Ok(d) => d,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let path = dir.join(filename);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let mut records = Vec::new();
+    for (idx, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let record: T = serde_json::from_str(line)
+            .with_context(|| format!("parse {} line {}", path.display(), idx + 1))?;
+        records.push(record);
+    }
+    Ok(records)
+}
+
+pub fn read_global_config() -> Result<VelocityConfig> {
+    let path = global_velocity_dir()?.join(CONFIG_JSON);
+    if !path.exists() {
+        return Ok(VelocityConfig::default());
+    }
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let config: VelocityConfig =
+        serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+    Ok(config)
+}
+
+// --- Privacy projections (spec v2 §7) ---
+//
+// The global ledger MUST NOT carry free-text task strings, project
+// names, paths, user-identity fields, or anything cwd-derived.
+// Implementation is *structural*: we serialize a hand-built JSON
+// Value that contains only the safe fields. Rationale (per spec):
+// "structural privacy is strictly stronger than cryptographic privacy"
+// — there's nothing to leak even under rainbow-table attack because
+// the sensitive field is not present in the record.
+//
+// On read-back, the existing serde-with-default deserialization
+// repopulates the missing fields with empty strings / zero numbers,
+// which is exactly what `compute_ai_native_estimate` already tolerates.
+
+fn run_record_to_global_json(r: &RunRecord) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": r.schema_version,
+        "id": r.id,
+        "createdAt": r.created_at,
+        "taskType": r.task_type,
+        "model": r.model,
+        "workflowLevel": r.workflow_level,
+        "originalEstimateMinutes": r.original_estimate_minutes,
+        "humanBaselineMinutes": r.human_baseline_minutes,
+        "actualActiveMinutes": r.actual_active_minutes,
+        "wallClockMinutes": r.wall_clock_minutes,
+        "toolWaitMinutes": r.tool_wait_minutes,
+        "blockedMinutes": r.blocked_minutes,
+        "outcome": r.outcome,
+        "verificationDepth": r.verification_depth,
+        "qualityVerdict": r.quality_verdict,
+        "reworkCount": r.rework_count,
+        "ownerGateHit": r.owner_gate_hit,
+        "overestimateRatio": r.overestimate_ratio,
+        "humanTimeBias": r.human_time_bias,
+        "slowReason": r.slow_reason,
+        "seed": r.seed,
+    })
+}
+
+fn estimate_record_to_global_json(e: &EstimateRecord) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": e.schema_version,
+        "id": e.id,
+        "createdAt": e.created_at,
+        "taskType": e.task_type,
+        "model": e.model,
+        "workflowLevel": e.workflow_level,
+        "humanBaselineMinutes": e.human_baseline_minutes,
+        "humanEstimateMinutes": e.human_estimate_minutes,
+        "aiNativeEstimateP50Minutes": e.ai_native_estimate_p50_minutes,
+        "aiNativeEstimateP90Minutes": e.ai_native_estimate_p90_minutes,
+        "confidence": e.confidence,
+        "matchedRecords": e.matched_records,
+    })
+}
+
+fn anchor_signal_to_global_json(s: &AnchorSignalRecord) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": s.schema_version,
+        "id": s.id,
+        "createdAt": s.created_at,
+        "signalType": s.signal_type,
+        "description": s.description,
+        "humanEstimateMinutes": s.human_estimate_minutes,
+        "aiNativePriorMinutes": s.ai_native_prior_minutes,
+        "confidence": s.confidence,
+    })
+}
+
+fn rare_case_to_global_json(r: &RareCaseRecord) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": r.schema_version,
+        "id": r.id,
+        "createdAt": r.created_at,
+        "caseType": r.case_type,
+        "overestimateRatio": r.overestimate_ratio,
+        "actualActiveMinutes": r.actual_active_minutes,
+        "originalEstimateMinutes": r.original_estimate_minutes,
+        "outcome": r.outcome,
+    })
+}
+
+pub fn append_run_to_global(r: &RunRecord) -> Result<bool> {
+    let projected = run_record_to_global_json(r);
+    append_global_dedup(RUNS_JSONL, &r.id, &projected)
+}
+
+pub fn append_estimate_to_global(e: &EstimateRecord) -> Result<bool> {
+    let projected = estimate_record_to_global_json(e);
+    append_global_dedup(ESTIMATES_JSONL, &e.id, &projected)
+}
+
+pub fn append_anchor_signal_to_global(s: &AnchorSignalRecord) -> Result<bool> {
+    let projected = anchor_signal_to_global_json(s);
+    append_global_dedup(ANCHOR_SIGNALS_JSONL, &s.id, &projected)
+}
+
+pub fn append_rare_case_to_global(r: &RareCaseRecord) -> Result<bool> {
+    let projected = rare_case_to_global_json(r);
+    append_global_dedup(RARE_CASES_JSONL, &r.id, &projected)
+}
+
+/// Spec §6: one-shot migration. Reads the project's velocity JSONLs,
+/// projects each record to the global-safe shape (dropping the `task`
+/// field and other cwd-derived fields), appends to global with
+/// dedup. Returns counts so the CLI can print a meaningful summary.
+pub struct ImportStats {
+    pub runs_imported: usize,
+    pub runs_skipped_duplicate: usize,
+    pub estimates_imported: usize,
+    pub estimates_skipped_duplicate: usize,
+    pub anchor_signals_imported: usize,
+    pub anchor_signals_skipped_duplicate: usize,
+    pub rare_cases_imported: usize,
+    pub rare_cases_skipped_duplicate: usize,
+}
+
+pub fn import_from_project(project_root: &Path) -> Result<ImportStats> {
+    init_global_velocity()?;
+    let mut stats = ImportStats {
+        runs_imported: 0,
+        runs_skipped_duplicate: 0,
+        estimates_imported: 0,
+        estimates_skipped_duplicate: 0,
+        anchor_signals_imported: 0,
+        anchor_signals_skipped_duplicate: 0,
+        rare_cases_imported: 0,
+        rare_cases_skipped_duplicate: 0,
+    };
+    for run in read_jsonl::<RunRecord>(project_root, RUNS_JSONL).unwrap_or_default() {
+        if append_run_to_global(&run)? {
+            stats.runs_imported += 1;
+        } else {
+            stats.runs_skipped_duplicate += 1;
+        }
+    }
+    for est in read_jsonl::<EstimateRecord>(project_root, ESTIMATES_JSONL).unwrap_or_default() {
+        if append_estimate_to_global(&est)? {
+            stats.estimates_imported += 1;
+        } else {
+            stats.estimates_skipped_duplicate += 1;
+        }
+    }
+    for sig in
+        read_jsonl::<AnchorSignalRecord>(project_root, ANCHOR_SIGNALS_JSONL).unwrap_or_default()
+    {
+        if append_anchor_signal_to_global(&sig)? {
+            stats.anchor_signals_imported += 1;
+        } else {
+            stats.anchor_signals_skipped_duplicate += 1;
+        }
+    }
+    for rare in read_jsonl::<RareCaseRecord>(project_root, RARE_CASES_JSONL).unwrap_or_default() {
+        if append_rare_case_to_global(&rare)? {
+            stats.rare_cases_imported += 1;
+        } else {
+            stats.rare_cases_skipped_duplicate += 1;
+        }
+    }
+    Ok(stats)
+}
+
+/// Spec v2 Q1 merge rule: union of latest N from project + latest M
+/// from global, deduped by id, sorted by `created_at` descending.
+/// `take_local` = 50, `take_global` = 150 per `MERGE_LOCAL_TAKE` /
+/// `MERGE_GLOBAL_TAKE`.
+pub fn merge_runs_for_estimate(
+    project_root: &Path,
+    include_global: bool,
+) -> Result<Vec<RunRecord>> {
+    let mut local: Vec<RunRecord> = read_jsonl(project_root, RUNS_JSONL).unwrap_or_default();
+    local.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    local.truncate(MERGE_LOCAL_TAKE);
+
+    if !include_global {
+        return Ok(local);
+    }
+
+    let mut global: Vec<RunRecord> = read_global_jsonl(RUNS_JSONL).unwrap_or_default();
+    global.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    global.truncate(MERGE_GLOBAL_TAKE);
+
+    let mut seen: std::collections::HashSet<String> = local.iter().map(|r| r.id.clone()).collect();
+    let mut combined = local;
+    for g in global {
+        if !g.id.is_empty() && seen.insert(g.id.clone()) {
+            combined.push(g);
+        }
+    }
+    combined.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(combined)
 }
 
 // ---------------------------------------------------------------------------

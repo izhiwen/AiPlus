@@ -63,15 +63,18 @@ pub use skill_candidate::{
 };
 pub use snapshot::{SnapshotBuilder, SNAPSHOT_SCHEMA_VERSION};
 pub use velocity::{
-    append_jsonl as append_velocity_jsonl, apply_retention as apply_velocity_retention,
-    classify_rare_case, compute_ai_native_estimate, detect_bias, doctor as velocity_doctor,
-    generate_estimate_id, generate_run_id, init_aieconlab_velocity_seeds, init_velocity,
-    is_rare_case, now_iso, parse_duration, purge_velocity, read_config as read_velocity_config,
+    append_anchor_signal_to_global, append_estimate_to_global,
+    append_jsonl as append_velocity_jsonl, append_rare_case_to_global, append_run_to_global,
+    apply_retention as apply_velocity_retention, classify_rare_case, compute_ai_native_estimate,
+    detect_bias, doctor as velocity_doctor, generate_estimate_id, generate_run_id,
+    global_velocity_dir, import_from_project, init_aieconlab_velocity_seeds, init_global_velocity,
+    init_velocity, is_rare_case, merge_runs_for_estimate, now_iso, parse_duration, purge_velocity,
+    read_config as read_velocity_config, read_global_config, read_global_jsonl,
     read_json as read_velocity_json, read_jsonl as read_velocity_jsonl,
     reject_sensitive_velocity_text, rewrite_jsonl as rewrite_velocity_jsonl, update_aggregates,
     update_multipliers, validate_run_record, velocity_dir, write_config as write_velocity_config,
     write_json as write_velocity_json, Aggregates, AnchorSignalRecord, BiasResult, BucketData,
-    DoctorReport, EstimateRecord, EstimateResult, FastFinishCalibration, MultiplierBucket,
-    RareCaseRecord, RotationState, RunRecord, VelocityConfig, AEL_VELOCITY_SEED_RUNS,
-    AEL_VELOCITY_UNIT_TYPES, VELOCITY_SCHEMA_VERSION,
+    DoctorReport, EstimateRecord, EstimateResult, FastFinishCalibration, ImportStats,
+    MultiplierBucket, RareCaseRecord, RotationState, RunRecord, ShareToGlobalMode, VelocityConfig,
+    AEL_VELOCITY_SEED_RUNS, AEL_VELOCITY_UNIT_TYPES, VELOCITY_SCHEMA_VERSION,
 };

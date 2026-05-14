@@ -57,13 +57,16 @@ aiplus velocity init
 Then the CLI:
 
 ```bash
-aiplus velocity init                       # initialize tracking
-aiplus velocity estimate                   # produce an AI-native estimate
-aiplus velocity complete                   # log the actual completion time
-aiplus velocity bias --task <id>           # check bias on a specific task
-aiplus velocity report                     # overall bias and adjustment
-aiplus velocity doctor                     # health checks
-aiplus velocity purge --yes                # manual purge of old records
+aiplus velocity init                                # initialize tracking
+aiplus velocity estimate                            # produce an AI-native estimate
+aiplus velocity complete                            # log the actual completion time
+aiplus velocity bias --task <id>                    # check bias on a specific task
+aiplus velocity report                              # overall bias + adjustment (default: --scope both)
+aiplus velocity report --scope local                # project-only report
+aiplus velocity report --scope global               # cross-project report
+aiplus velocity doctor                              # health checks (incl. global ledger)
+aiplus velocity purge --yes                         # manual purge of old records
+aiplus velocity import-from-project <path>         # backfill global ledger from existing project
 ```
 
 ## What's inside
@@ -75,23 +78,52 @@ aiplus velocity purge --yes                # manual purge of old records
 
 ## Storage
 
-Everything stays in `.aiplus/velocity/` as plain local JSONL:
+Two tiers — project-local and cross-project.
 
 ```
-.aiplus/velocity/
-  config.json           # configuration
-  estimates.jsonl       # estimate records
+<project>/.aiplus/velocity/
+  config.json           # configuration (incl. share_to_global_mode)
+  estimates.jsonl       # estimate records (full, incl. free-text task)
   runs.jsonl            # completion records
   rare-cases.jsonl      # rare case records (large overestimate, owner gate, etc.)
   multipliers.json      # aggregate adjustment multipliers
   rotation-state.json   # rotation tracking
+
+~/.config/aiplus/velocity/          # XDG; %APPDATA%\aiplus\velocity\ on Windows
+  config.json           # global retention + health knobs
+  estimates.jsonl       # structural projection — NO free text, paths, project name
+  runs.jsonl            # structural projection
+  rare-cases.jsonl      # structural projection
+  anchor-signals.jsonl  # structural projection
 ```
 
 - No SQLite. No database.
-- Normal records: keep latest **200**.
-- Rare cases: keep latest **20**.
+- Project: keep latest **200** normal + **20** rare.
+- Global: keep latest **1000** normal + **100** rare.
+- Dir mode `0700`, files `0600`. Each record `< 4096` bytes (atomic
+  `O_APPEND`).
 - Aggregate multipliers survive raw record rotation, so the calibration
   doesn't reset just because old runs aged out.
+
+### Cross-project sharing
+
+By default a project both writes to and reads from the global ledger,
+so a fresh project benefits from your bias history on day one. Toggle
+in `config.json`:
+
+```jsonc
+{
+  "schemaVersion": "2",
+  // ...
+  "shareToGlobalMode": "read_write"  // read_write | read_only | none
+}
+```
+
+The global ledger **physically cannot contain** the free-text `task`
+description, file paths, project name, or any cwd-derived field —
+those are dropped at projection time. The merge rule when estimating
+is "project-recent-heavy": newest 50 project records + newest 150
+global records, deduped by id.
 
 ## Safety boundaries
 

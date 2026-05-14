@@ -850,3 +850,113 @@ Use a lightweight local ledger, not a database.
 Keep the name `aiplus-agent-velocity`, but explain it as AI-native time calibration.
 
 The project succeeds if it makes CEO agents stop saying "this will take 5 hours" when local evidence shows a strong AI agent usually completes that kind of work in 20-60 minutes.
+
+## 23. v0.2 — Cross-project sharing
+
+The bias-detection signal scales with `n` records, but `n` resets per
+project. A user with 90 active AiPlus projects effectively has zero
+calibration on each one. This section pins the v0.2 architecture for
+cross-project sharing.
+
+### Two-tier storage
+
+- **Project ledger** (`<project>/.aiplus/velocity/`) — unchanged.
+  Authoritative for the user's own data, retains full record incl.
+  free-text `task` (the user logged it themselves).
+- **Global ledger** (`<config_home>/aiplus/velocity/`) — new.
+  Structural projection of every project's records. **Cannot physically
+  hold** the free-text `task`, file paths, project name, runtime, agent
+  role, or any cwd-derived field. Mode `0700` on the dir; files `0600`.
+
+### Privacy floor
+
+Spec deliberately picks **structural privacy over cryptographic
+privacy**. A 12-char SHA of a known short string ("fix bug", "review
+PR") is brute-forceable in seconds with a rainbow table. Dropping the
+field entirely is strictly stronger: nothing to attack.
+
+The estimate-matching algorithm only needs `(task_type, model,
+workflow)` plus duration/outcome. The `task` field added nothing
+computationally.
+
+### Merge rule
+
+When `estimate` reads the union of local + global for bucket sampling:
+take latest 50 project records + latest 150 global records, dedupe by
+id, sort by recency descending. "Project-recent-heavy" — recency in
+the project dominates, but the global tier always contributes >0
+unless the project has 150+ recent records.
+
+Constants: `MERGE_LOCAL_TAKE = 50`, `MERGE_GLOBAL_TAKE = 150`.
+
+### Retention
+
+Global: 1000 normal + 100 rare. ~2 MB lifetime cap.
+Project: unchanged at 200 + 20.
+
+### Duplicate id resolution
+
+Write-time idempotent reject. Second write of an existing id is a
+no-op + stderr warning. Migrations are naturally idempotent;
+clock-collision bugs surface immediately rather than hide.
+
+### Multi-machine forward-compat
+
+ID generator switches to ULID (Crockford base32, 80 bits random, ms
+timestamp prefix). Old `est_{unix_ms}` IDs remain valid forever
+(string comparison still sorts by time inside their family).
+Append-only invariant on JSONL files; in-place edits forbidden so a
+naive sync tool (iCloud / Syncthing) doesn't corrupt records.
+
+This commits the project to ULID IDs going forward but does NOT ship
+sync code — that's a separate Owner decision.
+
+### Opt-out
+
+Three-state explicit: `share_to_global_mode = read_write | read_only
+| none`. Default `read_write` for new projects. The bool form
+(`share_to_global: true/false`) is rejected because it conflates
+"don't write" with "be invisible."
+
+### Schema versioning
+
+Velocity types intentionally do NOT use `#[serde(deny_unknown_fields)]`
+(Rust) or `additionalProperties: false` (JSONSchema). A v0.2 CLI must
+be able to read a v0.3 config without panicking. Forward-compat is
+part of the schema contract; the velocity_global test suite includes a
+regression assert that an unknown `future_field` parses cleanly.
+
+### Concurrency strategy
+
+| File type | Strategy |
+|---|---|
+| JSONL (`runs.jsonl`, `estimates.jsonl`, `rare-cases.jsonl`, `anchor-signals.jsonl`) | POSIX `O_APPEND` via `append_jsonl_atomic` (lock + atomic rename internally). Each record `< 4096` bytes (PIPE_BUF on macOS/Linux) so append is atomic across concurrent writers. |
+| JSON (`config.json`, `aggregates.json`, `multipliers.json`, `rotation-state.json`) | Read-modify-write with `flock(LOCK_EX)` + write-to-`.tmp` + `rename(2)`. Rename is the actual correctness primitive; flock is defense-in-depth. |
+
+**iCloud / Dropbox warning**: `flock` is unreliable on sync mounts.
+`aiplus velocity doctor` canonicalizes `~/.config/aiplus/velocity/`
+and reports `global_ledger_health=NEEDS_FIX` if the path lands under
+`Mobile Documents/`, `CloudStorage/`, or `Dropbox/`. The hint is to
+move `~/.config/` out of the sync folder.
+
+### Doctor coverage
+
+`aiplus velocity doctor` emits 6 new fields:
+
+- `local_records_count`, `global_records_count`,
+  `synced_records_count`, `local_only_records_count`
+- `share_to_global_mode = read_write | read_only | none`
+- `global_ledger_health = PASS | NEEDS_FIX | FAIL`
+
+### Migration
+
+`aiplus velocity import-from-project <path>` reads
+`<path>/.aiplus/velocity/{runs,estimates,rare-cases,anchor-signals}.jsonl`,
+projects to global-safe shape, appends with id-based dedup. Idempotent.
+
+### Uninstall behavior
+
+`aiplus uninstall --yes` MUST NOT delete `~/.config/aiplus/velocity/`
+— that's user-level data, not project data. A future
+`aiplus uninstall --purge-user-data --yes` flag can opt into the
+delete; it's not the default.
