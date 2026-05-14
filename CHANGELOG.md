@@ -2,7 +2,29 @@
 
 ## Unreleased
 
-## 0.5.18
+## 0.5.19
+
+The v0.5.18 tag was pushed before this sprint's Tracks A.1/A.2/B.1/
+B.2/B.3/C.1/C.2/D.2 merged on top of the agent-key K1-K4 commit, so
+the v0.5.18 DRAFT release would have shipped without them. Skipping
+v0.5.18; v0.5.19 carries the K1-K4 agent-key UX work AND the full
+Tracks A-D bundle below.
+
+### agent-key UX complete (K1-K4)
+
+- **K1** `aiplus secret-broker set --auto-prompt` pops a native OS
+  password dialog (macOS `osascript` / Linux `zenity-kdialog` /
+  Windows PowerShell) — paste once into the OS-native input box, no
+  shell-history pollution.
+- **K2** `aiplus secret-broker need <alias>...` agent-callable
+  command — agents declare what keys they need; the broker handles
+  the pop-up + scope.
+- **K3** AGENTS.aiplus.md protocol section documents the broker
+  flow for runtimes that read AGENTS.
+- **K4** `cd` auto-load via shell hook — the broker injects scoped
+  env-vars on directory change for fast iteration.
+
+### This-sprint Tracks A/B/C/D
 
 - **Uninstall hygiene (Track A.1)**: `aiplus uninstall --yes` now
   sweeps `.claude/agents/{aieconlab,agent-team,aiplus}-*.md`,
