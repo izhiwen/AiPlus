@@ -56,11 +56,19 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    this task". The setup never amortizes. Worse, the key ends up in
    transcripts, `.env` files, shell history, screenshots, and CI logs —
    one accidental commit or screen-share and it's exposed.
+8. **Every new project starts the agent from zero.** Pain #1 was about
+   forgetting within one project; this is the across-project layer. Six
+   months tuning the agent to your workflow in Project A — naming style,
+   review tone, role identities, tooling preferences — none of that
+   carries to Project B. Each project starts with the agent re-meeting
+   you. The "how I work" baseline has no home above a single project.
 
-AiPlus is six core Rust modules that together fix all seven failure modes
-(Agent Team treats both #3 multi-agent collision and #6 single-agent
-role-drift). Plus one optional, opt-in module — AiEconLab — for
-applied-economics research, see below.
+AiPlus is six core Rust modules that together fix the seven in-project
+failure modes (Agent Team treats both #3 multi-agent collision and #6
+single-agent role-drift). The eighth — cross-project preference amnesia
+— is treated by the [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me)
+Companion template described below. Plus one optional, opt-in module —
+AiEconLab — for applied-economics research, see below.
 
 ## What you get
 
@@ -134,12 +142,12 @@ own persona, workspace, and memory namespace. A coordinator routes work to the
 right role, keeps transcripts, and prunes stale worktrees so your project stays
 clean. No more role pollution, no more shallow-each-hat.
 
-**Companion: [aiplus-work-with-me](https://github.com/izhiwen/aiplus-work-with-me)** —
-where the six modules above are *project-local*, the work-with-me template
+**Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
+where the six modules above are *project-local*, the AiPlus-Work-with-Me template
 is the **user-level profile bundle** that layers on top: your collaboration
 style, project map, role identities, tooling preferences — captured once,
 then inherited across every project. Fork it, fill in the placeholders,
-then `aiplus profile install aiplus-work-with-me --user --yes`. It is **not**
+then `aiplus profile install AiPlus-Work-with-Me --user --yes`. It is **not**
 auto-installed by `aiplus install` — it is the explicit fork-and-personalize
 opt-in for cross-project (not just cross-session) preference memory.
 
@@ -343,10 +351,10 @@ never bundled into public repositories. See `aiplus profile install` and
 For a ready-made fork-and-personalize template that solves cross-project /
 cross-session amnesia — your agent remembering your collaboration style,
 project map, role identities, and tooling preferences without you re-stating
-them every session — see [**aiplus-work-with-me**](https://github.com/izhiwen/aiplus-work-with-me).
+them every session — see [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me).
 It is **not** auto-installed by `aiplus install`; you fork it, fill in the
 placeholders (USER.md / sync/projects.toml / secret-aliases.tsv), then run
-`aiplus profile install aiplus-work-with-me --user --yes` once.
+`aiplus profile install AiPlus-Work-with-Me --user --yes` once.
 
 ## Status
 

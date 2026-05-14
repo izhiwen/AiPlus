@@ -19,8 +19,9 @@
 5. **Agent 做 plan 时常常忽略最重要的事** —— 用户上手是否容易、安全和隐私、实际执行的 pitfall、AI 集成考量。这些事要么发版周才发现，要么用户投诉之后才发现。
 6. **一个 Agent 戴所有帽子。** CEO、reviewer、builder、advisor 全塞进同一个上下文窗口。角色**漂移**，上下文在不同帽子间**污染**，每个帽子都戴得很**浅**。真正的工程团队之所以分工，是因为工作本身就是如此结构化。
 7. **每次 agent session 都要重新给 agent 配 key。** 新项目、新对话、新 wrapper 脚本 —— 又一次要 copy-paste `OPENAI_API_KEY=...`、在新 shell 里 `export` env、改 `.env`，或者直接把 key 贴进 prompt"就这一次"。每次都从头来过，永远不能摊销。更糟的是 key 会留在 transcript、`.env`、shell history、截图、CI 日志里 —— 一次误 commit、一次共享屏幕，就泄出去了。
+8. **每开新项目，agent 都重新认识你。** 痛点 #1 是同一个项目内**跨 session** 忘事；这是**跨项目**的那一层。你花六个月把 agent 调教成懂你工作流的样子——naming 风格、review 语气、角色身份、工具偏好——下一个项目开张，agent 还是从零开始，没有"基线人格"跟你过来。`how I work` 这层东西没有比项目更高一级的家。
 
-AiPlus 是六个小模块，加起来正好治这七件事（Agent Team 同时治 #3 多 agent 互相踩脚 和 #6 单 agent 角色漂移）。另加一个 opt-in 模块 AiEconLab，给应用经济学研究用，详见下。
+AiPlus 是六个小模块治这**七件项目内**的事（Agent Team 同时治 #3 多 agent 互相踩脚 和 #6 单 agent 角色漂移）。第八件 —— 跨项目偏好失忆 —— 由下面会讲的 [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me) Companion 模板治。另加一个 opt-in 模块 AiEconLab，给应用经济学研究用，详见下。
 
 ## 你拿到什么
 
@@ -56,7 +57,7 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 **Agent Velocity** —— Agent 不再瞎报工时。每次估时和实际完成时间记成本地 JSONL。Human-time bias 自动检测。后续估时用基于你自己历史校准过的 AI-native p50 / p90 数字。
 
-**Companion 模板：[aiplus-work-with-me](https://github.com/izhiwen/aiplus-work-with-me)** —— 上面六个模块都是 *项目本地*，work-with-me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install aiplus-work-with-me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
+**Companion 模板：[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面六个模块都是 *项目本地*，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
 
 所有数据都留在你项目里的 `.aiplus/`。**不上传，不云同步，不动你的全局 agent 配置。**
 
@@ -209,7 +210,7 @@ AiPlus 留在你项目里，**不**：
 
 AiPlus 支持可选的用户级私有 profile，存个人偏好和 secret alias 在 `~/.config/aiplus/profiles/`。私有 profile **永远不会**被打包进公共仓库。详细看 `aiplus profile install` 和 `aiplus secret-broker` 文档。
 
-需要一份现成的 "fork → 填占位符 → 一次安装" 模板，解决跨项目 / 跨 session 失忆（让 agent 记住你的协作风格、项目地图、角色身份、工具偏好，不用每个 session 重讲一遍），见 [**aiplus-work-with-me**](https://github.com/izhiwen/aiplus-work-with-me)。它 **不会**被 `aiplus install` 自动装上 —— 你 fork 它、填好占位符（USER.md / sync/projects.toml / secret-aliases.tsv），然后跑一次 `aiplus profile install aiplus-work-with-me --user --yes`。
+需要一份现成的 "fork → 填占位符 → 一次安装" 模板，解决跨项目 / 跨 session 失忆（让 agent 记住你的协作风格、项目地图、角色身份、工具偏好，不用每个 session 重讲一遍），见 [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me)。它 **不会**被 `aiplus install` 自动装上 —— 你 fork 它、填好占位符（USER.md / sync/projects.toml / secret-aliases.tsv），然后跑一次 `aiplus profile install AiPlus-Work-with-Me --user --yes`。
 
 ## 状态
 
