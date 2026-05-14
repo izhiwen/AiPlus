@@ -371,11 +371,17 @@ enum Commands {
         /// is available.
         #[arg(long = "auto-prompt", action = ArgAction::SetTrue)]
         auto_prompt: bool,
-        /// K2: env var name override for `set` / `need` (default:
-        /// uppercase alias + `_API_KEY`). Useful when one alias must
-        /// expose as a non-standard env name (e.g. multi-account
-        /// `openai_work` → `OPENAI_API_KEY`).
-        #[arg(long = "env")]
+        /// K9 (#79): export-env-var name override for `set` / `need`
+        /// (default: uppercase alias + `_API_KEY`). Useful when one
+        /// alias must expose as a non-standard env name (e.g.
+        /// multi-account `openai_work` → `OPENAI_API_KEY`).
+        ///
+        /// `--env <NAME>` is the legacy spelling — accepted for
+        /// backward compat but deprecated; users (and LLM agents
+        /// reading `--help`) commonly read `--env` as "read value
+        /// FROM env var NAME" which is the opposite of what it does.
+        /// New code should use `--export-as <NAME>`.
+        #[arg(long = "export-as", visible_alias = "env")]
         env_var: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
@@ -5314,7 +5320,7 @@ fn command_secret_broker(
         Some("shell-init") => secret_broker_shell_init(arg),
         Some("hook") => secret_broker_hook(),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--env <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|shell-init zsh|bash|fish|hook|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--export-as <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|shell-init zsh|bash|fish|hook|token set|delete");
             process::exit(2);
         }
     }
@@ -8994,9 +9000,26 @@ What that one line does:
    Codex CLI users see this on first use; Claude Code sandboxing
    doesn't trigger it. The elevation is expected, not a security issue.
 
-**Cross-project share**: once a user provides a value for `<alias>` on
-this machine — in ANY project — every future `need <alias>` resolves
-silently from keyring. The user never re-enters the same key twice.
+**Cross-project share — two layers** (#80):
+
+1. **Keychain layer (always on, machine-wide)**: once a user provides
+   a value for `<alias>` on this machine — in ANY project — every
+   future `aiplus secret-broker need <alias> --auto-prompt` from any
+   directory resolves silently from the OS keyring. The user never
+   re-enters the same key twice on this machine. This works even if
+   the agent's cwd is a fresh directory that has never run
+   `aiplus install`; you can ALWAYS call `need` and trust the
+   broker to handle the lookup.
+
+2. **cd-auto-load layer (per project, opt-in via install)**: the
+   shell hook installed by `aiplus install --yes` (K5) auto-exports
+   `<ALIAS>_API_KEY` env vars on `cd` into projects that list the
+   alias in their `.aiplus/keys.toml`. This file is only created by
+   projects that have run `aiplus install <runtime>` — so a fresh
+   directory without `.aiplus/` will NOT auto-export anything on cd.
+   That is intentional (we don't auto-leak secrets into random
+   shells), not a bug. If the user wants ergonomic cd-injection in
+   a new project, run `aiplus install <runtime>` there once.
 
 **NEVER ask the Owner directly for a key value.** Always go through
 `need` / `set`. The value lives only in the OS keyring; the agent only
