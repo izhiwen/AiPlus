@@ -20,6 +20,13 @@ pub struct AgentConfig {
     pub memory: Option<MemorySection>,
     #[serde(rename = "invocation")]
     pub invocation: Option<InvocationSection>,
+    /// S5: secret-broker aliases this role needs to do its job.
+    /// Used by `agent route` (S7) to auto-inject broker env vars
+    /// and by `aiplus doctor` (S6) to flag missing aliases at
+    /// install time so the user knows to provision them BEFORE the
+    /// first dispatch fails.
+    #[serde(rename = "secret_needs", default)]
+    pub secret_needs: Option<SecretNeedsSection>,
     // Flattened convenience fields (derived from nested sections)
     #[serde(skip)]
     pub role: String,
@@ -96,6 +103,21 @@ pub struct InvocationSection {
     pub chinese_aliases: Vec<String>,
     #[serde(default)]
     pub english_aliases: Vec<String>,
+}
+
+/// S5: per-role declaration of secret-broker aliases needed for
+/// the role to function. Schema:
+///   [secret_needs]
+///   aliases = ["anthropic", "openai"]
+///
+/// Empty list (or omitted section) means "no external secret needed";
+/// the role runs entirely on local resources. Listed aliases get
+/// pre-flight checked by `doctor` (S6) and pre-injected by `route` (S7).
+#[derive(Debug, Clone, Deserialize, Default)]
+#[allow(dead_code)]
+pub struct SecretNeedsSection {
+    #[serde(default)]
+    pub aliases: Vec<String>,
 }
 
 fn default_ttl() -> u64 {
@@ -313,6 +335,7 @@ impl AgentConfig {
             workspace: None,
             memory: None,
             invocation: None,
+            secret_needs: None,
             role: role.to_string(),
             display_name: role.to_string(),
             tier: tier.to_string(),

@@ -26,3 +26,7 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["工程师A", "EngineerA"]
 english_aliases = ["engineer", "engineerA", "eng-a", "developer"]
+
+# S5: engineers often need github API access for PR / issue work.
+[secret_needs]
+aliases = ["github"]
