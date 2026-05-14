@@ -27,4 +27,10 @@ shell-words = "1.1"
 # multi-platform rollout (Phase 1 added Linux + Intel Mac binary distribution
 # but left the keychain code as a macOS-only `Command::new("security")` shell-
 # out; Phase 2 replaces that with a native cross-platform API).
-keyring = { version = "3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }
+# `vendored` builds libdbus from source and statically links it, so the
+# Linux binary doesn't dynamically link `libdbus-1.so.3` at runtime. Without
+# this, headless Linux systems / minimal containers fail to even run
+# `aiplus --version` because the dynamic linker can't resolve libdbus.
+# `apple-native`/`windows-native` are no-ops for `vendored` (it only
+# affects the dbus-secret-service path on Linux).
+keyring = { version = "3", features = ["apple-native", "linux-native-sync-persistent", "windows-native", "vendored"] }
