@@ -4251,3 +4251,90 @@ fn agent_route_approves_owner_gate_with_flag() {
         body
     );
 }
+
+#[test]
+fn install_seeds_memory_namespaces_for_agent_team() {
+    // W3 contract: `aiplus install codex` (which auto-installs the
+    // agent-team substrate per default_module_names) must seed
+    // .aiplus/agent-memory/<role>/ + _team/ with .gitkeep + README.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+    run(target, &["install", "codex"], 0);
+
+    let base = target.join(".aiplus/agent-memory");
+    assert!(
+        base.exists(),
+        "agent-memory base dir should exist after install"
+    );
+
+    let team_readme = base.join("_team/README.md");
+    assert!(team_readme.exists(), "_team/README.md should exist");
+    assert!(
+        base.join("_team/.gitkeep").exists(),
+        "_team/.gitkeep should exist"
+    );
+
+    let expected_roles = [
+        "advisor",
+        "ceo",
+        "architect",
+        "pm",
+        "engineer-a",
+        "engineer-b",
+        "reviewer",
+        "qa",
+    ];
+    for role in expected_roles {
+        let rdir = base.join(role);
+        assert!(
+            rdir.exists(),
+            "agent-memory/{} dir should exist after install",
+            role
+        );
+        assert!(
+            rdir.join(".gitkeep").exists(),
+            "agent-memory/{}/.gitkeep should exist",
+            role
+        );
+        assert!(
+            rdir.join("README.md").exists(),
+            "agent-memory/{}/README.md should exist",
+            role
+        );
+    }
+
+    // Doctor's W3 check should pass on a fresh install.
+    let doctor = stdout(&run(target, &["doctor"], 0));
+    assert!(
+        doctor.contains("PASS .aiplus/agent-memory/_team/ exists"),
+        "doctor should pass on _team/ namespace:\n{}",
+        doctor
+    );
+    assert!(
+        doctor.contains("PASS .aiplus/agent-memory/advisor/ exists with seed file"),
+        "doctor should pass on advisor namespace:\n{}",
+        doctor
+    );
+
+    // Tamper: delete the advisor namespace, re-run doctor — should
+    // surface the missing-namespace warning.
+    fs::remove_dir_all(base.join("advisor")).unwrap();
+    let mut command = Command::new(bin());
+    command
+        .args(["doctor"])
+        .current_dir(target)
+        .env("HOME", target.join("fake-home"))
+        .env("CODEX_HOME", target.join("fake-codex-home"))
+        .env("XDG_CONFIG_HOME", target.join("fake-xdg"));
+    let out = command.output().expect("doctor");
+    let doctor2 = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        doctor2.contains("NEEDS_FIX .aiplus/agent-memory/advisor/ exists with seed file"),
+        "doctor should flag the deleted advisor namespace:\n{}",
+        doctor2
+    );
+}
