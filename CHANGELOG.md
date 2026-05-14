@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.5.25
+
+### K9: agent-key follow-ups (#79, #80, #81)
+
+- **#79 — `secret-broker set --export-as <NAME>`** (new spelling for
+  the legacy `--env <NAME>` output-label flag). Users and agents
+  reading `--help` commonly misread `--env` as "read value from env
+  var NAME" — the new name says what it does. `--env` remains as a
+  clap `visible_alias` for one release; deprecation is name-only,
+  no behavior change. / `set --env` → 改名 `--export-as`；旧名兼容。
+- **#80 — Cross-project share docs**: README + AGENTS.aiplus.md
+  BROKER protocol now spell out the two layers explicitly. Layer 1
+  (keychain, always on, machine-wide) vs Layer 2 (cd-auto-load,
+  per-project opt-in via `aiplus install`). Resolves the
+  recurring "why doesn't my new project auto-load keys" confusion.
+  / README/AGENTS protocol 把 cross-project 共享的两层语义讲清楚：
+  keychain 层始终生效，cd-auto-load 层要 install opt-in。
+- **#81 — bash + fish shell-init parity tests**:
+  `install_with_yes_appends_shell_init_to_bashrc` and
+  `install_with_yes_prefers_bash_profile_when_it_exists` cover the
+  bash branch (including `~/.bash_profile` precedence on macOS).
+  `install_with_yes_appends_shell_init_to_fish_config` covers
+  `$XDG_CONFIG_HOME/fish/config.fish` + parent-dir auto-create.
+  Interactive PTY tests intentionally skipped (rationale documented
+  in #81); coverage focuses on the deterministic --yes path.
+  / 3 个新 parity 测试，覆盖 bash + fish 的 shell-init 写入路径。
+
 ### Public profile template renamed: `aiplus-work-with-you` → `aiplus-work-with-me`
 
 - Semantically clearer: each forked profile bundle is "AiPlus working

@@ -85,8 +85,9 @@ Keychain / Linux Secret Service / Windows Credential Manager), never
 on disk. One-time per machine:
 
 ```bash
-echo -n "$YOUR_OPENAI_KEY" | aiplus secret-broker set --alias openai
-# Repeat once for each provider (anthropic, github, …)
+aiplus secret-broker set --alias openai --auto-prompt   # native OS dialog
+# or: echo -n "$YOUR_OPENAI_KEY" | aiplus secret-broker set --alias openai
+# Repeat once per provider (anthropic, github, …)
 ```
 
 From then on every Codex / Claude Code / OpenCode session in any
@@ -96,6 +97,19 @@ project picks up the key automatically:
 aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 # OPENAI_API_KEY + ANTHROPIC_API_KEY available in env; cleared on exit
 ```
+
+**Cross-project share works in two layers**:
+
+1. **Machine-wide** (always on): one `aiplus secret-broker set` per
+   alias on this machine; every future `aiplus secret-broker need
+   <alias>` from any directory resolves silently from the OS
+   keyring. The agent never re-asks, and `need` works even in a
+   fresh directory that has never run `aiplus install`.
+2. **cd-auto-load** (per project, opt-in): the shell hook installed
+   by `aiplus install --yes` (default `[Y/n]` prompt) auto-exports
+   `*_API_KEY` env vars when you `cd` into a project that lists the
+   alias in its `.aiplus/keys.toml`. To get this ergonomic flow in
+   a new project, run `aiplus install <runtime>` there once.
 
 No copy-paste, no `.env` shuffling, no key in prompts. (Bonus: values
 never default-print, never enter git history.) For multi-machine sync
