@@ -3865,21 +3865,25 @@ fn agent_route_writes_consult_artifact() {
         "consultant-team.toml should exist after install + add auto-team-consultant"
     );
 
-    // Task description full of LLM + release keywords — should fire
-    // both the SWE default ai_integration trigger and the release
-    // (HEAVY, stop_gate) trigger, plus push tier to HEAVY which pulls
-    // user personas in.
+    // Task description that fires the SWE ai_integration trigger (via
+    // "LLM") and pushes complexity to HEAVY (via "rewrite") without
+    // touching any of the W2 owner-gate keywords. We avoid "identity"-
+    // adjacent words because "identity" is a trigger and would pull in
+    // trust_safety (which carries owner_gate via the release [[triggers]]
+    // stop_gate fan-out). W2's gate-blocking path has its own tests
+    // below; this one exercises W1 in isolation.
     let route = stdout(&run(
         target,
         &[
             "agent",
             "route",
             "engineer-a",
-            "release",
+            "rewrite",
             "the",
             "LLM",
             "tool",
             "use",
+            "context",
             "pipeline",
         ],
         0,
@@ -3937,11 +3941,12 @@ fn agent_route_writes_consult_artifact() {
             "agent",
             "route",
             "engineer-a",
-            "release",
+            "rewrite",
             "the",
             "LLM",
             "tool",
             "use",
+            "context",
             "pipeline",
         ],
         0,
@@ -4036,5 +4041,213 @@ fn agent_route_skips_consult_on_unsupported_schema() {
         combined.contains("schema_version is supported by this CLI"),
         "doctor should report on schema_version drift:\n{}",
         combined
+    );
+}
+
+#[test]
+fn agent_route_blocks_dispatch_on_unapproved_owner_gate() {
+    // W2 contract: a task that fires an [owner_gates] entry must
+    // refuse dispatch with a non-zero exit and write a gate-pending
+    // record. The consult artifact must NOT land (a refused dispatch
+    // shouldn't leave a "this happened" finding on disk).
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+    run(target, &["install", "codex"], 0);
+    run(target, &["add", "auto-team-consultant"], 0);
+
+    // "release" matches the SWE-default release stop_gate trigger
+    // (release_automation / trust_safety / runtime_qa are in its
+    // member list, all join at HEAVY tier, the stop_gate fires).
+    // Exit code 3 here is the binary's generic non-zero path for
+    // anyhow-bubbled errors; gate refusal lands on that path today.
+    let output = run(
+        target,
+        &[
+            "agent",
+            "route",
+            "engineer-a",
+            "release",
+            "the",
+            "LLM",
+            "pipeline",
+        ],
+        3,
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("Owner gate(s) fired") || combined.contains("owner gate"),
+        "route output should mention owner gate:\n{}",
+        combined
+    );
+    assert!(
+        combined.contains("--owner-approved") || combined.contains("dispatch refused"),
+        "route output should hint at --owner-approved flag:\n{}",
+        combined
+    );
+
+    // gates-<task-id>.jsonl must exist with a pending record for "release".
+    let team_dir = target.join(".aiplus/agent-memory/_team");
+    assert!(
+        team_dir.exists(),
+        "_team/ namespace should exist after gated route"
+    );
+    let gate_files: Vec<_> = fs::read_dir(&team_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.starts_with("gates-") && s.ends_with(".jsonl"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        gate_files.len(),
+        1,
+        "expected exactly one gates-*.jsonl, got {:?}",
+        gate_files
+    );
+    let body = fs::read_to_string(&gate_files[0]).unwrap();
+    let mut saw_release_pending = false;
+    for line in body.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).expect("gate record is JSON");
+        if v.get("gateId").and_then(|x| x.as_str()) == Some("release")
+            && v.get("status").and_then(|x| x.as_str()) == Some("pending")
+        {
+            saw_release_pending = true;
+            assert_eq!(
+                v.get("approvedBy").and_then(|x| x.as_str()),
+                Some(""),
+                "pending records should leave approvedBy empty"
+            );
+        }
+    }
+    assert!(
+        saw_release_pending,
+        "expected a pending record for gateId=release; body:\n{}",
+        body
+    );
+
+    // Consult artifact must NOT have been written (dispatch refused
+    // before the consult side-effect ran).
+    let consult_files: Vec<_> = fs::read_dir(&team_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.starts_with("consult-"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert!(
+        consult_files.is_empty(),
+        "no consult artifact expected on gate-refused dispatch, got {:?}",
+        consult_files
+    );
+
+    // Dispatch log must NOT have a release entry — the dispatch was
+    // refused, so the audit log shouldn't claim it happened.
+    let dispatch_log = target.join(".aiplus/agents/dispatch-log.jsonl");
+    if dispatch_log.exists() {
+        let log_body = fs::read_to_string(&dispatch_log).unwrap();
+        assert!(
+            !log_body.contains("\"task\":\"release"),
+            "dispatch log should not record refused dispatch:\n{}",
+            log_body
+        );
+    }
+}
+
+#[test]
+fn agent_route_approves_owner_gate_with_flag() {
+    // W2 happy path: passing --owner-approved <gate-id> lets the
+    // dispatch proceed. The ledger carries an approved record with
+    // timestamp + approver name, and a consult artifact appears
+    // because the dispatch ran to completion.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+    run(target, &["install", "codex"], 0);
+    run(target, &["add", "auto-team-consultant"], 0);
+
+    // Pass the gate id BEFORE the role token; trailing-var-arg parser
+    // would otherwise swallow `--owner-approved` into `task`.
+    let out = stdout(&run_with_env(
+        target,
+        &[
+            "agent",
+            "route",
+            "--owner-approved",
+            "release",
+            "engineer-a",
+            "release",
+            "the",
+            "LLM",
+            "pipeline",
+        ],
+        0,
+        &[("USER", "steve")],
+    ));
+    assert!(
+        out.contains("[approved] release"),
+        "route output should mark release approved:\n{}",
+        out
+    );
+    assert!(
+        out.contains("Consult tier:") && out.contains("finding(s) recorded:"),
+        "approved dispatch should produce a consult artifact:\n{}",
+        out
+    );
+
+    // Verify the gate ledger entry carries approver + timestamp.
+    let team_dir = target.join(".aiplus/agent-memory/_team");
+    let gate_files: Vec<_> = fs::read_dir(&team_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.starts_with("gates-") && s.ends_with(".jsonl"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(gate_files.len(), 1);
+    let body = fs::read_to_string(&gate_files[0]).unwrap();
+    let mut saw_release_approved = false;
+    for line in body.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        if v.get("gateId").and_then(|x| x.as_str()) == Some("release")
+            && v.get("status").and_then(|x| x.as_str()) == Some("approved")
+        {
+            saw_release_approved = true;
+            assert_eq!(
+                v.get("approvedBy").and_then(|x| x.as_str()),
+                Some("steve"),
+                "approver should be captured"
+            );
+            assert!(
+                v.get("timestamp")
+                    .and_then(|x| x.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false),
+                "approved record should have a non-empty timestamp"
+            );
+        }
+    }
+    assert!(
+        saw_release_approved,
+        "expected approved record for gateId=release; body:\n{}",
+        body
     );
 }
