@@ -1,0 +1,181 @@
+---
+# Post-release smoke matrix — exercises the just-published binary on
+# REAL operating systems we can't easily test locally:
+#   - Intel Mac (macos-13)        — real macOS Keychain on x86_64 hardware
+#   - Windows (windows-latest)    — real Windows Credential Manager
+#   - Apple Silicon Mac (macos-14)— sanity check the path we already use
+#   - Linux x86_64 (ubuntu-22.04) — older glibc + gnome-keyring round-trip
+#
+# Triggered automatically when `Release` workflow completes successfully,
+# OR manually via `gh workflow run post-release-smoke.yml -f tag=v0.5.11`.
+
+name: post-release-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to smoke-test (e.g. v0.5.11)'
+        required: true
+        default: 'v0.5.11'
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.target }})
+    # On workflow_run, only proceed if the upstream Release succeeded.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+            asset_ext: tar.gz
+            shell: bash
+          - target: x86_64-apple-darwin
+            os: macos-13          # Real Intel macOS hardware
+            asset_ext: tar.gz
+            shell: bash
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04      # Older glibc compatibility check
+            asset_ext: tar.gz
+            shell: bash
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest    # Real Windows Credential Manager
+            asset_ext: zip
+            shell: pwsh
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            # For tag-triggered Release runs, head_branch is the tag name.
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "ERROR could not resolve tag" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Smoke-testing tag: $TAG"
+
+      - name: Checkout (for github.workspace + scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p _smoke_asset
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --pattern "aiplus-${{ matrix.target }}.${{ matrix.asset_ext }}" \
+            --dir _smoke_asset \
+            --repo "${{ github.repository }}"
+          ls -la _smoke_asset/
+
+      - name: Extract (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd _smoke_asset
+          tar -xzf "aiplus-${{ matrix.target }}.tar.gz"
+          chmod +x aiplus
+          ls -la aiplus
+          file aiplus
+
+      - name: Extract (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd _smoke_asset
+          Expand-Archive -Path "aiplus-${{ matrix.target }}.zip" -DestinationPath . -Force
+          Get-Item aiplus.exe | Format-List
+
+      - name: version + mcp-serve handshake (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ./_smoke_asset/aiplus --version
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./_smoke_asset/aiplus mcp-serve 2>/dev/null
+
+      - name: version + mcp-serve handshake (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\_smoke_asset\aiplus.exe --version
+          '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | .\_smoke_asset\aiplus.exe mcp-serve 2>$null | Select-Object -First 1
+
+      - name: Set up gnome-keyring (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dbus-x11 gnome-keyring
+
+      - name: Keyring round-trip — real Secret Service (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          eval "$(dbus-launch --sh-syntax)"
+          eval "$(printf '\n' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)"
+          eval "$(printf '\n' | gnome-keyring-daemon --start --components=secrets 2>/dev/null)"
+          sleep 1
+          echo "=== set ==="
+          echo 'smoke_token_linux' | ./_smoke_asset/aiplus secret-broker token set
+          echo "=== status (read back) ==="
+          ./_smoke_asset/aiplus secret-broker status | head -10
+          echo "=== delete ==="
+          ./_smoke_asset/aiplus secret-broker token delete
+
+      - name: Keyring round-trip — real macOS Keychain
+        if: runner.os == 'macOS'
+        run: |
+          echo "=== arch ==="
+          uname -m
+          echo "=== set ==="
+          echo 'smoke_token_macos' | ./_smoke_asset/aiplus secret-broker token set
+          echo "=== status (read back) ==="
+          ./_smoke_asset/aiplus secret-broker status | head -10
+          echo "=== delete ==="
+          ./_smoke_asset/aiplus secret-broker token delete
+
+      - name: Keyring round-trip — real Windows Credential Manager
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Output "=== set ==="
+          'smoke_token_windows' | .\_smoke_asset\aiplus.exe secret-broker token set
+          Write-Output "=== status (read back) ==="
+          .\_smoke_asset\aiplus.exe secret-broker status | Select-Object -First 10
+          Write-Output "=== delete ==="
+          .\_smoke_asset\aiplus.exe secret-broker token delete
+
+      - name: Install + agent route end-to-end (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          git init -q
+          "${{ github.workspace }}/_smoke_asset/aiplus" install --runtime codex --yes 2>&1 | tail -5
+          "${{ github.workspace }}/_smoke_asset/aiplus" agent route engineer-a "post-release smoke ${{ matrix.target }}" 2>&1 | tail -3
+          echo "=== dispatch log ==="
+          cat .aiplus/agents/dispatch-log.jsonl | head -1
+
+      - name: Install + agent route end-to-end (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tmp = Join-Path $env:RUNNER_TEMP "smoke-$(Get-Random)"
+          New-Item -ItemType Directory -Path $tmp | Out-Null
+          Set-Location $tmp
+          git init -q
+          & "${{ github.workspace }}\_smoke_asset\aiplus.exe" install --runtime codex --yes 2>&1 | Select-Object -Last 5
+          & "${{ github.workspace }}\_smoke_asset\aiplus.exe" agent route engineer-a "post-release smoke windows" 2>&1 | Select-Object -Last 3
+          Write-Output "=== dispatch log ==="
+          Get-Content .aiplus\agents\dispatch-log.jsonl | Select-Object -First 1
