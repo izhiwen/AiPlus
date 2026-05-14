@@ -29,7 +29,7 @@
   in #81); coverage focuses on the deterministic --yes path.
   / 3 个新 parity 测试，覆盖 bash + fish 的 shell-init 写入路径。
 
-### Public profile template renamed: `aiplus-work-with-you` → `aiplus-work-with-me`
+### Public profile template renamed: `aiplus-work-with-you` → `AiPlus-Work-with-Me`
 
 - Semantically clearer: each forked profile bundle is "AiPlus working
   with me" (the owner), not "with you" (ambiguous referent). GitHub
@@ -40,7 +40,7 @@
 - The v0.5.23 entry below intentionally retains the old name as
   historical truth — it was correct at release time. Use the new name
   going forward.
-- / **公开 profile 模板更名**：`aiplus-work-with-you` → `aiplus-work-with-me`
+- / **公开 profile 模板更名**：`aiplus-work-with-you` → `AiPlus-Work-with-Me`
   (每个 fork 都是 "AiPlus 跟我一起工作"，更贴合 owner 视角)。GitHub
   保留 URL 重定向，旧 fork 命令仍可用。CLI fallback 字符串 +
   `aiplus-agent-memory` identity 模板 `inherits` 同步更新。下方 v0.5.23
