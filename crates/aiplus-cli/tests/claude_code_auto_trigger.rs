@@ -53,9 +53,10 @@ fn install_writes_hooks_and_claude_md_and_subagents() {
         assert!(target.join(p).exists(), "missing {p}");
     }
 
-    let hooks: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(target.join(".claude/settings.local.json")).unwrap())
-            .unwrap();
+    let hooks: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(target.join(".claude/settings.local.json")).unwrap(),
+    )
+    .unwrap();
     for event in ["SessionStart", "PreCompact"] {
         let arr = hooks
             .pointer(&format!("/hooks/{event}"))
@@ -70,11 +71,15 @@ fn install_writes_hooks_and_claude_md_and_subagents() {
 
     let claude_md = fs::read_to_string(target.join("CLAUDE.md")).unwrap();
     assert_eq!(
-        claude_md.matches("<!-- BEGIN AIPLUS MANAGED BLOCK -->").count(),
+        claude_md
+            .matches("<!-- BEGIN AIPLUS MANAGED BLOCK -->")
+            .count(),
         1
     );
     assert_eq!(
-        claude_md.matches("<!-- END AIPLUS MANAGED BLOCK -->").count(),
+        claude_md
+            .matches("<!-- END AIPLUS MANAGED BLOCK -->")
+            .count(),
         1
     );
 
@@ -137,14 +142,18 @@ fn install_preserves_user_hooks_and_permissions() {
     );
 
     // SessionStart has both user and AiPlus entries.
-    let session = value.pointer("/hooks/SessionStart").unwrap().as_array().unwrap();
+    let session = value
+        .pointer("/hooks/SessionStart")
+        .unwrap()
+        .as_array()
+        .unwrap();
     assert_eq!(session.len(), 2);
-    let has_user = session.iter().any(|m| {
-        m.pointer("/hooks/0/command").and_then(|v| v.as_str()) == Some("echo user-start")
-    });
-    let has_aiplus = session.iter().any(|m| {
-        m.get("aiplus_managed").and_then(|v| v.as_bool()) == Some(true)
-    });
+    let has_user = session
+        .iter()
+        .any(|m| m.pointer("/hooks/0/command").and_then(|v| v.as_str()) == Some("echo user-start"));
+    let has_aiplus = session
+        .iter()
+        .any(|m| m.get("aiplus_managed").and_then(|v| v.as_bool()) == Some(true));
     assert!(has_user, "lost user SessionStart hook");
     assert!(has_aiplus, "missing aiplus SessionStart hook");
 

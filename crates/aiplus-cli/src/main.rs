@@ -6998,7 +6998,17 @@ fn update_claude_md(root: &Path, plan: &mut Plan) -> Result<()> {
         }
     };
     if current.is_none() {
-        write_file_safe(root, rel, next.as_bytes(), plan, &Options { force: true, backup: false, yes: true })
+        write_file_safe(
+            root,
+            rel,
+            next.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )
     } else {
         write_managed_text(root, rel, &next, plan)
     }
@@ -10177,13 +10187,10 @@ fn runtime_doctor_requirements(root: &Path, runtime: &str) -> Result<Vec<(String
             ),
         ],
         "claude-code" => {
-            let hooks_text = read_text_if_exists(&rel_to_abs(
-                root,
-                ".claude/settings.local.json",
-            )?)?
-            .unwrap_or_default();
-            let hooks_value: Option<serde_json::Value> =
-                serde_json::from_str(&hooks_text).ok();
+            let hooks_text =
+                read_text_if_exists(&rel_to_abs(root, ".claude/settings.local.json")?)?
+                    .unwrap_or_default();
+            let hooks_value: Option<serde_json::Value> = serde_json::from_str(&hooks_text).ok();
             let hooks_have_event = |event: &str| -> bool {
                 let Some(value) = &hooks_value else {
                     return false;
@@ -11271,11 +11278,7 @@ fn install_claude_hooks(root: &Path, plan: &mut Plan) -> Result<()> {
         _ => serde_json::json!({}),
     };
     if !value.is_object() {
-        return Err(CliError::new(
-            1,
-            format!("ERROR {rel} root must be a JSON object"),
-        )
-        .into());
+        return Err(CliError::new(1, format!("ERROR {rel} root must be a JSON object")).into());
     }
 
     apply_aiplus_managed_hooks(&mut value);
