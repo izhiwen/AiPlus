@@ -2,6 +2,82 @@
 
 ## Unreleased
 
+## 0.5.25
+
+### K9: agent-key follow-ups (#79, #80, #81)
+
+- **#79 — `secret-broker set --export-as <NAME>`** (new spelling for
+  the legacy `--env <NAME>` output-label flag). Users and agents
+  reading `--help` commonly misread `--env` as "read value from env
+  var NAME" — the new name says what it does. `--env` remains as a
+  clap `visible_alias` for one release; deprecation is name-only,
+  no behavior change. / `set --env` → 改名 `--export-as`；旧名兼容。
+- **#80 — Cross-project share docs**: README + AGENTS.aiplus.md
+  BROKER protocol now spell out the two layers explicitly. Layer 1
+  (keychain, always on, machine-wide) vs Layer 2 (cd-auto-load,
+  per-project opt-in via `aiplus install`). Resolves the
+  recurring "why doesn't my new project auto-load keys" confusion.
+  / README/AGENTS protocol 把 cross-project 共享的两层语义讲清楚：
+  keychain 层始终生效，cd-auto-load 层要 install opt-in。
+- **#81 — bash + fish shell-init parity tests**:
+  `install_with_yes_appends_shell_init_to_bashrc` and
+  `install_with_yes_prefers_bash_profile_when_it_exists` cover the
+  bash branch (including `~/.bash_profile` precedence on macOS).
+  `install_with_yes_appends_shell_init_to_fish_config` covers
+  `$XDG_CONFIG_HOME/fish/config.fish` + parent-dir auto-create.
+  Interactive PTY tests intentionally skipped (rationale documented
+  in #81); coverage focuses on the deterministic --yes path.
+  / 3 个新 parity 测试，覆盖 bash + fish 的 shell-init 写入路径。
+
+### Public profile template renamed: `aiplus-work-with-you` → `AiPlus-Work-with-Me`
+
+- Semantically clearer: each forked profile bundle is "AiPlus working
+  with me" (the owner), not "with you" (ambiguous referent). GitHub
+  auto-redirects old URLs, so existing fork commands still resolve.
+- `canonical_user_profile_or_default()` fallback string updated to
+  match. `aiplus-agent-memory` identity templates' `inherits` field
+  also flipped (see its main branch).
+- The v0.5.23 entry below intentionally retains the old name as
+  historical truth — it was correct at release time. Use the new name
+  going forward.
+- / **公开 profile 模板更名**：`aiplus-work-with-you` → `AiPlus-Work-with-Me`
+  (每个 fork 都是 "AiPlus 跟我一起工作"，更贴合 owner 视角)。GitHub
+  保留 URL 重定向，旧 fork 命令仍可用。CLI fallback 字符串 +
+  `aiplus-agent-memory` identity 模板 `inherits` 同步更新。下方 v0.5.23
+  条目里的旧名是历史记录，不回改。
+
+## 0.5.24
+
+### K8 (#87): NEEDS_ELEVATED status for sandbox-blocked GUI prompts
+
+- **`aiplus secret-broker need|set --auto-prompt` now distinguishes
+  user-cancellation from agent-sandbox GUI-block.** Codex CLI's
+  sandbox blocks osascript from reaching the WindowServer; prior to
+  this fix, the broker collapsed that failure to
+  `SECRET_NEED_STATUS=MISSING` — and the agent (correctly, for that
+  signal) gave up. v0.5.24 emits `NEEDS_ELEVATED` (exit 76) with a
+  hint naming the actual fix: re-run wrapped in `zsh -lc 'eval
+  "\$(aiplus secret-broker need <alias> --auto-prompt)"'`, which the
+  agent's runtime treats as a permission-elevation request.
+- **AGENTS.aiplus.md BROKER_PROTOCOL section now documents
+  `NEEDS_ELEVATED`** alongside the existing PASS / MISSING flows,
+  so agents reading the protocol know to branch on exit 76 without
+  trial-and-error.
+- Detection looks for osascript stderr markers seen in real Codex
+  E2E: `(-1708)` (JXA-under-sandbox), `WindowServer`,
+  `TISFileInterrogator`, `Connection invalid`.
+- Internal: `prompt_secret_via_gui` return type changed from
+  `Result<String>` to `Result<PromptOutcome>` (Value / Cancelled /
+  SandboxBlocked variants). Test override via `AIPLUS_TEST_OSASCRIPT`
+  env var so we can mock all three branches without popping real
+  dialogs.
+  / **K8 (#87)**：sandbox 阻挡 GUI 弹窗的情况现在能被识别。之前 codex
+  用户在 sandbox 里跑 `need --auto-prompt` 会被静默归类为
+  `MISSING`，agent 误以为"没 key 可用"放弃。现在 broker 检测 osascript
+  stderr 里的 sandbox marker，emit `SECRET_NEED_STATUS=NEEDS_ELEVATED`
+  + exit 76，给 agent 一行明确的 wrapped-shell 重跑指令。AGENTS protocol
+  也加了这个状态的说明。
+
 ## 0.5.23
 
 ### Profile-name-agnostic CLI (#86)

@@ -56,11 +56,19 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    this task". The setup never amortizes. Worse, the key ends up in
    transcripts, `.env` files, shell history, screenshots, and CI logs —
    one accidental commit or screen-share and it's exposed.
+8. **Every new project starts the agent from zero.** Pain #1 was about
+   forgetting within one project; this is the across-project layer. Six
+   months tuning the agent to your workflow in Project A — naming style,
+   review tone, role identities, tooling preferences — none of that
+   carries to Project B. Each project starts with the agent re-meeting
+   you. The "how I work" baseline has no home above a single project.
 
-AiPlus is six core Rust modules that together fix all seven failure modes
-(Agent Team treats both #3 multi-agent collision and #6 single-agent
-role-drift). Plus one optional, opt-in module — AiEconLab — for
-applied-economics research, see below.
+AiPlus is six core Rust modules that together fix the seven in-project
+failure modes (Agent Team treats both #3 multi-agent collision and #6
+single-agent role-drift). The eighth — cross-project preference amnesia
+— is treated by the [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me)
+Companion template described below. Plus one optional, opt-in module —
+AiEconLab — for applied-economics research, see below.
 
 ## What you get
 
@@ -85,8 +93,9 @@ Keychain / Linux Secret Service / Windows Credential Manager), never
 on disk. One-time per machine:
 
 ```bash
-echo -n "$YOUR_OPENAI_KEY" | aiplus secret-broker set --alias openai
-# Repeat once for each provider (anthropic, github, …)
+aiplus secret-broker set --alias openai --auto-prompt   # native OS dialog
+# or: echo -n "$YOUR_OPENAI_KEY" | aiplus secret-broker set --alias openai
+# Repeat once per provider (anthropic, github, …)
 ```
 
 From then on every Codex / Claude Code / OpenCode session in any
@@ -96,6 +105,19 @@ project picks up the key automatically:
 aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 # OPENAI_API_KEY + ANTHROPIC_API_KEY available in env; cleared on exit
 ```
+
+**Cross-project share works in two layers**:
+
+1. **Machine-wide** (always on): one `aiplus secret-broker set` per
+   alias on this machine; every future `aiplus secret-broker need
+   <alias>` from any directory resolves silently from the OS
+   keyring. The agent never re-asks, and `need` works even in a
+   fresh directory that has never run `aiplus install`.
+2. **cd-auto-load** (per project, opt-in): the shell hook installed
+   by `aiplus install --yes` (default `[Y/n]` prompt) auto-exports
+   `*_API_KEY` env vars when you `cd` into a project that lists the
+   alias in its `.aiplus/keys.toml`. To get this ergonomic flow in
+   a new project, run `aiplus install <runtime>` there once.
 
 No copy-paste, no `.env` shuffling, no key in prompts. (Bonus: values
 never default-print, never enter git history.) For multi-machine sync
@@ -119,6 +141,15 @@ Advisor, CEO, Architect, PM, two Engineers, Reviewer, and QA — each with its
 own persona, workspace, and memory namespace. A coordinator routes work to the
 right role, keeps transcripts, and prunes stale worktrees so your project stays
 clean. No more role pollution, no more shallow-each-hat.
+
+**Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
+where the six modules above are *project-local*, the AiPlus-Work-with-Me template
+is the **user-level profile bundle** that layers on top: your collaboration
+style, project map, role identities, tooling preferences — captured once,
+then inherited across every project. Fork it, fill in the placeholders,
+then `aiplus profile install AiPlus-Work-with-Me --user --yes`. It is **not**
+auto-installed by `aiplus install` — it is the explicit fork-and-personalize
+opt-in for cross-project (not just cross-session) preference memory.
 
 Everything stays inside `.aiplus/` in your project. Nothing uploads. Nothing
 syncs to a cloud. Nothing edits your global agent config.
@@ -316,6 +347,14 @@ AiPlus supports optional user-level private profiles for personal preferences
 and secret aliases under `~/.config/aiplus/profiles/`. Private profiles are
 never bundled into public repositories. See `aiplus profile install` and
 `aiplus secret-broker` documentation for details.
+
+For a ready-made fork-and-personalize template that solves cross-project /
+cross-session amnesia — your agent remembering your collaboration style,
+project map, role identities, and tooling preferences without you re-stating
+them every session — see [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me).
+It is **not** auto-installed by `aiplus install`; you fork it, fill in the
+placeholders (USER.md / sync/projects.toml / secret-aliases.tsv), then run
+`aiplus profile install AiPlus-Work-with-Me --user --yes` once.
 
 ## Status
 

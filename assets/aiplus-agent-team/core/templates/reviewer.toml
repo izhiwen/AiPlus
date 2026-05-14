@@ -26,3 +26,7 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["审查员", "Reviewer"]
 english_aliases = ["reviewer", "review", "code-reviewer", "inspector"]
+
+# S5: reviewer reads PR diffs + writes review comments via gh API.
+[secret_needs]
+aliases = ["github"]

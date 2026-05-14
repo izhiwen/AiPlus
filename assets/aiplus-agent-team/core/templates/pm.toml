@@ -26,3 +26,7 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["产品经理", "PM"]
 english_aliases = ["pm", "product-manager", "product", "requirements"]
+
+# S5: PM tracks milestones via GitHub Issues + Projects.
+[secret_needs]
+aliases = ["github"]

@@ -4595,6 +4595,143 @@ fn install_skips_shell_init_when_env_opts_out() {
 }
 
 #[test]
+fn install_with_yes_appends_shell_init_to_bashrc() {
+    // K9 (#81): bash shell users. SHELL=/bin/bash + no ~/.bash_profile
+    // → installer writes the hook to ~/.bashrc. Mirrors the K5 zsh
+    // test (install_with_yes_appends_shell_init_to_zshrc); we want
+    // explicit coverage so a future refactor of detect_shell_and_rc
+    // can't silently regress bash users.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let fake_home = target.join("fake-home");
+    let bashrc = fake_home.join(".bashrc");
+    fs::write(&bashrc, "# pre-existing user content\nexport FOO=bar\n").unwrap();
+
+    let out = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/bin/bash")],
+    );
+    assert!(
+        stderr(&out).contains("SHELL_INIT=appended"),
+        "bash install should append shell hook:\n{}",
+        stderr(&out)
+    );
+
+    let rc_body = fs::read_to_string(&bashrc).unwrap();
+    assert!(
+        rc_body.contains("# pre-existing user content"),
+        "must NOT clobber existing rc lines:\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("_aiplus_broker_hook"),
+        "hook function name must be appended:\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("AiPlus secret-broker cd-auto-load (bash)"),
+        "bash-flavored snippet must be appended (note: not the zsh variant):\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("PROMPT_COMMAND"),
+        "bash variant must use PROMPT_COMMAND, not chpwd_functions:\n{rc_body}"
+    );
+    // bash_profile must NOT have been created (we want the bashrc path).
+    assert!(
+        !fake_home.join(".bash_profile").exists(),
+        "without pre-existing ~/.bash_profile, installer must NOT create one"
+    );
+}
+
+#[test]
+fn install_with_yes_prefers_bash_profile_when_it_exists() {
+    // K9 (#81): bash detection precedence — if ~/.bash_profile is
+    // already present (macOS convention), the installer writes there
+    // instead of ~/.bashrc. Documents the convention so future
+    // refactors don't accidentally flip precedence.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let fake_home = target.join("fake-home");
+    let bash_profile = fake_home.join(".bash_profile");
+    let bashrc = fake_home.join(".bashrc");
+    // Pre-create bash_profile (mtime / content doesn't matter).
+    fs::write(&bash_profile, "# user's bash_profile\n").unwrap();
+
+    let out = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/bin/bash")],
+    );
+    assert!(
+        stderr(&out).contains("SHELL_INIT=appended"),
+        "install should report appending:\n{}",
+        stderr(&out)
+    );
+
+    let bp_body = fs::read_to_string(&bash_profile).unwrap();
+    assert!(
+        bp_body.contains("_aiplus_broker_hook"),
+        "hook must land in ~/.bash_profile when it pre-exists:\n{bp_body}"
+    );
+    assert!(
+        !bashrc.exists(),
+        "must NOT also write ~/.bashrc — bash_profile wins precedence"
+    );
+}
+
+#[test]
+fn install_with_yes_appends_shell_init_to_fish_config() {
+    // K9 (#81): fish shell users. SHELL=/usr/local/bin/fish; rc path
+    // resolves to $XDG_CONFIG_HOME/fish/config.fish. setup_fake_env
+    // already sets XDG_CONFIG_HOME=cwd/fake-xdg, so the parent dir
+    // (fake-xdg/fish/) doesn't exist; installer must auto-mkdir.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    let out = run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[("SHELL", "/usr/local/bin/fish")],
+    );
+    assert!(
+        stderr(&out).contains("SHELL_INIT=appended"),
+        "fish install should append shell hook:\n{}",
+        stderr(&out)
+    );
+
+    let fish_config = target.join("fake-xdg/fish/config.fish");
+    assert!(
+        fish_config.exists(),
+        "installer must create $XDG_CONFIG_HOME/fish/config.fish"
+    );
+    let rc_body = fs::read_to_string(&fish_config).unwrap();
+    assert!(
+        rc_body.contains("AiPlus secret-broker cd-auto-load (fish)"),
+        "fish-flavored snippet must be present:\n{rc_body}"
+    );
+    assert!(
+        rc_body.contains("--on-variable PWD"),
+        "fish variant must use --on-variable PWD trigger:\n{rc_body}"
+    );
+}
+
+#[test]
 fn install_refuses_when_path_aiplus_is_older() {
     // K7 (#83): when `which aiplus` resolves to an older binary than
     // the one running install, refuse with NEEDS_UPGRADE. Otherwise
@@ -4755,5 +4892,43 @@ fn install_writes_required_version_into_broker_protocol() {
     assert!(
         body.contains("≥ 0.5.18"),
         "minimum should be pinned to 0.5.18 (K1+K2 cut-in):\n{body}"
+    );
+}
+
+#[test]
+fn install_writes_needs_elevated_guidance_into_broker_protocol() {
+    // K8 (#87) part 2: BROKER_PROTOCOL section should document
+    // NEEDS_ELEVATED (exit 76) and the wrapped-shell re-run idiom,
+    // so agents reading the protocol know exactly what to do when
+    // they see the new status.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    setup_fake_env(target);
+    init_git_repo(target);
+    fs::write(target.join("README.md"), "# T\n").unwrap();
+    git_commit_all(target, "Initial commit");
+
+    run_with_env(
+        target,
+        &["install", "codex", "--yes", "--backup"],
+        0,
+        &[
+            ("AIPLUS_SKIP_SHELL_INIT", "1"),
+            ("AIPLUS_SKIP_VERSION_CHECK", "1"),
+        ],
+    );
+
+    let body = fs::read_to_string(target.join(".aiplus/AGENTS.aiplus.md")).unwrap();
+    assert!(
+        body.contains("NEEDS_ELEVATED"),
+        "protocol must name the NEEDS_ELEVATED status:\n{body}"
+    );
+    assert!(
+        body.contains("exit 76"),
+        "protocol must name exit code 76 so agents can branch on it:\n{body}"
+    );
+    assert!(
+        body.contains("zsh -lc"),
+        "protocol must show the wrapped-shell idiom:\n{body}"
     );
 }

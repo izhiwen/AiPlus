@@ -371,11 +371,17 @@ enum Commands {
         /// is available.
         #[arg(long = "auto-prompt", action = ArgAction::SetTrue)]
         auto_prompt: bool,
-        /// K2: env var name override for `set` / `need` (default:
-        /// uppercase alias + `_API_KEY`). Useful when one alias must
-        /// expose as a non-standard env name (e.g. multi-account
-        /// `openai_work` → `OPENAI_API_KEY`).
-        #[arg(long = "env")]
+        /// K9 (#79): export-env-var name override for `set` / `need`
+        /// (default: uppercase alias + `_API_KEY`). Useful when one
+        /// alias must expose as a non-standard env name (e.g.
+        /// multi-account `openai_work` → `OPENAI_API_KEY`).
+        ///
+        /// `--env <NAME>` is the legacy spelling — accepted for
+        /// backward compat but deprecated; users (and LLM agents
+        /// reading `--help`) commonly read `--env` as "read value
+        /// FROM env var NAME" which is the opposite of what it does.
+        /// New code should use `--export-as <NAME>`.
+        #[arg(long = "export-as", visible_alias = "env")]
         env_var: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
@@ -5314,7 +5320,7 @@ fn command_secret_broker(
         Some("shell-init") => secret_broker_shell_init(arg),
         Some("hook") => secret_broker_hook(),
         _ => {
-            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--env <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|shell-init zsh|bash|fish|hook|token set|delete");
+            println!("Usage: aiplus secret-broker status|doctor|list|resolve <alias>|run [--aliases a,b|--alias a] -- <command...>|push --alias <a> --to <target>|set <alias> [--auto-prompt] [--export-as <NAME>]|need <alias>... [--auto-prompt]|delete <alias>|shell-init zsh|bash|fish|hook|token set|delete");
             process::exit(2);
         }
     }
@@ -5372,7 +5378,19 @@ fn secret_broker_set(
         .into());
     }
     let value = if auto_prompt {
-        prompt_secret_via_gui(&alias_name)?
+        match prompt_secret_via_gui(&alias_name)? {
+            PromptOutcome::Value(v) => v,
+            PromptOutcome::Cancelled => String::new(),
+            PromptOutcome::SandboxBlocked { detail } => {
+                // K8 (#87): emit NEEDS_ELEVATED instead of MISSING/empty
+                // so the agent can construct the wrapped re-run.
+                eprintln!(
+                    "SECRET_SET_STATUS=NEEDS_ELEVATED alias={alias_name} detail={detail} {}",
+                    elevation_hint(&alias_name, "set")
+                );
+                process::exit(76);
+            }
+        }
     } else {
         let mut buf = String::new();
         io::stdin().read_to_string(&mut buf)?;
@@ -5425,7 +5443,55 @@ fn secret_broker_set(
 //   macOS    : osascript (always present on macOS)
 //   Linux    : zenity → kdialog → tty fallback
 //   Windows  : powershell Read-Host -AsSecureString
-fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
+// K8 (#87): three-way outcome of a GUI prompt. The original
+// `Result<String>` collapsed "user cancelled" and "the OS won't even
+// let us show the dialog" into the same empty string — which then
+// surfaced as `SECRET_NEED_STATUS=MISSING` and the agent (correctly,
+// for that input) gave up. Distinguishing them lets us emit a typed
+// `NEEDS_ELEVATED` hint when the actual problem is an agent-runtime
+// sandbox (e.g. Codex CLI) blocking osascript from reaching the
+// WindowServer. The fix in that case is a permission-elevated wrapper,
+// not "the user has no key" — telling them apart is the whole point.
+enum PromptOutcome {
+    Value(String),
+    Cancelled,
+    SandboxBlocked { detail: String },
+}
+
+// K8 (#87): markers we look for in osascript stderr to recognize an
+// agent-runtime sandbox blocking the GUI. Seen in real Codex CLI E2E
+// (issue #87):
+//   - `Message not understood. (-1708)` — JXA failing under sandbox
+//   - `WindowServer` — connection refusal to the macOS window server
+//   - `TISFileInterrogator` — HIServices errors
+//   - `Connection invalid` — general sandbox-denied IPC
+fn osascript_stderr_indicates_sandbox(stderr: &str) -> bool {
+    let markers = [
+        "(-1708)",
+        "WindowServer",
+        "TISFileInterrogator",
+        "Connection invalid",
+    ];
+    markers.iter().any(|m| stderr.contains(m))
+}
+
+// K1 / K8 (#87): OS native password dialog. Pops a hidden-input box
+// on the user's desktop, even when the calling process has no
+// controlling TTY (i.e. when an AI agent runs `aiplus secret-broker
+// set --auto-prompt` inside its sandboxed bash tool). The dialog
+// draws on the OS's own UI server (macOS WindowServer / Linux
+// X11/Wayland / Windows DWM), not on the caller's terminal. Falls
+// back to rpassword tty prompt when the system has no GUI (SSH,
+// headless CI, etc.).
+//
+// Three platform shims:
+//   macOS    : osascript (always present on macOS)
+//   Linux    : zenity → kdialog → tty fallback
+//   Windows  : powershell Read-Host -AsSecureString
+//
+// Returns PromptOutcome rather than a bare String so callers can
+// distinguish user-cancellation from sandbox-block.
+fn prompt_secret_via_gui(alias_name: &str) -> Result<PromptOutcome> {
     let title = "AiPlus secret-broker";
     let message = format!(
         "Enter the API key / token for alias `{alias_name}`.\n\nThe value is stored in your OS keyring only — never on disk, never printed, never in git history."
@@ -5438,19 +5504,30 @@ fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
             message.replace('"', "\\\""),
             title,
         );
-        let out = Command::new("osascript").arg("-e").arg(&script).output();
+        // K8 (#87): allow tests to override the osascript binary path
+        // so we can mock both the success/cancel branches and the
+        // sandbox-stderr branch without ever popping a real dialog.
+        let osascript_bin =
+            std::env::var("AIPLUS_TEST_OSASCRIPT").unwrap_or_else(|_| "osascript".to_string());
+        let out = Command::new(&osascript_bin).arg("-e").arg(&script).output();
         if let Ok(out) = out {
             if out.status.success() {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 if let Some(value) = parse_osascript_text_returned(&stdout) {
-                    return Ok(value);
+                    return Ok(PromptOutcome::Value(value));
                 }
             } else {
-                // user clicked Cancel → exit 1; treat as empty
-                return Ok(String::new());
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                if osascript_stderr_indicates_sandbox(&stderr) {
+                    return Ok(PromptOutcome::SandboxBlocked {
+                        detail: stderr.lines().next().unwrap_or("").to_string(),
+                    });
+                }
+                // non-zero exit without sandbox markers → user cancelled
+                return Ok(PromptOutcome::Cancelled);
             }
         }
-        // osascript missing or failed → fall through to tty
+        // osascript missing or failed to exec → fall through to tty
     }
 
     #[cfg(target_os = "linux")]
@@ -5471,9 +5548,9 @@ fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
             if let Ok(out) = result {
                 if out.status.success() {
                     let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    return Ok(value);
+                    return Ok(PromptOutcome::Value(value));
                 } else {
-                    return Ok(String::new()); // cancelled
+                    return Ok(PromptOutcome::Cancelled);
                 }
             }
         }
@@ -5489,14 +5566,15 @@ fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
             .output()
         {
             if out.status.success() {
-                return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
+                let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                return Ok(PromptOutcome::Value(v));
             }
         }
     }
 
     // tty fallback (no GUI / GUI failed / SSH session)
     match rpassword::prompt_password(format!("Value for alias `{alias_name}` (hidden): ")) {
-        Ok(v) => Ok(v.trim().to_string()),
+        Ok(v) => Ok(PromptOutcome::Value(v.trim().to_string())),
         Err(e) => Err(CliError::new(
             1,
             format!(
@@ -5505,6 +5583,19 @@ fn prompt_secret_via_gui(alias_name: &str) -> Result<String> {
         )
         .into()),
     }
+}
+
+// K8 (#87): when a child process is blocked from popping the GUI
+// dialog by its runtime sandbox, the agent's correct move is to
+// re-run the same broker call from a parent shell that has
+// elevation. Centralized so `need` and `set` print identical hints.
+fn elevation_hint(alias_name: &str, op: &str) -> String {
+    format!(
+        "hint=GUI dialog blocked by your agent runtime's sandbox. \
+         Re-run wrapped in a parent shell so the user can approve elevation: \
+         `zsh -lc 'eval \"$(aiplus secret-broker {op} {alias_name} --auto-prompt)\"'`. \
+         Your agent will ask for one-time permission; this is expected, not a security issue."
+    )
 }
 
 // osascript "display dialog ..." output format:
@@ -5562,7 +5653,22 @@ fn secret_broker_need(
             Ok(v) => v,
             Err(keyring::Error::NoEntry) => {
                 if auto_prompt {
-                    let v = prompt_secret_via_gui(alias)?;
+                    let outcome = prompt_secret_via_gui(alias)?;
+                    let v = match outcome {
+                        PromptOutcome::Value(v) => v,
+                        PromptOutcome::Cancelled => String::new(),
+                        PromptOutcome::SandboxBlocked { detail } => {
+                            // K8 (#87): differentiate from MISSING so the
+                            // agent receives an actionable hint rather
+                            // than (incorrectly) concluding "user has
+                            // no key for this alias".
+                            eprintln!(
+                                "SECRET_NEED_STATUS=NEEDS_ELEVATED alias={alias} detail={detail} {}",
+                                elevation_hint(alias, "need")
+                            );
+                            process::exit(76);
+                        }
+                    };
                     if v.is_empty() {
                         missing.push(alias.clone());
                         continue;
@@ -7632,7 +7738,7 @@ fn private_profile_installed() -> Result<bool> {
 /// is installed. "Canonical" = the first non-legacy installed profile in
 /// `~/.config/aiplus/profiles/`, alphabetical. Lets the CLI work with any
 /// `aiplus-work-with-<owner>` profile name (including the public
-/// `aiplus-work-with-you` template and personal forks), not just the
+/// `AiPlus-Work-with-Me` template and personal forks), not just the
 /// original `aiplus-work-with-zhiwen` prototype.
 fn canonical_user_profile() -> Result<Option<String>> {
     let profiles_root = match config_home() {
@@ -7647,7 +7753,7 @@ fn canonical_user_profile_or_default() -> String {
     canonical_user_profile()
         .ok()
         .flatten()
-        .unwrap_or_else(|| "aiplus-work-with-you".to_string())
+        .unwrap_or_else(|| "AiPlus-Work-with-Me".to_string())
 }
 
 fn print_continuity_status_lines(state: &ContinuityState) {
@@ -8886,10 +8992,34 @@ What that one line does:
    keyring AND in env. Agent continues.
 4. **Missing** + no `--auto-prompt` → exits 75 with a hint telling the
    user to run `aiplus secret-broker set <alias> --auto-prompt`.
+5. **`NEEDS_ELEVATED` (exit 76, K8/#87+)** → your agent runtime's
+   sandbox is blocking osascript/zenity from reaching the OS window
+   server. Re-run the same command wrapped in a parent shell so the
+   runtime can request one-time permission elevation:
+   `eval "$(zsh -lc 'aiplus secret-broker need <alias> --auto-prompt')"`.
+   Codex CLI users see this on first use; Claude Code sandboxing
+   doesn't trigger it. The elevation is expected, not a security issue.
 
-**Cross-project share**: once a user provides a value for `<alias>` on
-this machine — in ANY project — every future `need <alias>` resolves
-silently from keyring. The user never re-enters the same key twice.
+**Cross-project share — two layers** (#80):
+
+1. **Keychain layer (always on, machine-wide)**: once a user provides
+   a value for `<alias>` on this machine — in ANY project — every
+   future `aiplus secret-broker need <alias> --auto-prompt` from any
+   directory resolves silently from the OS keyring. The user never
+   re-enters the same key twice on this machine. This works even if
+   the agent's cwd is a fresh directory that has never run
+   `aiplus install`; you can ALWAYS call `need` and trust the
+   broker to handle the lookup.
+
+2. **cd-auto-load layer (per project, opt-in via install)**: the
+   shell hook installed by `aiplus install --yes` (K5) auto-exports
+   `<ALIAS>_API_KEY` env vars on `cd` into projects that list the
+   alias in their `.aiplus/keys.toml`. This file is only created by
+   projects that have run `aiplus install <runtime>` — so a fresh
+   directory without `.aiplus/` will NOT auto-export anything on cd.
+   That is intentional (we don't auto-leak secrets into random
+   shells), not a bug. If the user wants ergonomic cd-injection in
+   a new project, run `aiplus install <runtime>` there once.
 
 **NEVER ask the Owner directly for a key value.** Always go through
 `need` / `set`. The value lives only in the OS keyring; the agent only
@@ -9446,23 +9576,67 @@ Full operating manual: `.aiplus/AGENTS.aiplus.md`.
 - `PreCompact` runs `aiplus compact prepare` so a structured handoff is saved
   before context compaction; `aiplus compact resume` reads it back afterwards.
 
+### Time estimates: always quote AI-native AND human-engineer time side-by-side
+
+When you estimate how long a task will take — whether you volunteered the
+estimate or the user asked "多久" / "how long" / "estimate this" — you
+must quote **both** numbers in your reply, in this exact form:
+
+  AI agent:        ~25-40 min (p50) / 60-90 min (p90)
+  Human engineer:  ~3-5 hours
+  Speedup:         ~4-7× faster than a human engineer
+  Source:          default baseline (no calibrated history yet)
+
+The two numbers serve different purposes. The AI-native number is what
+this task actually takes when *you* (an AI agent) do it. The human
+baseline is what the same task would take a human engineer doing it
+manually. The user needs both to (a) plan their own time and (b) judge
+whether the AI agent is delivering the speedup it claims.
+
+Anchor table (defaults — use unless the project has calibrated history):
+
+  task type                                  AI p50 / p90       human baseline
+  ─────────────────────────────────────────────────────────────────────────────
+  refactor (single file, well-bounded)       15-25m / 30-50m    1-2 hours
+  feature impl (new function + tests)        25-40m / 60-90m    3-5 hours
+  bug fix (localized, ≤2 files)              8-15m  / 20-40m    1-2 hours
+  cross-file edit (rename, extract)          15-30m / 40-70m    2-4 hours
+  test addition (new pytest cases)           10-20m / 25-45m    1-2 hours
+  docs / typo / one-line tweak               2-8m   / 10-20m    15-30 min
+  cross-cutting (3+ modules, async, infra)   30-60m / 90-150m   1-3 days
+
+Always state explicitly whether the numbers come from this **default
+baseline** or from **calibrated history**:
+
+- New project / `aiplus velocity report` shows 0 matched records →
+  say "Source: default baseline (no calibrated history yet)".
+- Project has its own history → run `aiplus velocity estimate
+  --task-type <type> --human-estimate <Nh>` and quote the
+  `HUMAN_BASELINE_MINUTES`, `AI_NATIVE_ESTIMATE_P50_MINUTES`,
+  `AI_NATIVE_ESTIMATE_P90_MINUTES`, `EXPECTED_SPEEDUP` it returns.
+  Say "Source: calibrated from this project's last N runs".
+
+The format above is mandatory whenever you give a time estimate. Do
+not give just one number; do not omit the speedup line; do not omit
+the source line.
+
 ### Manual subcommands you (the agent) should reach for
 - Memory: `aiplus memory status | context | add | forget`
 - Compact: `aiplus compact remind | prepare | resume | savings`
-- Velocity: `aiplus velocity estimate --task-type <feat|fix|chore> --human-estimate <Nh>` before any non-trivial task, then `aiplus velocity complete --task-id <id> --actual <duration> --outcome <success|partial|fail>` after.
+- Velocity: `aiplus velocity estimate ...` (only when user explicitly wants tracking — see Time estimates above) / `aiplus velocity complete --task-id <id> --actual <duration> --outcome <pass|needs_fix|blocked>` after.
 - Team consultant: `aiplus agent route <role>` / `aiplus agent talk <role>`.
 
 ### Specialist subagents (route via Agent tool when conditions match)
 - `aiplus-memory` — user said "记住", "以后", "下次别", "忘掉", or preference-statement language.
 - `aiplus-compact` — context approaching limit, mid-task interruption, or session resume after `/clear` or compact.
-- `aiplus-velocity` — user asks "多久" / "estimate this" / before starting a clearly bounded task.
+- `aiplus-velocity` — user explicitly asks to **track / log** a task ("log this", "记录这个", "calibrate against history"). For plain "how long" estimates, follow the Time-estimates section above — you do NOT need this subagent.
 - `aiplus-team-consultant` — non-trivial plans, multi-stakeholder changes, designs touching security / onboarding / AI-integration / privacy.
 - `aiplus-advisor` — general AiPlus questions or unsure which specialist to pick.
 
 ### Natural-language mapping
 - "记住这个" / "下次也这样" → `aiplus memory add` (after redaction).
 - "忘掉这个" → `aiplus memory forget`.
-- "这个要多久" / "estimate this" → `aiplus velocity estimate`.
+- "这个要多久" / "estimate this" / "how long" → reply with the **mandatory two-number format** from the Time-estimates section above (AI agent + Human engineer + Speedup + Source). Only run `aiplus velocity estimate` if the user explicitly says "track" / "log" / "记录".
 - "评审一下这个计划" / "review this plan" → `aiplus-team-consultant`.
 - "新开顾问" / "new advisor" → `aiplus identity context --role advisor`.
 
@@ -14666,37 +14840,52 @@ to compact manually.
 fn claude_velocity_subagent_content() -> String {
     r#"---
 name: aiplus-velocity
-description: Replaces human-engineer-hour estimates with AI-native p50/p90 numbers calibrated from your own task history. Use BEFORE starting any non-trivial bounded task, when the user asks "how long will this take" / "多久能搞完" / "estimate this", when reviewing past delivery times, or when detecting human-time anchoring bias. Owns `aiplus velocity estimate | complete | bias | report`.
+description: Owns the persistent ledger of estimates vs actual times (`aiplus velocity estimate | complete | bias | report | doctor`). Use ONLY when the user explicitly asks to **track / log** a task ("log this", "记录这个", "calibrate against history"), or when they want historical bias / report data. For plain "how long" estimates, the agent already follows the mandatory two-number format in CLAUDE.md — you do NOT need this subagent.
 ---
 
 # AiPlus Velocity
 
-This subagent owns the `aiplus velocity` surface. Every estimate and every
-completion is logged as local JSONL under `.aiplus/velocity/`.
+This subagent owns the `aiplus velocity` surface — the persistent JSONL
+ledger of estimates vs actual times under `.aiplus/velocity/`. The
+ledger exists to detect long-term calibration drift, not to estimate a
+single task.
+
+Single-task estimates follow the **mandatory two-number format**
+documented in CLAUDE.md (AI agent + Human engineer + Speedup +
+Source). You do not need the ledger for that. Only reach for the
+commands below when the user wants the ledger involved.
 
 ## Decision map
 
 | Signal | Action |
 |---|---|
-| About to start a clearly bounded task | `aiplus velocity estimate --task-type <feature|fix|refactor|chore> --human-estimate <Nh>` |
-| Task finished | `aiplus velocity complete --task-id <est_id> --actual <Nm|Nh> --outcome <success|partial|fail>` |
-| User quoted a long human estimate ("this is 2 days") | Run `estimate` to surface the AI-native p50/p90; flag if `HUMAN_ANCHOR_DETECTED=yes` |
-| User asks "are we faster than my old workflow" | `aiplus velocity bias` then `aiplus velocity report` |
+| User says "track this" / "log this" / "记录" / "calibrate against history" | `aiplus velocity estimate --task-type <feature\|fix\|refactor\|chore> --human-estimate <Nh>`, then `complete` after |
+| Task already had an `estimate` and is now finished | `aiplus velocity complete --task-id <task_id from NEXT_STEP> --actual <Nm> --outcome <pass\|needs_fix\|blocked>` |
+| User asks "are my estimates getting better" | `aiplus velocity bias` then `aiplus velocity report` |
+| User asks "show me velocity stats" | `aiplus velocity report --scope both` |
 | Sanity-checking the ledger | `aiplus velocity doctor` |
 
-## Confidence calibration
+## Source labelling (always)
 
-- `MATCHED_RECORDS=0` → `CONFIDENCE=low`. Tell the user the estimate has no
-  history yet and the numbers will tighten after a few runs.
-- `MATCHED_RECORDS>=10` → quote the p50 with confidence; quote the p90 when
-  the user needs a worst-case bound.
+When you quote numbers in a reply, always tell the user where the
+numbers came from. Two cases:
+
+- `MATCHED_RECORDS=0` → say "Source: default baseline (no calibrated
+  history yet)" and tell the user the numbers will tighten after a
+  few real runs.
+- `MATCHED_RECORDS>=1` → say "Source: calibrated from this project's
+  last N runs" and quote p50 with confidence; quote p90 when the user
+  needs a worst-case bound.
 
 ## Hand-off rules
 
-- Always echo the `est_id` after an estimate so completion can reference it.
+- Always echo the `est_id` and `task_id` after an estimate so completion
+  can reference it.
 - Never quote a single number when you can quote the p50/p90 pair.
-- Never overwrite a `complete` record; if the user wants to revise, surface
-  the prior record and ask.
+- Always include the human-engineer baseline alongside the AI-native
+  numbers (see CLAUDE.md mandatory format).
+- Never overwrite a `complete` record; if the user wants to revise,
+  surface the prior record and ask.
 "#
     .to_string()
 }
@@ -16235,5 +16424,56 @@ mod tests {
         let result = translate_chinese_subcommand(args);
         assert_eq!(result[1], "update");
         assert_eq!(result[2], "--all-projects");
+    }
+
+    // K8 (#87): unit tests for the sandbox-marker detector. The full
+    // integration path (`secret-broker need --auto-prompt` end-to-end)
+    // needs real macOS keychain access and can't run under the
+    // HOME-isolated parity test harness; cover the structural piece
+    // here so regressions still fail CI.
+
+    #[test]
+    fn osascript_stderr_indicates_sandbox_codex_jxa_minus_1708() {
+        // Exact stderr captured from Codex CLI's blocked osascript run
+        // during #82 Block 3.
+        let stderr = "execution error: Error: Error: Message not understood. (-1708)";
+        assert!(osascript_stderr_indicates_sandbox(stderr));
+    }
+
+    #[test]
+    fn osascript_stderr_indicates_sandbox_window_server() {
+        let stderr = "TISFileInterrogator updateSystemInputSources false but old data invalid\nWindowServer connection invalid";
+        assert!(osascript_stderr_indicates_sandbox(stderr));
+    }
+
+    #[test]
+    fn osascript_stderr_indicates_sandbox_connection_invalid_alone() {
+        let stderr = "message reply handler: Connection invalid";
+        assert!(osascript_stderr_indicates_sandbox(stderr));
+    }
+
+    #[test]
+    fn osascript_stderr_does_not_flag_user_cancel() {
+        // User clicked Cancel — osascript exits non-zero but stderr is
+        // empty (the dialog completed normally, just with the wrong
+        // button). MUST NOT misclassify as sandbox-block.
+        assert!(!osascript_stderr_indicates_sandbox(""));
+    }
+
+    #[test]
+    fn osascript_stderr_does_not_flag_unrelated_errors() {
+        // Random AppleScript syntax error — also not a sandbox issue.
+        let stderr = "0:14: syntax error: A identifier can't go after this identifier. (-2740)";
+        assert!(!osascript_stderr_indicates_sandbox(stderr));
+    }
+
+    #[test]
+    fn elevation_hint_names_alias_and_op() {
+        let h = elevation_hint("openai", "need");
+        assert!(h.contains("openai"));
+        assert!(h.contains("aiplus secret-broker need openai --auto-prompt"));
+        assert!(h.contains("zsh -lc"));
+        let h2 = elevation_hint("anthropic", "set");
+        assert!(h2.contains("aiplus secret-broker set anthropic --auto-prompt"));
     }
 }
