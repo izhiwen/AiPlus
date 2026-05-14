@@ -113,6 +113,10 @@ jobs:
           AIPLUS_INSTALL_DIR: ${{ runner.temp }}\aiplus-bin-dry
         shell: pwsh
         run: |
-          $out = ./install.ps1 -DryRun | Out-String
-          $out
+          # install.ps1 uses Write-Host for its plan output (stream 6,
+          # Information), so a plain pipe captures nothing. Merge all
+          # streams with *>&1 before piping to Out-String.
+          $out = ./install.ps1 -DryRun *>&1 | Out-String
+          Write-Host "--- captured output ---"
+          Write-Host $out
           if ($out -notmatch 'DRY_RUN=YES') { throw 'DRY_RUN=YES not found in install.ps1 -DryRun output' }
