@@ -2210,8 +2210,8 @@ fn command_doctor() -> Result<()> {
         );
         for role in roles {
             let role_dir = root.join(format!(".aiplus/agent-memory/{role}"));
-            let has_seed = role_dir.join(".gitkeep").exists()
-                || role_dir.join("README.md").exists();
+            let has_seed =
+                role_dir.join(".gitkeep").exists() || role_dir.join("README.md").exists();
             push_check(
                 &mut checks,
                 format!(".aiplus/agent-memory/{role}/ exists with seed file"),
@@ -6458,18 +6458,20 @@ const AIECONLAB_ROLES: &[&str] = &[
 fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
     let base = root.join(".aiplus").join("agent-memory");
     let team_dir = base.join("_team");
-    std::fs::create_dir_all(&team_dir)
-        .with_context(|| format!("create {}", team_dir.display()))?;
+    std::fs::create_dir_all(&team_dir).with_context(|| format!("create {}", team_dir.display()))?;
     let team_readme = "# _team/ — cross-role records\n\
                        Consult findings and gate-ledger entries written by\n\
                        `aiplus agent route` land here. Per-role memory dirs\n\
                        live in siblings and are isolated.\n";
-    write_if_missing(root, ".aiplus/agent-memory/_team/README.md", team_readme.as_bytes())?;
+    write_if_missing(
+        root,
+        ".aiplus/agent-memory/_team/README.md",
+        team_readme.as_bytes(),
+    )?;
     write_if_missing(root, ".aiplus/agent-memory/_team/.gitkeep", b"")?;
     for role in roles {
         let rdir = base.join(role);
-        std::fs::create_dir_all(&rdir)
-            .with_context(|| format!("create {}", rdir.display()))?;
+        std::fs::create_dir_all(&rdir).with_context(|| format!("create {}", rdir.display()))?;
         let role_readme = format!(
             "# agent-memory/{role}/ — per-role records\n\
              Memory written by the `{role}` role lives here. Other roles\n\
@@ -6481,11 +6483,7 @@ fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
             &format!(".aiplus/agent-memory/{role}/README.md"),
             role_readme.as_bytes(),
         )?;
-        write_if_missing(
-            root,
-            &format!(".aiplus/agent-memory/{role}/.gitkeep"),
-            b"",
-        )?;
+        write_if_missing(root, &format!(".aiplus/agent-memory/{role}/.gitkeep"), b"")?;
     }
     Ok(())
 }
@@ -10302,6 +10300,10 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/agent-team".to_string(),
         ".aiplus/aieconlab".to_string(),
         ".aiplus/compact".to_string(),
+        // W3: per-role memory namespaces seeded by agent_team_init /
+        // aieconlab_init. The dir itself is fixed; per-role
+        // subdirectories live inside and uninstall walks the tree.
+        ".aiplus/agent-memory".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
