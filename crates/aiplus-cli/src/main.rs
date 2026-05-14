@@ -14896,6 +14896,18 @@ numbers came from. Two cases:
   numbers (see CLAUDE.md mandatory format).
 - Never overwrite a `complete` record; if the user wants to revise,
   surface the prior record and ask.
+
+## Close-the-loop (L1)
+
+`aiplus velocity estimate` prints a `NEXT_STEP=...` line at the end of
+its stdout, containing the literal `aiplus velocity complete` command
+ready to run. Treat this as a self-instruction: when the bounded task
+this estimate covers is finished, run that exact command (filling in
+`<Nm>` with the elapsed active minutes and `<pass|needs_fix|blocked>`
+with the actual outcome). Do not surface the `NEXT_STEP=` line to the
+user — it is for you. Skipping it leaves the ledger half-written and
+silently degrades next-estimate calibration for every project that
+shares the global ledger.
 "#
     .to_string()
 }
@@ -15486,6 +15498,15 @@ fn command_velocity(
             println!("MATCHED_RECORDS={}", result.matched_records);
             println!("CONFIDENCE={}", result.confidence);
             println!("STOP_WHEN_DONE=yes");
+            // L1 close-the-loop reminder. Agents that read this line in
+            // tool output are far more likely to remember to call
+            // `velocity complete` once the work is done. The task_id is
+            // the prefix-swap of estimate_id so this command is
+            // copy-paste runnable.
+            let derived_task_id_for_hint = estimate_id.replacen("est_", "task_", 1);
+            println!(
+                "NEXT_STEP=when done, run: aiplus velocity complete --task-id {derived_task_id_for_hint} --actual <Nm> --outcome <pass|needs_fix|blocked>"
+            );
         }
         "complete" => {
             let task_id = task_id.ok_or_else(|| anyhow!("--task-id required"))?;

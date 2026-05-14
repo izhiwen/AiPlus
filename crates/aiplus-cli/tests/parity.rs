@@ -3083,6 +3083,13 @@ fn velocity_cli_human_time_bias_end_to_end() {
     assert!(est_out.contains("HUMAN_ANCHOR_DETECTED=yes"));
     assert!(est_out.contains("HUMAN_ESTIMATE_MINUTES=300"));
     assert!(est_out.contains("STOP_WHEN_DONE=yes"));
+    // L1 close-the-loop reminder: estimate output must include a
+    // runnable `aiplus velocity complete` command so the agent that
+    // reads its own tool output is far more likely to close the loop.
+    assert!(
+        est_out.contains("NEXT_STEP=when done, run: aiplus velocity complete --task-id task_"),
+        "estimate must emit NEXT_STEP hint; got:\n{est_out}"
+    );
 
     let estimates_jsonl = fs::read_to_string(velocity_dir.join("estimates.jsonl")).unwrap();
     assert!(estimates_jsonl.contains("\"taskId\":\"task_e2e_1\""));
