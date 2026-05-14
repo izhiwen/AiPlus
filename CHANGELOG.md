@@ -1,5 +1,80 @@
 # Changelog
 
+## Unreleased
+
+- **Uninstall hygiene (Track A.1)**: `aiplus uninstall --yes` now
+  sweeps `.claude/agents/{aieconlab,agent-team,aiplus}-*.md`,
+  `.claude/commands/{aiel,aiplus,at}-*.md`, and the matching
+  `.opencode/{agents,commands,prompts}/aiplus*` mirrors. Empty
+  parent dirs we created are pruned. User-authored files survive.
+  / **卸载清理（A.1）**：`aiplus uninstall --yes` 现在清理三个 prefix 组
+  的 `.claude/`、`.opencode/` 残留文件，并修剪空目录。用户自建文件不动。
+
+- **Cross-team residue cleanup at install (Track A.2)**:
+  `agent_team_init` / `aieconlab_init` now clear the OTHER team's
+  exclusive files from `.aiplus/agents/` before writing their own.
+  Snapshot mechanism captures clean per-team state; the bare-mirror
+  orphans (architect.md, ceo.md, …) that A.1 documented as a known
+  limit are now prevented at source.
+  / **跨 team 残留清理（A.2）**：两个 init 在写自家文件前先清掉对家 exclusive
+  文件。snapshot 现在只存自家干净状态。
+
+- **AEL OpenCode adapter v0.3 (Track B.1)**: 20 prefixed subagents
+  (`.opencode/agents/aieconlab-<role>.md`) + 4 slash commands
+  (`.opencode/commands/aiel-*.md`). AEL module 0.2.0 → 0.3.0.
+  / **AEL OpenCode 适配器 v0.3（B.1）**：20 个角色文件 + 4 个 slash 命令。
+
+- **agent-team OpenCode adapter v0.2 (Track B.2)**: 14 prefixed
+  subagents (`.opencode/agents/agent-team-<role>.md`) + 2 slash
+  commands. agent-team module 0.2.0 → 0.3.0.
+  / **agent-team OpenCode 适配器 v0.2（B.2）**：14 个角色文件 + 2 个 slash 命令。
+
+- **Codex coexistence audit (Track B.3)**: regression tests lock the
+  AGENTS.md / AGENTS.aiplus.md dual-team coexistence behavior so
+  future changes to the section-append path can't silently break
+  the codex view of either team.
+  / **codex 共存审计（B.3）**：回归测试锁定 codex 视角下双 team 的可见性。
+
+- **agent-team persona behavior suite (Track C.1)**: mirrors AEL's
+  W8 suite — 8 personas × 3 cases (in_scope / boundary / stop_gate),
+  Python runner using Anthropic API, dedicated workflow that skips
+  on missing API key. 5 offline structural sanity tests run in
+  regular CI without API credentials.
+  / **agent-team persona 行为测试（C.1）**：8 角色 × 3 case 共 24 个测试。
+
+- **Cross-runtime install matrix test (Track C.2)**: single
+  end-to-end test that exercises `install all → add aieconlab →
+  set-team → uninstall` across all 3 runtimes with assertions at
+  every phase. Regression boundary for any change touching the
+  three adapter install paths.
+  / **跨 runtime 安装矩阵测试（C.2）**：4 阶段 e2e 测试覆盖 3 个 runtime 全流程。
+
+## 0.5.17
+
+- **agent-key OS keyring default**: agent-key now uses the OS keyring
+  (macOS Keychain / Linux Secret Service / Windows Credential
+  Manager) as the default backend — free, zero-config. Bitwarden
+  remains an opt-in for users who prefer their existing vault.
+- **Persona drift detection (P1.4, P1.6, N3)**: `aiplus doctor` now
+  walks `.aiplus/agents/personas/` and compares each persona against
+  same-named mirrors under `.claude/agents/` and `.opencode/agents/`.
+  Name-mapping table handles the prefixed mirror filenames; trim +
+  strip-frontmatter normalize the comparison so wrapped mirrors
+  don't trigger false positives. New UPGRADE.md captures the
+  human-facing remediation flow.
+- **`is_supported_manifest_schema` accepts `0.5.*` pattern (P2.3)**:
+  match-based extension replaced with a glob so future minor bumps
+  don't require a per-release source edit. Coupled with the
+  install.sh fallback invariant test, drift between Cargo.toml and
+  supported-schema list is now impossible to merge silently.
+- **Release notes from tag annotation (P2.1)**: `release.yml` now
+  passes `--notes-from-tag` instead of `--generate-notes`, so the
+  git tag's annotated message drives the GitHub Release body. Stops
+  the "release notes are PR backlinks" antipattern.
+- **Merge policy + branch protection docs (P2.4)**: CONTRIBUTING.md
+  documents the squash-merge + delete-branch convention and the
+  branch-protection rules that enforce CI-green-before-merge.
+
 ## 0.5.16
 
 User-visible fixes for the agent-team + AiEconLab coexistence story that
@@ -73,69 +148,6 @@ landed in v0.5.14 / v0.5.15 but still had rough edges in real use.
   asserted no dispatch-log entry on refusal, but P1.3 (dispatch
   outcome) changed the behavior to always log with
   `outcome="canceled"`. Both fixed (PRs #37, #46).
-
-## Unreleased
-
-- **Cross-platform keychain (Phase 2 of 3)**: replaces the previous
-  `Command::new("security")` shell-out (macOS-only) with the
-  [`keyring`](https://crates.io/crates/keyring) crate, which maps
-  natively to macOS Keychain, Linux Secret Service (gnome-keyring /
-  kwallet via D-Bus), and Windows Credential Manager. The three
-  affected functions — `read_keychain_token`, `write_keychain_token`,
-  `delete_keychain_token` — are no longer gated on `cfg!(target_os =
-  "macos")`. On Linux boxes without a running Secret Service daemon
-  (e.g. minimal CI containers), `read` returns `Ok(None)` so the
-  caller falls back to the `BWS_ACCESS_TOKEN` env-var path, and
-  `write` returns a clear `TOKEN_SET_STATUS=FAIL
-  reason=keyring_unavailable` error pointing the user at the env-var
-  workaround. Verified on macOS via an isolated `keyring::Entry`
-  write/read/delete/read-after-delete smoke test.
-  / **跨平台 keychain（Phase 2 / 3）**：用 `keyring` crate 替换原来的
-  macOS-only `security` 命令 shell-out。三个函数现在在 macOS / Linux /
-  Windows 都能用。Linux 上若无 Secret Service daemon，读会优雅退回
-  `BWS_ACCESS_TOKEN` env var，写会给出明确错误。
-
-- **Windows binary (Phase 3 of 3)**: adds `x86_64-pc-windows-msvc` to
-  the release workflow matrix, packaged as `aiplus-x86_64-pc-windows-
-  msvc.zip` with a SHA-256 in the unified `checksums.txt`. Adds
-  `install.ps1` for native Windows PowerShell installation, mirroring
-  the safety boundaries of `install.sh` (downloads only release
-  assets, verifies checksum, installs only `aiplus.exe`, never edits
-  PATH automatically, never collects telemetry).
-  / **Windows binary（Phase 3 / 3）**：release workflow 加入 Windows 目标，
-  新增 `install.ps1` 原生 PowerShell 安装脚本，安全边界和 `install.sh`
-  一致。
-
-- **Multi-platform release pipeline (Phase 1 of 3)**: new
-  `.github/workflows/release.yml` builds AiPlus on tag push for four
-  targets — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-  `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`. Linux
-  x86_64 unblocks GitHub Actions CI runners; Linux aarch64 unblocks
-  Docker on Apple Silicon; Intel macOS unblocks pre-2020 Macs.
-  Windows (`x86_64-pc-windows-msvc`) is deferred to Phase 3 because
-  the secret-broker keychain code shells out to the macOS `security`
-  command and needs replacement with the cross-platform `keyring`
-  crate first (Phase 2). Release artifacts are uploaded as a **draft**
-  GitHub Release for Owner review before going public.
-  / **多平台 release 流水线（Phase 1 / 3）**：在 tag push 时编译四个目标，
-  解锁 GitHub Actions Linux runner、Apple Silicon Docker、Intel macOS。
-  Windows 留到 Phase 3。
-
-- **`install.sh` cross-platform detection**: detects Linux x86_64 /
-  aarch64 and Intel macOS in addition to Apple Silicon. Also fixes a
-  `set -eu` "unbound variable" bug that prevented the installer from
-  running on fresh Linux boxes without the `gh` CLI (was filed as
-  izhiwen/AiPlus#1).
-  / **`install.sh` 多平台检测**：除 Apple Silicon 外，新增 Linux x86_64 /
-  aarch64 和 Intel macOS 自动识别。修复未初始化变量 bug。
-
-- **Rebrand**: `aiplus-auto-compact` module renamed to `aiplus-compact-reminder`.
-  The CLI subcommand `aiplus compact` remains unchanged. Backward compatibility
-  is preserved via serde alias and `normalize_module` legacy mapping so existing
-  manifests with `auto-compact` continue to deserialize correctly.
-  / **重命名**：`aiplus-auto-compact` 模块更名为 `aiplus-compact-reminder`。CLI 子命令
-  `aiplus compact` 保持不变。通过 serde alias 和 `normalize_module` 遗留映射保留向后
-  兼容性，使包含 `auto-compact` 的现有 manifest 仍能正确反序列化。
 
 ## 0.5.1
 
