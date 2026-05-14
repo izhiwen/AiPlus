@@ -5623,8 +5623,32 @@ fn config_home() -> Result<PathBuf> {
             return Ok(PathBuf::from(path));
         }
     }
-    let home = std::env::var("HOME").context("HOME is required")?;
-    Ok(PathBuf::from(home).join(".config"))
+    // Windows: APPDATA is the canonical roaming config dir
+    // (typically C:\Users\<name>\AppData\Roaming).
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        if !appdata.trim().is_empty() {
+            return Ok(PathBuf::from(appdata));
+        }
+    }
+    // Unix-like fallback: HOME/.config (also covers most Wine setups).
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.trim().is_empty() {
+            return Ok(PathBuf::from(home).join(".config"));
+        }
+    }
+    // Windows last-resort: USERPROFILE/.config — covers Windows shells
+    // where APPDATA somehow isn't set (rare) plus Wine setups that
+    // expose USERPROFILE but not HOME.
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        if !profile.trim().is_empty() {
+            return Ok(PathBuf::from(profile).join(".config"));
+        }
+    }
+    Err(anyhow!(
+        "Cannot determine config directory: none of XDG_CONFIG_HOME, APPDATA, HOME, USERPROFILE \
+         are set"
+    ))
 }
 
 // ------------------------------------------------------------------
