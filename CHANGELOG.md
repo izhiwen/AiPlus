@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.5.16
+
+User-visible fixes for the agent-team + AiEconLab coexistence story that
+landed in v0.5.14 / v0.5.15 but still had rough edges in real use.
+
+- **Agent-team is now visible to Claude Code's auto-routing.** Before
+  this release, `aiplus install claude-code` (or `aiplus add agent-team`
+  on a Claude Code project) wrote `.claude/agents/<role>.md` files
+  without YAML frontmatter, so Claude Code's auto-routing never saw the
+  team — `architect`, `ceo`, `engineer-a`, `engineer-b`, `qa`, and
+  `reviewer` were effectively invisible. Now ships 14 prefixed
+  subagents (`agent-team-<role>.md`, 8 core + 6 functional experts)
+  with proper frontmatter, plus `/at-status` and `/at-route` slash
+  commands and an `AIPLUS-AGENT-TEAM` managed block in CLAUDE.md that
+  coexists cleanly with the existing AEL block (#31).
+  / **Agent-team 现在能被 Claude Code 自动路由识别。** 之前 14 个 SWE 角色
+  没有 YAML frontmatter，Claude Code 看不到。现在每个角色文件有 `name` /
+  `description`，并加上 `/at-status` 和 `/at-route` 两个 slash 命令、
+  CLAUDE.md 受管块。
+
+- **`aiplus agent status` filters by active team.** With both
+  `agent-team` and `aieconlab` installed, the status command used to
+  report a confused 37-role roster regardless of which team was active.
+  Now `aieconlab` active shows only the 20-role AEL roster, and
+  `agent-team` active shows only the SWE roster — matching every other
+  command (`route`, `set-team`, `talk`) that already respected the
+  active marker (#32).
+  / **`aiplus agent status` 按 active team 过滤。** 之前两个模块都装时
+  统一显示 37 个混合角色，现在按当前 active team 只显示对应 roster。
+
+- **Research-paper tasks now reach the AEL consultant.** PI tasks like
+  "draft scoping note", "data acquisition plan", "referee response",
+  and "rebuttal letter" used to score LIGHT and silently skip the
+  consultant team (LIGHT tier is consult-skip by design). Tier scoring
+  now recognizes 15 research-paper compounds (scoping-note, data
+  acquisition, referee, weak-instrument, paper-revision, treaty-port,
+  main-spec, …) so genuinely heavy research moves engage the right
+  consultant seats. Trivial work (typo fix, version bump) is unchanged
+  (#33).
+  / **研究类任务现在会触发 AEL consultant。** 之前 "draft scoping note"
+  / "data acquisition plan" / "referee response" 都被打成 LIGHT，绕过了
+  consultant team。现在 tier scoring 增加了 15 个研究类关键词组合。
+
+- **`aiplus compact prepare` is quiet on fresh installs.** A
+  just-installed project has no Owner gate decisions yet, but the seed
+  compact templates ship UNKNOWN_PENDING placeholders that historically
+  made `compact prepare` (and the PreCompact hook) report
+  UNKNOWN_NEEDS_REVIEW on every host compact attempt. Now distinguishes
+  the seed-only state and returns the informational
+  `FRESH_INSTALL_AWAITING_FIRST_USE` with exit 0; any custom edit to
+  the handoff or Owner Gates section moves the project back into the
+  normal review loop (#34).
+  / **`aiplus compact prepare` 在 fresh install 上不再吵闹。** 之前每次
+  host compact 都会因 seed Owner gate 报 UNKNOWN_NEEDS_REVIEW。现在能
+  分辨 "seed 状态" 与 "真正需要 review"。
+
+- **`install.sh` offline fallback bumped to current Latest.** The
+  hard-coded `VERSION=v0.5.11` fallback (used only when both `gh api`
+  and `curl` for the latest release fail) was four releases stale.
+  Bumped to v0.5.16, and a new integration test asserts the fallback
+  tracks `aiplus-cli` Cargo.toml — future Cargo.toml bumps now require
+  the install.sh bump in the same commit, preventing this drift class
+  (#35).
+
+- **Fixed RED main from v0.5.15.** Two pre-existing test failures had
+  been blocking PR CI test jobs since v0.5.15: (1) the
+  `is_supported_manifest_schema` match list stopped at `"0.5.14"`, so
+  every fresh v0.5.15 install reported `NEEDS_FIX manifest schemaVersion
+  supported` and the integration test suite was red; (2) the
+  `agent_route_blocks_dispatch_on_unapproved_owner_gate` parity test
+  asserted no dispatch-log entry on refusal, but P1.3 (dispatch
+  outcome) changed the behavior to always log with
+  `outcome="canceled"`. Both fixed (PRs #37, #46).
+
 ## Unreleased
 
 - **Cross-platform keychain (Phase 2 of 3)**: replaces the previous
