@@ -18,6 +18,15 @@ on:
         description: 'Release tag to smoke-test (e.g. v0.5.11)'
         required: true
         default: 'v0.5.11'
+      promote:
+        description: 'Promote draft → published if smoke passes (yes/no/force)'
+        required: false
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+          - 'force'
   workflow_run:
     workflows: ['Release']
     types: [completed]
@@ -214,3 +223,126 @@ jobs:
           & "${{ github.workspace }}\_smoke_asset\aiplus.exe" agent route engineer-a "post-release smoke windows" 2>&1 | Select-Object -Last 3
           Write-Output "=== dispatch log ==="
           Get-Content .aiplus\agents\dispatch-log.jsonl | Select-Object -First 1
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Promotion gate: after the smoke matrix completes, decide whether the
+  # release should auto-promote draft → published.
+  #
+  #   smoke all pass  + promote=yes/force → flip --draft=false
+  #   smoke any fail  + promote=yes       → keep draft, append "SMOKE FAILED" to body
+  #   smoke any fail  + promote=force     → flip anyway (owner override)
+  #   promote=no                          → never touch the release
+  #
+  # `needs: smoke` will resolve only after all matrix jobs finish; we use
+  # `if: always()` so this job runs even when some matrix shards fail
+  # (otherwise GitHub would skip it and we'd never get to mark the
+  # release as failed).
+  # ─────────────────────────────────────────────────────────────────────
+  promote:
+    name: promote or mark failed
+    needs: smoke
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "ERROR could not resolve tag" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve promote mode
+        id: mode
+        shell: bash
+        run: |
+          # workflow_dispatch: take the input directly (yes/no/force).
+          # workflow_run (auto from Release): always 'yes'.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.promote }}"
+          else
+            MODE="yes"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "promote mode: $MODE"
+
+      - name: Resolve smoke outcome
+        id: smoke
+        shell: bash
+        run: |
+          # needs.smoke.result is the aggregate of all matrix shards.
+          # success = all green; failure = at least one red.
+          R='${{ needs.smoke.result }}'
+          echo "smoke aggregate result: $R"
+          echo "result=$R" >> "$GITHUB_OUTPUT"
+
+      - name: Promote draft → published (smoke passed)
+        if: steps.smoke.outputs.result == 'success' && steps.mode.outputs.mode != 'no'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG='${{ steps.tag.outputs.tag }}'
+          echo "SMOKE_GATE_STATUS=PASS promoting ${TAG} draft → published"
+          gh release edit "${TAG}" \
+            --draft=false \
+            --latest \
+            --repo "${{ github.repository }}"
+          echo "RELEASE_PROMOTE_STATUS=OK tag=${TAG}"
+
+      - name: Force-promote despite smoke failure (manual override)
+        if: steps.smoke.outputs.result != 'success' && steps.mode.outputs.mode == 'force'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG='${{ steps.tag.outputs.tag }}'
+          echo "SMOKE_GATE_STATUS=OVERRIDE forced promotion of ${TAG} despite smoke failure"
+          gh release edit "${TAG}" \
+            --draft=false \
+            --latest \
+            --repo "${{ github.repository }}"
+          echo "RELEASE_PROMOTE_STATUS=OK_FORCED tag=${TAG}"
+
+      - name: Mark release as smoke-failed (keep draft)
+        if: steps.smoke.outputs.result != 'success' && steps.mode.outputs.mode != 'force'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG='${{ steps.tag.outputs.tag }}'
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "SMOKE_GATE_STATUS=FAIL keeping ${TAG} as draft"
+
+          # Fetch existing body so we don't clobber the auto-generated notes.
+          existing_body=$(gh release view "${TAG}" --json body --jq .body --repo "${{ github.repository }}")
+          marker="⚠️ SMOKE FAILED — see"
+          if printf '%s' "$existing_body" | grep -q "$marker"; then
+            echo "release body already contains smoke-failed marker; skipping append"
+          else
+            new_body=$(printf '%s\n\n---\n%s %s\nThis draft will NOT auto-promote. Investigate the smoke run, fix forward in a new release tag, or re-run this workflow with promote=force to override.\n' \
+              "$existing_body" "$marker" "$RUN_URL")
+            gh release edit "${TAG}" \
+              --notes "$new_body" \
+              --draft=true \
+              --repo "${{ github.repository }}"
+          fi
+          echo "RELEASE_PROMOTE_STATUS=KEPT_DRAFT tag=${TAG} reason=smoke_failed run=${RUN_URL}"
+
+          # Surface the failure on this job so the maintainer sees red in
+          # the GitHub UI rather than a green "promote" that did nothing.
+          exit 1
+
+      - name: Skip (promote=no)
+        if: steps.mode.outputs.mode == 'no'
+        run: |
+          echo "SMOKE_GATE_STATUS=SKIP promote=no, release untouched"
