@@ -6268,7 +6268,10 @@ fn aieconlab_init(root: &Path) -> Result<()> {
         )?;
     }
 
-    // Copy stub expert configs and stub personas (3 of 12)
+    // W5: the 3 final experts (survey-experiment, computation,
+    // coauthor-liaison) graduated from `_stubs/` to full personas.
+    // Copy them alongside the other shipped 9 — same path layout, no
+    // `_stubs/` subdir.
     for expert in ["survey-experiment", "computation", "coauthor-liaison"] {
         let asset = format!("aieconlab/core/templates/experts/{expert}.toml");
         let content = embedded_asset_text(&asset)?;
@@ -6277,14 +6280,11 @@ fn aieconlab_init(root: &Path) -> Result<()> {
             content.as_bytes(),
         )?;
 
-        let stub_asset = format!("aieconlab/core/templates/personas/_stubs/{expert}.md");
-        let stub_content = embedded_asset_text(&stub_asset)?;
+        let persona_asset = format!("aieconlab/core/templates/personas/{expert}.md");
+        let persona_content = embedded_asset_text(&persona_asset)?;
         write_file_atomic(
-            &agents_dir
-                .join("personas")
-                .join("_stubs")
-                .join(format!("{expert}.md")),
-            stub_content.as_bytes(),
+            &agents_dir.join("personas").join(format!("{expert}.md")),
+            persona_content.as_bytes(),
         )?;
     }
 
