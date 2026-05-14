@@ -7449,17 +7449,111 @@ enum PersonaDriftStatus {
 /// (e.g. claude's `aiplus-<role>.md` / `aieconlab-<role>.md` prefixed
 /// agents) — those come from a different module install path and are
 /// not duplicates of the source persona.
+/// N3: trim ASCII whitespace (space / tab / CR / LF) from both ends.
+/// Used to normalize source vs frontmatter-stripped mirror before
+/// comparing — the stripped mirror often starts with a blank line that
+/// the source doesn't have.
+fn trim_ascii_whitespace(bytes: &[u8]) -> &[u8] {
+    let is_ws = |b: u8| matches!(b, b' ' | b'\t' | b'\r' | b'\n');
+    let start = bytes.iter().position(|&b| !is_ws(b)).unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|&b| !is_ws(b))
+        .map(|i| i + 1)
+        .unwrap_or(start);
+    &bytes[start..end]
+}
+
+/// N3: strip leading YAML frontmatter (`---\n…---\n`) if present, so we
+/// can compare a frontmatter-wrapped mirror against an unwrapped source.
+/// If the input doesn't start with `---` we return it unchanged.
+fn strip_yaml_frontmatter(bytes: &[u8]) -> &[u8] {
+    if !bytes.starts_with(b"---\n") && !bytes.starts_with(b"---\r\n") {
+        return bytes;
+    }
+    // Skip the opening `---\n` (or `---\r\n`), then look for the closing
+    // `---\n` line. We scan line-by-line so we don't accidentally match a
+    // `---` inside a multi-line YAML value.
+    let after_open = if bytes.starts_with(b"---\r\n") { 5 } else { 4 };
+    let body = &bytes[after_open..];
+    let mut line_start = 0usize;
+    for (idx, b) in body.iter().enumerate() {
+        if *b == b'\n' {
+            let line = &body[line_start..idx];
+            // Strip trailing \r for CRLF line endings.
+            let stripped = if line.ends_with(b"\r") {
+                &line[..line.len() - 1]
+            } else {
+                line
+            };
+            if stripped == b"---" {
+                // Closing fence found. The body starts immediately after
+                // this line's newline.
+                let body_start = after_open + idx + 1;
+                return &bytes[body_start..];
+            }
+            line_start = idx + 1;
+        }
+    }
+    // No closing fence found — treat as no frontmatter so we don't
+    // accidentally drop content.
+    bytes
+}
+
+/// N3: how a source persona name maps to candidate mirror filenames
+/// for a given runtime. Captures the prefix conventions that different
+/// install paths use:
+///   - The "active-team" mirror writes `.claude/agents/<role>.md`
+///     unprefixed (via `mirror_personas_to_runtimes`).
+///   - The AEL claude-code adapter writes
+///     `.claude/agents/aieconlab-<role>.md` (via
+///     `install_aieconlab_claude_code_adapter`).
+///   - The agent-team claude-code adapter writes
+///     `.claude/agents/agent-team-<role>.md` (parallel path).
+///
+/// We check ALL candidate mirror names that exist; same-name is the
+/// primary path, prefixed names are the secondary. Drift in any of
+/// them counts as drift for the source file.
+fn mirror_name_candidates(source_file: &str, runtime: &str, active_team: &str) -> Vec<String> {
+    // Strip the .md extension so we can re-glue prefixes cleanly.
+    let role = match source_file.strip_suffix(".md") {
+        Some(s) => s,
+        None => return vec![source_file.to_string()],
+    };
+    let mut out = vec![format!("{role}.md")];
+    match (runtime, active_team) {
+        ("claude-code", "aieconlab") | ("opencode", "aieconlab") => {
+            out.push(format!("aieconlab-{role}.md"));
+        }
+        ("claude-code", "agent-team") | ("opencode", "agent-team") => {
+            out.push(format!("agent-team-{role}.md"));
+        }
+        _ => {}
+    }
+    out
+}
+
 fn persona_mirror_drift(root: &Path) -> PersonaDriftStatus {
     let source_dir = root.join(".aiplus").join("agents").join("personas");
     if !source_dir.exists() {
         return PersonaDriftStatus::NoSource;
     }
     let adapters = read_installed_runtime_adapters(root);
-    let mut mirrors: Vec<PathBuf> = Vec::new();
+    let active_team =
+        crate::agent::set_team::read_active_team(root).unwrap_or_else(|| "agent-team".to_string());
+    // Build (runtime, mirror_dir) pairs so we know which prefix
+    // convention to use when generating candidate filenames.
+    let mut mirrors: Vec<(String, PathBuf)> = Vec::new();
     for adapter in &adapters {
         match adapter.as_str() {
-            "claude-code" => mirrors.push(root.join(".claude").join("agents")),
-            "opencode" => mirrors.push(root.join(".opencode").join("agents")),
+            "claude-code" => mirrors.push((
+                "claude-code".to_string(),
+                root.join(".claude").join("agents"),
+            )),
+            "opencode" => mirrors.push((
+                "opencode".to_string(),
+                root.join(".opencode").join("agents"),
+            )),
             _ => {}
         }
     }
@@ -7487,16 +7581,43 @@ fn persona_mirror_drift(root: &Path) -> PersonaDriftStatus {
             Ok(b) => b,
             Err(_) => continue,
         };
-        for mirror_dir in &mirrors {
-            let mirror_path = mirror_dir.join(&file_name);
-            if !mirror_path.exists() {
-                continue;
-            }
-            match std::fs::read(&mirror_path) {
-                Ok(mirror_bytes) if mirror_bytes == src_bytes => {}
-                _ => {
-                    drifted.insert(file_name.clone());
+        for (runtime, mirror_dir) in &mirrors {
+            for candidate in mirror_name_candidates(&file_name, runtime, &active_team) {
+                let mirror_path = mirror_dir.join(&candidate);
+                if !mirror_path.exists() {
+                    continue;
                 }
+                let mirror_bytes = match std::fs::read(&mirror_path) {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+                // Prefixed mirrors (claude `aieconlab-<role>.md` etc.)
+                // get wrapped with YAML frontmatter at install time:
+                //
+                //   ---
+                //   name: aieconlab-pi
+                //   description: "..."
+                //   ---
+                //   # PI — AiEconLab v0.1
+                //   <source body...>
+                //
+                // Comparing bytes-for-bytes would always report drift
+                // because the frontmatter is always present. Strip it
+                // from the mirror before comparing — what we care about
+                // is whether the BODY matches the source.
+                let mirror_body = strip_yaml_frontmatter(&mirror_bytes);
+                // The frontmatter close-fence `---\n` is followed by a
+                // blank line in the rendered template, so the body
+                // starts with a `\n` that the source doesn't have.
+                // Trim leading and trailing whitespace/newlines from
+                // both sides before comparing so we're checking the
+                // semantically-identical content.
+                if trim_ascii_whitespace(mirror_body) == trim_ascii_whitespace(&src_bytes) {
+                    continue;
+                }
+                // Report the actual mirror filename that drifted (not
+                // the source name) so the user knows which file is stale.
+                drifted.insert(candidate);
             }
         }
     }
@@ -7505,6 +7626,74 @@ fn persona_mirror_drift(root: &Path) -> PersonaDriftStatus {
     } else {
         let files: Vec<String> = drifted.into_iter().collect();
         PersonaDriftStatus::Drift { files }
+    }
+}
+
+#[cfg(test)]
+mod persona_drift_mapping_tests {
+    use super::{mirror_name_candidates, strip_yaml_frontmatter};
+
+    #[test]
+    fn strip_yaml_frontmatter_passes_through_when_absent() {
+        let input = b"# Plain Markdown\nBody.";
+        assert_eq!(strip_yaml_frontmatter(input), input.as_slice());
+    }
+
+    #[test]
+    fn strip_yaml_frontmatter_removes_present_frontmatter() {
+        let input = b"---\nname: pi\ndescription: \"PI persona\"\n---\n# PI body\n";
+        assert_eq!(strip_yaml_frontmatter(input), b"# PI body\n");
+    }
+
+    #[test]
+    fn strip_yaml_frontmatter_handles_crlf_line_endings() {
+        let input = b"---\r\nname: pi\r\n---\r\n# Body\r\n";
+        let out = strip_yaml_frontmatter(input);
+        assert!(out.starts_with(b"# Body"));
+    }
+
+    #[test]
+    fn strip_yaml_frontmatter_no_closing_fence_returns_unchanged() {
+        let input = b"---\nname: pi\nno closing fence here\nstill no closing\n";
+        assert_eq!(strip_yaml_frontmatter(input), input.as_slice());
+    }
+
+    #[test]
+    fn same_name_always_first_candidate() {
+        let out = mirror_name_candidates("pi.md", "claude-code", "agent-team");
+        assert_eq!(out[0], "pi.md");
+    }
+
+    #[test]
+    fn aieconlab_active_adds_prefixed_candidate_for_claude() {
+        let out = mirror_name_candidates("pi.md", "claude-code", "aieconlab");
+        assert!(out.contains(&"pi.md".to_string()));
+        assert!(out.contains(&"aieconlab-pi.md".to_string()));
+    }
+
+    #[test]
+    fn agent_team_active_adds_prefixed_candidate_for_claude() {
+        let out = mirror_name_candidates("engineer-a.md", "claude-code", "agent-team");
+        assert!(out.contains(&"engineer-a.md".to_string()));
+        assert!(out.contains(&"agent-team-engineer-a.md".to_string()));
+    }
+
+    #[test]
+    fn opencode_gets_same_prefix_logic() {
+        let out = mirror_name_candidates("ra-stata.md", "opencode", "aieconlab");
+        assert!(out.contains(&"aieconlab-ra-stata.md".to_string()));
+    }
+
+    #[test]
+    fn unknown_runtime_returns_only_same_name() {
+        let out = mirror_name_candidates("advisor.md", "codex", "aieconlab");
+        assert_eq!(out, vec!["advisor.md"]);
+    }
+
+    #[test]
+    fn missing_md_extension_falls_back_to_input() {
+        let out = mirror_name_candidates("pi", "claude-code", "aieconlab");
+        assert_eq!(out, vec!["pi"]);
     }
 }
 
