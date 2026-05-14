@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## 0.5.23
+
+### Profile-name-agnostic CLI (#86)
+
+- **`aiplus refresh`, `aiplus status`, `aiplus user context` now
+  discover the installed profile name dynamically** instead of
+  hardcoding `aiplus-work-with-zhiwen`. Any profile fork — including
+  the new public `aiplus-work-with-you` template — is recognized
+  automatically on first use. No config required.
+  / **CLI 完全 profile-name agnostic**：三个命令自动识别已安装的 profile
+  名，不再写死 `aiplus-work-with-zhiwen`。装了公开模板
+  `aiplus-work-with-you` 或自定义 fork 的用户，命令输出直接显示正确的
+  profile 名。
+
+- **`aiplus refresh` now inlines the Owner's USER.md preferences** so
+  agents pick them up automatically at session start — no extra
+  `aiplus user context` command needed.
+  / **`aiplus refresh` 自动内嵌 USER.md 偏好**：agent 启动时刷新一次就
+  拿到 Owner 的所有偏好，不需要再手动跑 `aiplus user context`。
+
+- **`ProfileSync` and `SnapshotBuilder::write_profile_snapshot` are
+  now profile-name-agnostic**, accepting the profile name as a
+  parameter. / **底层 API profile-name agnostic**：`ProfileSync`、
+  `write_profile_snapshot` 改为接受 profile 名参数，不再假设固定名称。
+
+- **Identity templates** in `aiplus-agent-memory` updated: `inherits`
+  field now references `aiplus-work-with-you` (the public template)
+  instead of the private prototype name.
+  / **identity 模板** `inherits` 字段改指公开模板 `aiplus-work-with-you`。
+
 ## 0.5.22
 
 ### K7 (#83): `aiplus install` refuses on PATH version skew

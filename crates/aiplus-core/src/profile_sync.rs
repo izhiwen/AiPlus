@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 pub struct ProfileSync {
     profile_root: PathBuf,
+    profile_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -16,15 +17,16 @@ pub struct SyncResult {
 }
 
 impl ProfileSync {
-    pub fn new(profile_root: &Path) -> Self {
+    pub fn new(profile_root: &Path, profile_name: &str) -> Self {
         Self {
             profile_root: profile_root.to_path_buf(),
+            profile_name: profile_name.to_string(),
         }
     }
 
     fn profile_memory_dir(&self) -> PathBuf {
         self.profile_root
-            .join("aiplus-work-with-zhiwen")
+            .join(&self.profile_name)
             .join("profile-memory")
     }
 
@@ -242,7 +244,7 @@ mod tests {
     #[test]
     fn read_profile_memories_empty() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
         let records = sync.read_profile_memories().unwrap();
         assert!(records.is_empty());
     }
@@ -250,7 +252,7 @@ mod tests {
     #[test]
     fn write_and_read_profile_memory() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let record = sample_record("pref_1", "owner_preference", "Use 4 spaces");
         sync.write_profile_memory(&record).unwrap();
@@ -300,7 +302,7 @@ mod tests {
     #[test]
     fn promote_to_profile_success() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let mut record = sample_record("pref_1", "owner_preference", "Use dark mode");
         record.tags.push("preference".to_string());
@@ -318,7 +320,7 @@ mod tests {
     #[test]
     fn promote_to_profile_global_trigger() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let record = sample_record("pref_2", "note", "all projects should use Rust");
 
@@ -332,7 +334,7 @@ mod tests {
     #[test]
     fn promote_to_profile_blocks_project_fact() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let record = sample_record("fact_1", "project_fact", "src/main.rs is entry point");
 
@@ -347,7 +349,7 @@ mod tests {
     #[test]
     fn promote_to_profile_blocks_secret() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let record = sample_record("sec_1", "owner_preference", "api_key=secret123");
 
@@ -363,7 +365,7 @@ mod tests {
     fn sync_to_project_success() {
         let profile_tmp = TempDir::new().unwrap();
         let project_tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(profile_tmp.path());
+        let sync = ProfileSync::new(profile_tmp.path(), "test-profile");
 
         let mut record = sample_record("pref_1", "owner_preference", "Use 4 spaces");
         record.tags.push("preference".to_string());
@@ -388,7 +390,7 @@ mod tests {
     fn sync_to_project_skips_non_preference() {
         let profile_tmp = TempDir::new().unwrap();
         let project_tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(profile_tmp.path());
+        let sync = ProfileSync::new(profile_tmp.path(), "test-profile");
 
         let record = sample_record("fact_1", "project_fact", "src/main.rs is entry");
         sync.write_profile_memory(&record).unwrap();
@@ -402,7 +404,7 @@ mod tests {
     fn sync_to_project_blocks_secret() {
         let profile_tmp = TempDir::new().unwrap();
         let project_tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(profile_tmp.path());
+        let sync = ProfileSync::new(profile_tmp.path(), "test-profile");
 
         let mut record = sample_record("pref_1", "owner_preference", "Use dark mode");
         record.tags.push("preference".to_string());
@@ -423,7 +425,7 @@ mod tests {
     fn sync_to_project_does_not_duplicate() {
         let profile_tmp = TempDir::new().unwrap();
         let project_tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(profile_tmp.path());
+        let sync = ProfileSync::new(profile_tmp.path(), "test-profile");
 
         let mut record = sample_record("pref_1", "owner_preference", "Use 4 spaces");
         record.tags.push("preference".to_string());
@@ -437,7 +439,7 @@ mod tests {
     #[test]
     fn promote_to_profile_removes_project_local_tag() {
         let tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(tmp.path());
+        let sync = ProfileSync::new(tmp.path(), "test-profile");
 
         let mut record = sample_record("pref_1", "owner_preference", "Use dark mode");
         record.tags.push("preference".to_string());
@@ -453,7 +455,7 @@ mod tests {
     fn sync_to_project_empty_profile() {
         let profile_tmp = TempDir::new().unwrap();
         let project_tmp = TempDir::new().unwrap();
-        let sync = ProfileSync::new(profile_tmp.path());
+        let sync = ProfileSync::new(profile_tmp.path(), "test-profile");
 
         let result = sync.sync_to_project(project_tmp.path()).unwrap();
         assert_eq!(result.profile_records_read, 0);

@@ -2008,7 +2008,8 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
             continuity.skill_candidates_total, continuity.skill_candidates_rejected
         );
         println!(
-            "- Profile: aiplus-work-with-zhiwen {}",
+            "- Profile: {} {}",
+            canonical_user_profile()?.as_deref().unwrap_or("(none)"),
             continuity.profile_status
         );
         println!("- Secret values: none");
@@ -2067,7 +2068,8 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
             continuity.skill_candidates_total, continuity.skill_candidates_rejected
         );
         println!(
-            "- Profile: aiplus-work-with-zhiwen {}",
+            "- Profile: {} {}",
+            canonical_user_profile()?.as_deref().unwrap_or("(none)"),
             continuity.profile_status
         );
         println!("- Secret values: none");
@@ -2089,7 +2091,41 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
         println!("- AiPlus does not upload data.");
         println!("- AiPlus does not change global agent config.");
     }
+    print_owner_profile_inline()?;
     println!("AIPLUS_REFRESH_STATUS=PASS");
+    Ok(())
+}
+
+/// On refresh, inline the Owner's USER.md content (redacted) so the agent
+/// picks up cross-project preferences without an extra `aiplus user context`
+/// round-trip. No-op if no user profile is installed or USER.md is missing.
+fn print_owner_profile_inline() -> Result<()> {
+    let Some(profile) = canonical_user_profile()? else {
+        return Ok(());
+    };
+    let user_md = profile_dir(&profile)?.join("USER.md");
+    if !user_md.exists() {
+        return Ok(());
+    }
+    let text = fs::read_to_string(&user_md)?;
+    let redacted = redact_user_context(&text);
+    let truncated = if redacted.len() > 4096 {
+        format!(
+            "{}\n... [truncated; run `aiplus user context` for full content]",
+            &redacted[..3072]
+        )
+    } else {
+        redacted
+    };
+    println!();
+    println!("---");
+    println!("# Owner profile (from {profile}/USER.md)");
+    println!();
+    println!("These are the Owner's stable cross-project preferences. Treat as");
+    println!("context, not as permission for dangerous actions.");
+    println!();
+    println!("{truncated}");
+    println!();
     Ok(())
 }
 
@@ -4025,7 +4061,7 @@ fn command_user(subcommand: Option<String>, profile: Option<String>) -> Result<(
 }
 
 fn user_context(profile: Option<String>) -> Result<()> {
-    let profile = profile.unwrap_or_else(|| "aiplus-work-with-zhiwen".to_string());
+    let profile = profile.unwrap_or_else(canonical_user_profile_or_default);
     validate_profile_name(&profile)?;
     let dir = profile_dir(&profile)?;
     let user_md = dir.join("USER.md");
@@ -4906,16 +4942,15 @@ fn memory_snapshot(subcommand: Option<String>) -> Result<()> {
         Some("build") => {
             let builder = SnapshotBuilder::new(&root);
             let project_path = builder.write_project_snapshot()?;
-            let profile_root = config_home()?.join("aiplus");
-            let _profile_path = builder.write_profile_snapshot(&profile_root)?;
+            let profile_root = config_home()?.join("aiplus").join("profiles");
+            let profile_name = canonical_user_profile_or_default();
+            let _profile_path = builder.write_profile_snapshot(&profile_root, &profile_name)?;
             let records = read_memory_records(&root).unwrap_or_default();
-            let profile_records = if profile_root
-                .join("aiplus-work-with-zhiwen/profile-memory/memories.jsonl")
-                .exists()
-            {
-                let text = std::fs::read_to_string(
-                    profile_root.join("aiplus-work-with-zhiwen/profile-memory/memories.jsonl"),
-                )?;
+            let profile_mem_path = profile_root
+                .join(&profile_name)
+                .join("profile-memory/memories.jsonl");
+            let profile_records = if profile_mem_path.exists() {
+                let text = std::fs::read_to_string(&profile_mem_path)?;
                 text.lines().filter(|l| !l.trim().is_empty()).count()
             } else {
                 0
@@ -4925,7 +4960,7 @@ fn memory_snapshot(subcommand: Option<String>) -> Result<()> {
                 "project_snapshot={}",
                 path_slash(path_relative(&root, &project_path)?)
             );
-            println!("profile_snapshot=aiplus-work-with-zhiwen/profile-memory/USER.md");
+            println!("profile_snapshot={profile_name}/profile-memory/USER.md");
             println!("project_records={}", records.len());
             println!("profile_records={}", profile_records);
             println!("MEMORY_SNAPSHOT_BUILD_STATUS=PASS");
@@ -4940,8 +4975,9 @@ fn memory_snapshot(subcommand: Option<String>) -> Result<()> {
 
 fn memory_profile_sync() -> Result<()> {
     let root = target_root()?;
-    let profile_root = config_home()?.join("aiplus");
-    let sync = ProfileSync::new(&profile_root);
+    let profile_root = config_home()?.join("aiplus").join("profiles");
+    let profile_name = canonical_user_profile_or_default();
+    let sync = ProfileSync::new(&profile_root, &profile_name);
     let result = sync.sync_to_project(&root)?;
     println!("MEMORY_PROFILE_SYNC");
     println!("profile_records_read={}", result.profile_records_read);
@@ -5117,8 +5153,10 @@ fn identity_context(role: Option<String>) -> Result<()> {
     } else {
         format!("[{}]", identity.inherits.join(","))
     };
-    let private_profile_linked =
-        inherits.contains("aiplus-work-with-zhiwen") && private_profile_installed()?;
+    let private_profile_linked = match canonical_user_profile()? {
+        Some(ref name) => inherits.contains(name.as_str()),
+        None => false,
+    };
     println!("IDENTITY_CONTEXT");
     println!("role={role}");
     println!("role_name={role_name}");
@@ -7587,8 +7625,29 @@ fn continuity_state(root: &Path) -> Result<ContinuityState> {
 }
 
 fn private_profile_installed() -> Result<bool> {
-    let dir = profile_dir("aiplus-work-with-zhiwen")?;
-    Ok(dir.join("profile.toml").exists() && !dir.join("disabled").exists())
+    Ok(canonical_user_profile()?.is_some())
+}
+
+/// Returns the canonical user-level AiPlus profile name, or None if none
+/// is installed. "Canonical" = the first non-legacy installed profile in
+/// `~/.config/aiplus/profiles/`, alphabetical. Lets the CLI work with any
+/// `aiplus-work-with-<owner>` profile name (including the public
+/// `aiplus-work-with-you` template and personal forks), not just the
+/// original `aiplus-work-with-zhiwen` prototype.
+fn canonical_user_profile() -> Result<Option<String>> {
+    let profiles_root = match config_home() {
+        Ok(home) => home.join("aiplus").join("profiles"),
+        Err(_) => return Ok(None),
+    };
+    let names = installed_profile_names(&profiles_root)?;
+    Ok(names.into_iter().next())
+}
+
+fn canonical_user_profile_or_default() -> String {
+    canonical_user_profile()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "aiplus-work-with-you".to_string())
 }
 
 fn print_continuity_status_lines(state: &ContinuityState) {
@@ -7608,7 +7667,11 @@ fn print_continuity_status_lines(state: &ContinuityState) {
         state.skill_candidates_rejected
     );
     println!("approved_auto=none");
-    println!("profile=aiplus-work-with-zhiwen {}", state.profile_status);
+    let profile_name = canonical_user_profile()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "(none)".to_string());
+    println!("profile={profile_name} {}", state.profile_status);
     println!("secret_values=none");
     println!("global_agent_config=untouched");
 }
