@@ -57,6 +57,43 @@ Bilingual title preferred for user-facing changes:
 
 Body: explain the *why*, not just the *what*.
 
+## Merge policy & branch protection
+
+The `main` branch is protected (P2.4 of the v0.5.16 follow-up goal).
+The settings live in GitHub repo → Settings → Branches and are also
+visible via `gh api repos/izhiwen/aiplus/branches/main/protection`.
+
+What's enforced:
+
+- **Required status checks before merge** (all 7 must be green):
+  `fmt`, `clippy`, `test`, plus the four `install-smoke (...)` matrix
+  jobs on macos-14 / ubuntu-22.04 / ubuntu-24.04 / windows-latest.
+  A PR with any red check cannot be merged through the normal flow.
+- **No force-pushes to `main`**: `allow_force_pushes=false`.
+- **No deletions of `main`**: `allow_deletions=false`.
+
+What's *not* enforced:
+
+- **Reviews aren't required.** Single-maintainer repo; review counts
+  would just block work. The PR template's checklist serves the same
+  purpose.
+- **Admins can override** (`enforce_admins=false`). `gh pr merge --admin`
+  bypasses the failing-check gate. This is the escape hatch used when
+  a pre-existing test failure on main blocks unrelated PRs. Audit
+  trail is the merge commit author + the GitHub Actions logs.
+
+When to admin-merge:
+
+- ✅ A test on main is flaky / pre-existing-broken and your PR's
+  failing CI matches that test (verify by running `cargo test` against
+  bare main). Note this in the PR description.
+- ✅ Emergency rollback that itself fixes the failing test.
+- ❌ Your change introduced the failing test — fix the change instead.
+
+Direct pushes to `main` aren't blocked from the admin account (single
+maintainer), but every merge should go through a PR so the CI history
+and the merge-commit audit trail stay coherent.
+
 ## Where to ask
 
 - **Bugs**: use the bug template
