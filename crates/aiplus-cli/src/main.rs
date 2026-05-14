@@ -11905,41 +11905,110 @@ fn check_supported_version(actual: Option<&str>, label: &str, review_items: &mut
     }
 }
 
+/// P2.3: schema-version support check.
+///
+/// Historical versions (0.1.x → 0.4.x) are listed explicitly because
+/// each one had distinct manifest shapes during early development. The
+/// 0.5.x series stabilized the manifest schema and every 0.5.x release
+/// since 0.5.0 has been backward-compatible — so we accept ALL 0.5.x
+/// patch versions via prefix match, including future bumps. Bumping
+/// the crate to 0.5.17 / 0.5.18 / etc. no longer requires editing this
+/// function.
+///
+/// When 0.6.0 lands with a breaking schema change, replace
+/// `is_zero_five_x` with an explicit list (or extend with a 0.6.x
+/// prefix match if 0.6.x is also stable).
 fn is_supported_manifest_schema(version: &str) -> bool {
-    matches!(
-        version,
-        "0.1.3"
-            | "0.2.0"
-            | "0.2.1"
-            | "0.3.0"
-            | "0.3.1"
-            | "0.4.0"
-            | "0.4.1"
-            | "0.4.2"
-            | "0.4.3"
-            | "0.4.4"
-            | "0.4.5"
-            | "0.4.6"
-            | "0.4.7"
-            | "0.4.8"
-            | "0.5.0"
-            | "0.5.1"
-            | "0.5.2"
-            | "0.5.3"
-            | "0.5.4"
-            | "0.5.5"
-            | "0.5.6"
-            | "0.5.7"
-            | "0.5.8"
-            | "0.5.9"
-            | "0.5.10"
-            | "0.5.11"
-            | "0.5.12"
-            | "0.5.13"
-            | "0.5.14"
-            | "0.5.15"
-            | "0.5.16"
-    )
+    const HISTORICAL: &[&str] = &[
+        "0.1.3", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4",
+        "0.4.5", "0.4.6", "0.4.7", "0.4.8",
+    ];
+    if HISTORICAL.contains(&version) {
+        return true;
+    }
+    is_zero_five_x(version)
+}
+
+/// Match strings of the form `0.5.<patch>` where `<patch>` is a
+/// non-empty digit-only string. Strict enough to reject "0.5" (no patch),
+/// "0.5.x" (non-numeric), "0.5.1abc" (extra suffix), and "0.50.0"
+/// (different minor — `0.5.0` only matches exact prefix `0.5.`).
+fn is_zero_five_x(version: &str) -> bool {
+    let Some(patch) = version.strip_prefix("0.5.") else {
+        return false;
+    };
+    !patch.is_empty() && patch.bytes().all(|b| b.is_ascii_digit())
+}
+
+#[cfg(test)]
+mod schema_support_tests {
+    use super::{is_supported_manifest_schema, is_zero_five_x};
+
+    #[test]
+    fn historical_versions_supported() {
+        for v in &[
+            "0.1.3", "0.2.0", "0.2.1", "0.3.0", "0.3.1", "0.4.0", "0.4.8",
+        ] {
+            assert!(is_supported_manifest_schema(v), "{v} should be supported");
+        }
+    }
+
+    #[test]
+    fn current_zero_five_versions_supported() {
+        for v in &[
+            "0.5.0", "0.5.7", "0.5.10", "0.5.11", "0.5.16", "0.5.99",
+            "0.5.100", // future versions
+        ] {
+            assert!(is_supported_manifest_schema(v), "{v} should be supported");
+        }
+    }
+
+    #[test]
+    fn pre_0_1_versions_rejected() {
+        // We don't claim 0.0.x or 0.1.0–0.1.2 support; first supported
+        // historical is 0.1.3.
+        for v in &["0.0.1", "0.1.0", "0.1.1", "0.1.2"] {
+            assert!(
+                !is_supported_manifest_schema(v),
+                "{v} should be unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn future_major_versions_rejected() {
+        // 0.6.0 / 1.0.0 are future; not yet wired up. Bumping there
+        // should be a conscious change (extend this function).
+        for v in &["0.6.0", "0.7.0", "1.0.0", "2.0.0"] {
+            assert!(
+                !is_supported_manifest_schema(v),
+                "{v} should be unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_zero_five_strings_rejected() {
+        for v in &[
+            "0.5",      // no patch
+            "0.5.",     // empty patch
+            "0.5.x",    // non-numeric patch
+            "0.5.1abc", // patch with non-digit suffix
+            "0.5.1.0",  // 4-segment, patch contains non-digit (the dot)
+            "0.50.0",   // different minor — strip_prefix("0.5.") doesn't match "0.50.0"
+        ] {
+            assert!(!is_zero_five_x(v), "{v} should NOT match 0.5.x pattern");
+        }
+    }
+
+    #[test]
+    fn zero_five_pattern_matches_what_we_expect() {
+        assert!(is_zero_five_x("0.5.0"));
+        assert!(is_zero_five_x("0.5.42"));
+        assert!(is_zero_five_x("0.5.999"));
+        assert!(!is_zero_five_x("0.4.0"));
+        assert!(!is_zero_five_x("0.6.0"));
+    }
 }
 
 fn check_policy_array(
