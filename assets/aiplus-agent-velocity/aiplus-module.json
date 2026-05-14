@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "agent-velocity",
+  "displayName": "AiPlus Agent Velocity",
+  "version": "0.1.0",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "abbreviation": "",
+  "requires": {
+    "aiplus_min_version": "0.5.0",
+    "substrate_modules": []
+  },
+  "requiredFiles": [
+    "core/schemas/run-record.schema.json",
+    "core/schemas/estimate-record.schema.json",
+    "core/schemas/config.schema.json",
+    "core/schemas/rare-case-record.schema.json",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-agent-velocity",
+    ".aiplus/velocity"
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "AiPlus Agent Velocity adds AI-native time estimation: it tracks estimated vs actual time per task, learns model + task-type bias, and surfaces calibrated p50/p90 estimates over time.",
+    "Functionality is exposed via the built-in `aiplus velocity` subcommand. This module ships the schemas + design docs that runtimes can reference locally.",
+    "Run `aiplus velocity init` in a project to start tracking. Then `aiplus velocity estimate` before a task and `aiplus velocity complete` after."
+  ],
+  "doctorChecks": [
+    {
+      "id": "velocity-schema",
+      "path": "core/schemas/run-record.schema.json",
+      "description": "Velocity run-record schema is present."
+    },
+    {
+      "id": "velocity-config-schema",
+      "path": "core/schemas/config.schema.json",
+      "description": "Velocity config schema is present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Public module record. Code lives in the AiPlus CLI (subcommand `aiplus velocity`).",
+      "Schemas + design docs + the run-record / estimate-record / config / rare-case-record JSONL shapes are public; per-project velocity data lives under `.aiplus/velocity/` and is not bundled."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "Velocity records only estimated vs actual durations, model name, task-type, workflow level, and outcome (pass / needs_fix / blocked). No prompt text, transcript text, file contents, or secret values are ever recorded.",
+      "Records carry timestamps and a hashed task-id only — no PII beyond what the user types into `--task` / `--task-type`."
+    ]
+  },
+  "legacyStatus": {
+    "status": "new-agent-velocity-foundation",
+    "notes": [
+      "Extracted from AiPlus's existing `velocity` subcommand as a sibling public module.",
+      "v0.1 documents the existing feature; the Rust source remains in `aiplus-core` for now and may be split into its own crate later."
+    ]
+  }
+}

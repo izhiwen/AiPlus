@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RareCaseRecord",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "taskId",
+    "createdAt",
+    "caseType",
+    "overestimateRatio"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "id": { "type": "string" },
+    "taskId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "caseType": { "type": "string" },
+    "description": { "type": "string" },
+    "overestimateRatio": { "type": "number", "minimum": 0 },
+    "actualActiveMinutes": { "type": "integer", "minimum": 0 },
+    "originalEstimateMinutes": { "type": "integer", "minimum": 0 },
+    "outcome": { "type": "string" }
+  }
+}
