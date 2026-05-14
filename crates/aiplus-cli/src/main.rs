@@ -98,7 +98,7 @@ const DEFAULT_BWS_PROJECT_ID: &str = "ddd15408-b7bd-4230-8df3-b44401403ce3";
     name = "aiplus",
     version = VERSION,
     disable_version_flag = true,
-    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+    after_help = "Safety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
 )]
 struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue)]
@@ -925,7 +925,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .codex/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1700,7 +1700,7 @@ fn command_status(terse: bool) -> Result<()> {
     );
     println!(
         "compactState={}",
-        if rel_to_abs(&root, ".codex/compact")?.exists() {
+        if rel_to_abs(&root, ".aiplus/compact")?.exists() {
             "present"
         } else {
             "missing"
@@ -1776,7 +1776,7 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
         let manifest = read_manifest(&root, true).unwrap_or_default();
         let modules = normalize_existing_modules(manifest.modules.as_ref());
         let continuity = continuity_state(&root)?;
-        let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
+        let compact_state = if rel_to_abs(&root, ".aiplus/compact")?.exists() {
             "present"
         } else {
             "missing"
@@ -1800,7 +1800,7 @@ fn command_refresh(trigger: Vec<String>, terse: bool) -> Result<()> {
     let manifest = read_manifest(&root, true).unwrap_or_default();
     let modules = normalize_existing_modules(manifest.modules.as_ref());
     let continuity = continuity_state(&root)?;
-    let compact_state = if rel_to_abs(&root, ".codex/compact")?.exists() {
+    let compact_state = if rel_to_abs(&root, ".aiplus/compact")?.exists() {
         "present"
     } else {
         "missing"
@@ -2079,8 +2079,8 @@ fn command_doctor() -> Result<()> {
     if modules.contains_key(MODULE_SLUG_COMPACT_REMINDER) {
         push_check(
             &mut checks,
-            ".codex/compact/ exists".to_string(),
-            rel_to_abs(&root, ".codex/compact")?.exists(),
+            ".aiplus/compact/ exists".to_string(),
+            rel_to_abs(&root, ".aiplus/compact")?.exists(),
             Some("run compact init".to_string()),
         );
     }
@@ -2122,6 +2122,26 @@ fn command_doctor() -> Result<()> {
                     "consultant-team.toml has schema_version",
                     value.get("schema_version").is_some(),
                     Some("add schema_version field".to_string()),
+                );
+                // Drift check: the file might have schema_version set
+                // to a version this binary doesn't know how to consume
+                // (e.g., installed config is newer than the CLI). When
+                // that happens `agent route` silently skips the consult,
+                // so flag it here instead of letting the user notice
+                // only when the artifact never appears.
+                let declared = value
+                    .get("schema_version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                push_check(
+                    &mut checks,
+                    "consultant-team.toml schema_version is supported by this CLI".to_string(),
+                    !declared.is_empty()
+                        && aiplus_core::consult::is_supported_schema(declared),
+                    Some(format!(
+                        "declared='{declared}', supported={:?} — upgrade aiplus or pin the config to a supported version",
+                        aiplus_core::consult::SUPPORTED_CONSULT_SCHEMAS
+                    )),
                 );
                 push_check(
                     &mut checks,
@@ -6622,6 +6642,10 @@ fn install_runtime_adapter(
     match runtime {
         "codex" => update_agents_md(root, plan, options),
         "claude-code" => {
+            // Bridge .aiplus/AGENTS.aiplus.md into the Claude Code session
+            // via a managed block in top-level AGENTS.md (Claude Code reads
+            // AGENTS.md alongside CLAUDE.md). Same mechanism as codex.
+            update_agents_md(root, plan, options)?;
             write_file_safe(
                 root,
                 ".claude/commands/aiplus-refresh.md",
@@ -6638,6 +6662,8 @@ fn install_runtime_adapter(
             )
         }
         "opencode" => {
+            // Same bridge for OpenCode — sst/opencode also reads AGENTS.md.
+            update_agents_md(root, plan, options)?;
             install_opencode_config(root, plan, options)?;
             write_file_safe(
                 root,
@@ -6750,12 +6776,17 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
     if plan.dry_run {
         plan.items.push(PlanItem {
             action: "compact-init".to_string(),
-            path: ".codex/compact/".to_string(),
+            path: ".aiplus/compact/".to_string(),
         });
         return Ok(());
     }
-    ensure_dir(root, &rel_to_abs(root, ".codex/compact")?, plan)?;
-    ensure_dir(root, &rel_to_abs(root, ".codex/compact/checkpoints")?, plan)?;
+    migrate_legacy_codex_compact(root)?;
+    ensure_dir(root, &rel_to_abs(root, ".aiplus/compact")?, plan)?;
+    ensure_dir(
+        root,
+        &rel_to_abs(root, ".aiplus/compact/checkpoints")?,
+        plan,
+    )?;
     for file in [
         "current-handoff.md",
         "decision-log.md",
@@ -6768,7 +6799,7 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
             embedded_asset_text(&asset_path)?.replace("<ISO8601_TIMESTAMP>", &timestamp());
         write_compact_template(
             root,
-            &format!(".codex/compact/{file}"),
+            &format!(".aiplus/compact/{file}"),
             content.as_bytes(),
             plan,
             force,
@@ -6776,13 +6807,13 @@ fn compact_init(root: &Path, plan: &mut Plan, force: bool) -> Result<()> {
     }
     plan.items.push(PlanItem {
         action: "compact-init".to_string(),
-        path: ".codex/compact/".to_string(),
+        path: ".aiplus/compact/".to_string(),
     });
     Ok(())
 }
 
 fn migrate_compact_handoff_if_needed(root: &Path, plan: &mut Plan) -> Result<bool> {
-    let rel = ".codex/compact/current-handoff.md";
+    let rel = ".aiplus/compact/current-handoff.md";
     let path = rel_to_abs(root, rel)?;
     if !path.exists() {
         return Ok(false);
@@ -6999,7 +7030,7 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String], upgrad
         println!("No files were changed.");
         println!("Will create/update:");
         println!("- .aiplus/");
-        println!("- .codex/compact/");
+        println!("- .aiplus/compact/");
         println!("- .aiplus/memory/");
         println!("- .aiplus/identities/");
         println!("- .aiplus/skills/");
@@ -7021,7 +7052,7 @@ fn print_install_summary(plan: &Plan, verbose: bool, adapters: &[String], upgrad
     if upgraded {
         println!("AiPlus upgraded for {runtime_text} in this project.");
         println!("Existing AiPlus managed files were backed up before replacement.");
-        println!(".codex/compact/ state was preserved.");
+        println!(".aiplus/compact/ state was preserved.");
     } else {
         println!("AiPlus installed for {runtime_text} in this project.");
     }
@@ -7403,11 +7434,37 @@ fn normalize_existing_modules(
 }
 
 fn compact_dir(root: &Path) -> Result<PathBuf> {
-    rel_to_abs(root, ".codex/compact")
+    rel_to_abs(root, ".aiplus/compact")
+}
+
+// One-time migration for projects installed before v0.5.11 — moves
+// `.codex/compact/` to `.aiplus/compact/`. No-op when the new path already
+// exists or the legacy path is absent. Removes the empty legacy directory
+// (and `.codex` if that's the only thing left under it) so claude-code /
+// opencode-only projects don't keep a stray `.codex/` tree.
+fn migrate_legacy_codex_compact(root: &Path) -> Result<()> {
+    let legacy = rel_to_abs(root, ".codex/compact")?;
+    let new_path = rel_to_abs(root, ".aiplus/compact")?;
+    if !legacy.exists() || new_path.exists() {
+        return Ok(());
+    }
+    ensure_dir(root, &rel_to_abs(root, ".aiplus")?, &mut Plan::default())?;
+    fs::rename(&legacy, &new_path)
+        .with_context(|| format!("failed to migrate {legacy:?} -> {new_path:?}"))?;
+    let legacy_parent = rel_to_abs(root, ".codex")?;
+    if legacy_parent.is_dir() {
+        if let Ok(mut entries) = fs::read_dir(&legacy_parent) {
+            if entries.next().is_none() {
+                let _ = fs::remove_dir(&legacy_parent);
+            }
+        }
+    }
+    println!("MIGRATION=compact .codex/compact/ -> .aiplus/compact/");
+    Ok(())
 }
 
 fn compact_file(root: &Path, rel: &str) -> Result<PathBuf> {
-    rel_to_abs(root, &format!(".codex/compact/{rel}"))
+    rel_to_abs(root, &format!(".aiplus/compact/{rel}"))
 }
 
 fn read_compact_text(root: &Path, file: &str) -> Result<String> {
@@ -7424,7 +7481,7 @@ fn compact_validate_state(root: &Path) -> Result<CompactValidation> {
     let mut denied_gates = Vec::new();
     let compact_dir = compact_dir(root)?;
     if !compact_dir.exists() {
-        errors.push(".codex/compact/ is missing".to_string());
+        errors.push(".aiplus/compact/ is missing".to_string());
         return Ok(CompactValidation {
             ok: false,
             errors,
@@ -7694,7 +7751,7 @@ fn compact_checkpoint_with_options(
         manual_compact_only: true,
     };
     let filename = format!("{}.json", timestamp.replace([':', '.'], "-"));
-    let rel = format!(".codex/compact/checkpoints/{filename}");
+    let rel = format!(".aiplus/compact/checkpoints/{filename}");
     write_file_safe(
         root,
         &rel,
@@ -7745,7 +7802,7 @@ fn compact_prepare(root: &Path, level: &str) -> Result<i32> {
     });
     let capsule_written = save_context_capsule(root, &capsule).is_ok();
     if capsule_written {
-        println!("CONTEXT_CAPSULE_CREATED=.codex/compact/context-capsule.json");
+        println!("CONTEXT_CAPSULE_CREATED=.aiplus/compact/context-capsule.json");
     }
 
     if readiness.state == "READY_TO_COMPACT" {
@@ -7932,8 +7989,9 @@ fn compact_reminder_decision(
             estimated_tokens_saved: estimate.tokens_saved,
             estimated_usd_saved,
             reason: handoff.reason.clone(),
-            next_action: "Update .codex/compact/current-handoff.md and run aiplus compact prepare."
-                .to_string(),
+            next_action:
+                "Update .aiplus/compact/current-handoff.md and run aiplus compact prepare."
+                    .to_string(),
             secret_values_printed: "no",
         };
     }
@@ -8152,7 +8210,7 @@ fn set_compact_snooze(root: &Path, duration: &str) -> Result<()> {
     };
     write_file_safe(
         root,
-        ".codex/compact/reminder-snooze.json",
+        ".aiplus/compact/reminder-snooze.json",
         format!("{}\n", serde_json::to_string_pretty(&snooze)?).as_bytes(),
         &mut Plan::default(),
         &Options {
@@ -8377,7 +8435,7 @@ fn compact_readiness(result: &CompactValidation, root: &Path) -> CompactReadines
             state: "NEEDS_HANDOFF_UPDATE",
             pressure: "MEDIUM",
             explanation: "The next safe action is missing from the handoff.",
-            next_action: "Update .codex/compact/current-handoff.md with the next safe action."
+            next_action: "Update .aiplus/compact/current-handoff.md with the next safe action."
                 .to_string(),
             manual_compact_recommended: false,
             reasons: vec!["next safe action is missing".to_string()],
@@ -10136,6 +10194,7 @@ fn known_aiplus_entries() -> BTreeSet<String> {
         ".aiplus/agents".to_string(),
         ".aiplus/agent-team".to_string(),
         ".aiplus/aieconlab".to_string(),
+        ".aiplus/compact".to_string(),
     ]);
     for spec in aiplus_core::bundled_module_specs() {
         known.insert(spec.path.to_string());
@@ -10300,7 +10359,7 @@ When continuing:
 
 1. Re-read `AGENTS.md`.
 2. Re-read `.aiplus/AGENTS.aiplus.md`.
-3. Re-read `.codex/compact/current-handoff.md` if it exists.
+3. Re-read `.aiplus/compact/current-handoff.md` if it exists.
 4. Enable AiPlus Auto Team Consultant and AiPlus Compact Reminder for the current session.
 5. Run `aiplus compact resume` after compact when work should continue.
 6. Continue the current task without asking the user to repeat the full instruction.
@@ -10409,7 +10468,7 @@ values.
 
 ## Compact Reminder
 
-Read `.codex/compact/current-handoff.md` before long-running work if it exists.
+Read `.aiplus/compact/current-handoff.md` before long-running work if it exists.
 
 Proactive reminder schedule:
 1. HEAVY task: run `aiplus compact remind --event long-session` at least every
@@ -10585,7 +10644,7 @@ Chinese reply when the user uses Chinese such as 刷新 or AiPlus 刷新:
 
 Generic continuation keywords: 刷新, refresh, 继续, continue, resume, go on, 接着
 
-Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .codex/compact/current-handoff.md if present, run aiplus compact resume after compact when work should continue, enable AiPlus, and continue the current task.
+Meaning: reread AGENTS.md and .aiplus/AGENTS.aiplus.md, read .aiplus/compact/current-handoff.md if present, run aiplus compact resume after compact when work should continue, enable AiPlus, and continue the current task.
 
 Refresh is not approval to push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets.
 
@@ -10643,7 +10702,7 @@ Re-read project-local AiPlus instructions:
 
 1. Read AGENTS.md if present.
 2. Read .aiplus/AGENTS.aiplus.md.
-3. Read .codex/compact/current-handoff.md if present.
+3. Read .aiplus/compact/current-handoff.md if present.
 4. Enable AiPlus Auto Team Consultant, AiPlus Compact Reminder, and Agent Continuity for this session.
 5. Proactively use `aiplus compact remind`: HEAVY work every 30 minutes or major phase boundary; MEDIUM work at phase boundary or before review/QA; before subagent bursts, release prep, and Owner handoff. If `REMINDER_DECISION=remind_now`, run/confirm `aiplus compact prepare`, then suggest manual host compact only.
 6. If the user said AiPlus 刷新, 刷新 AiPlus, aiplus refresh, aiplus status, AiPlus status, 继续 AiPlus, resume AiPlus, or only 刷新/refresh, summarize Compact Reminder, Auto Team Consultant, and compact state before any project-specific refresh. Use English by default; use Chinese when the user used Chinese such as 刷新 or AiPlus 刷新.
