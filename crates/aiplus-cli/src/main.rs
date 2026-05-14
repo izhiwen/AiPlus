@@ -2224,6 +2224,48 @@ fn command_doctor() -> Result<()> {
             );
         }
     }
+    // S6: declared secret_needs coverage. Walk every installed role,
+    // collect the union of its [secret_needs].aliases, and check
+    // each against `secret_aliases()` (the broker's registry). A
+    // missing alias is NEEDS_FIX with a concrete next step: add to
+    // BWS or remove the declaration. We never print alias values
+    // here (or anywhere — see redaction tests in S1).
+    //
+    // Skip the check entirely when the broker registry itself is
+    // empty — that means the user hasn't configured the broker yet,
+    // so coverage is undefined, not "wrong." The user-facing nudge
+    // for "configure the broker" lives on `aiplus secret-broker
+    // doctor` (S3), not here.
+    {
+        let team_state = crate::agent::core::load_team_config(&root).unwrap_or_default();
+        let mut declared: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for agent in team_state.agents.values() {
+            if let Some(ref needs) = agent.secret_needs {
+                for alias in &needs.aliases {
+                    declared.insert(alias.clone());
+                }
+            }
+        }
+        let registered: std::collections::BTreeSet<String> = secret_aliases()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|a| a.alias)
+            .collect();
+        if !declared.is_empty() && !registered.is_empty() {
+            for alias in &declared {
+                let ok = registered.contains(alias);
+                push_check(
+                    &mut checks,
+                    format!("secret_needs alias `{alias}` is provisioned in broker"),
+                    ok,
+                    Some(format!(
+                        "add alias `{alias}` to Bitwarden Secrets, then run \
+                         `aiplus secret-broker token set` to unlock"
+                    )),
+                );
+            }
+        }
+    }
     let continuity = continuity_state(&root)?;
     push_check(
         &mut checks,
