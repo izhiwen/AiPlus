@@ -175,7 +175,7 @@ fn install_status_doctor_update_add_uninstall_codex() {
     // aieconlab is now opt-in (auto_install = false); the default install
     // brings the SWE-flavored agent-team plus the substrate modules.
     assert!(status.contains(
-        "modules=[agent-memory@0.5.1, agent-team@0.1.0, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
+        "modules=[agent-memory@0.5.1, agent-team@0.2.0, auto-team-consultant@0.4.6, compact-reminder@0.4.6]"
     ));
     assert!(status.contains("type \"AiPlus 刷新\""));
     assert!(status.contains("agentMemory="));
@@ -928,10 +928,15 @@ fn compact_native_validate_checkpoint_resume_and_no_node_path() {
     assert!(validate.contains("VALIDATION_PASS"));
     assert!(validate.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
 
-    let checkpoint = run_with_path(target, &["compact", "checkpoint"], 2, Some(&no_node_path));
+    // Issue #34: fresh-install compact state now reports
+    // FRESH_INSTALL_AWAITING_FIRST_USE (exit 0) instead of the noisy
+    // UNKNOWN_NEEDS_REVIEW that historically fired on every host
+    // compact attempt against an unused project. The downstream
+    // CHECKPOINT_LEVEL and CHECKPOINT_CREATED assertions still hold —
+    // the readiness verdict changed, but checkpointing still runs.
+    let checkpoint = run_with_path(target, &["compact", "checkpoint"], 0, Some(&no_node_path));
     let checkpoint_out = stdout(&checkpoint);
-    assert!(checkpoint_out.contains("UNKNOWN_NEEDS_REVIEW"));
-    assert!(checkpoint_out.contains("READINESS_STATE=UNKNOWN_NEEDS_REVIEW"));
+    assert!(checkpoint_out.contains("READINESS_STATE=FRESH_INSTALL_AWAITING_FIRST_USE"));
     assert!(checkpoint_out.contains("CHECKPOINT_LEVEL=standard"));
     assert!(checkpoint_out.contains("CHECKPOINT_CREATED=.aiplus/compact/checkpoints/"));
     assert!(checkpoint_out.contains("COMPACT_RUST_NATIVE_STATUS=PASS"));
@@ -4155,16 +4160,36 @@ fn agent_route_blocks_dispatch_on_unapproved_owner_gate() {
         consult_files
     );
 
-    // Dispatch log must NOT have a release entry — the dispatch was
-    // refused, so the audit log shouldn't claim it happened.
+    // P1.3 (commit b8acc97): dispatch-log.jsonl now ALWAYS records a
+    // dispatch attempt, including refusals — with `outcome="canceled"`
+    // and `errorReason="owner_gate_pending"`. That gives the audit
+    // trail a complete picture (who tried what, who refused). The
+    // old "no entry on refusal" contract is gone.
+    //
+    // Re-stated contract: a refusal entry MAY exist, but if it does
+    // it MUST be tagged canceled with the owner_gate_pending reason —
+    // never a "successful" looking dispatch with outcome=success.
     let dispatch_log = target.join(".aiplus/agents/dispatch-log.jsonl");
     if dispatch_log.exists() {
         let log_body = fs::read_to_string(&dispatch_log).unwrap();
-        assert!(
-            !log_body.contains("\"task\":\"release"),
-            "dispatch log should not record refused dispatch:\n{}",
-            log_body
-        );
+        for line in log_body.lines() {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let task = v.get("task").and_then(|x| x.as_str()).unwrap_or("");
+            if task.starts_with("release") {
+                let outcome = v.get("outcome").and_then(|x| x.as_str()).unwrap_or("");
+                let reason = v.get("errorReason").and_then(|x| x.as_str()).unwrap_or("");
+                assert_eq!(
+                    outcome, "canceled",
+                    "refused dispatch must be tagged outcome=canceled, got {outcome:?} in line:\n{line}"
+                );
+                assert_eq!(
+                    reason, "owner_gate_pending",
+                    "refused dispatch must carry errorReason=owner_gate_pending, got {reason:?} in line:\n{line}"
+                );
+            }
+        }
     }
 }
 

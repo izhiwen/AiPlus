@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "name": "agent-team",
   "displayName": "AiPlus Agent Team",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "source": "bundled",
   "license": "Apache-2.0",
   "requiredFiles": [
@@ -15,7 +15,9 @@
     "core/templates/reviewer.toml",
     "core/templates/qa.toml",
     "core/templates/agent-team.toml",
-    "core/templates/personas/advisor.md"
+    "core/templates/personas/advisor.md",
+    "adapters/claude-code/subagents.toml",
+    "adapters/claude-code/claude-md-block.md"
   ],
   "managedFiles": [
     ".aiplus/modules/aiplus-agent-team",

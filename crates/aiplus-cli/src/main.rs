@@ -91,6 +91,8 @@ const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
 const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
 const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
+const MANAGED_BEGIN_AT: &str = "<!-- BEGIN AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
+const MANAGED_END_AT: &str = "<!-- END AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
 // No hardcoded Bitwarden project UUID in public source — the value is
@@ -198,6 +200,26 @@ enum Commands {
         /// --force, the broken file is replaced with a fresh aiplus entry.
         #[arg(long, action = ArgAction::SetTrue)]
         force: bool,
+        /// Where to register the MCP server.
+        ///
+        ///   global   → writes to the runtime's user-level config so all
+        ///             projects on this machine inherit the aiplus tools.
+        ///             For codex this is ~/.codex/config.toml; for claude
+        ///             and opencode this is the user-home equivalent
+        ///             (~/.claude/.mcp.json, ~/.opencode/opencode.json).
+        ///   project  → writes to the current project's config so only
+        ///             this project sees the aiplus tools. For claude /
+        ///             opencode this is the project-local .mcp.json /
+        ///             opencode.json (which is their natural home); for
+        ///             codex this is ./.codex/config.toml if that
+        ///             directory exists.
+        ///
+        /// Per-runtime defaults (matches each runtime's idiomatic flow):
+        ///   codex     → global   (codex itself stores all config globally)
+        ///   claude    → project  (claude-code looks for .mcp.json in cwd)
+        ///   opencode  → project  (opencode looks for opencode.json in cwd)
+        #[arg(long, value_name = "SCOPE", value_parser = ["global", "project"])]
+        scope: Option<String>,
     },
     Status {
         #[arg(long, action = ArgAction::SetTrue)]
@@ -821,7 +843,8 @@ fn run(command: Commands) -> Result<()> {
             runtime,
             dry_run,
             force,
-        } => command_mcp_register(runtime, dry_run, force),
+            scope,
+        } => command_mcp_register(runtime, dry_run, force, scope),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
@@ -1007,7 +1030,13 @@ fn command_install(
         dry_run,
         ..Plan::default()
     };
-    install_base(&root, &mut plan, &effective_options, default_module_names())?;
+    install_base(
+        &root,
+        &mut plan,
+        &effective_options,
+        default_module_names(),
+        &adapters,
+    )?;
     for adapter in &adapters {
         install_runtime_adapter(&root, adapter, &mut plan, &effective_options)?;
     }
@@ -1320,7 +1349,11 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
             memory_init(&root)?;
         }
         if requested == MODULE_SLUG_AGENT_TEAM && !dry_run {
-            agent_team_init(&root)?;
+            // command_add runs after the project's initial install, so
+            // .aiplus/manifest.json exists and is the source of truth
+            // for which runtime adapters are live.
+            let adapters = read_installed_runtime_adapters(&root);
+            agent_team_init(&root, &mut plan, &adapters)?;
         }
         if requested == MODULE_SLUG_AIECONLAB && !dry_run {
             aieconlab_init(&root, &mut plan)?;
@@ -2611,6 +2644,7 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
     remove_managed_block(&root, &mut plan)?;
     remove_claude_md_managed_block(&root, &mut plan)?;
     remove_claude_md_aieconlab_block(&root, &mut plan)?;
+    remove_claude_md_agent_team_block(&root, &mut plan)?;
     remove_claude_hooks(&root, &mut plan)?;
     plan.items.push(PlanItem {
         action: "remove".to_string(),
@@ -6768,6 +6802,7 @@ fn install_base(
     plan: &mut Plan,
     options: &Options,
     module_names: Vec<String>,
+    adapters: &[String],
 ) -> Result<()> {
     ensure_dir(root, &rel_to_abs(root, ".aiplus/modules")?, plan)?;
     for name in &module_names {
@@ -6812,7 +6847,7 @@ fn install_base(
         install_consultant_team_config(root, plan, options)?;
     }
     if module_names.iter().any(|name| name == "agent-team") && !plan.dry_run {
-        agent_team_init(root)?;
+        agent_team_init(root, plan, adapters)?;
     }
     if module_names.iter().any(|name| name == "aieconlab") && !plan.dry_run {
         aieconlab_init(root, plan)?;
@@ -7071,7 +7106,7 @@ fn init_memory_namespaces(root: &Path, roles: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn agent_team_init(root: &Path) -> Result<()> {
+fn agent_team_init(root: &Path, plan: &mut Plan, adapters: &[String]) -> Result<()> {
     let agents_dir = root.join(".aiplus").join("agents");
     std::fs::create_dir_all(&agents_dir)?;
     std::fs::create_dir_all(root.join(".aiplus").join("agent-team"))?;
@@ -7174,6 +7209,14 @@ fn agent_team_init(root: &Path) -> Result<()> {
     // W3: seed per-role memory namespaces + the cross-role `_team/`
     // dir. Idempotent — re-runs leave existing READMEs intact.
     init_memory_namespaces(root, AGENT_TEAM_ROLES)?;
+
+    // Issue #31: install Claude Code adapter content when the project
+    // has the claude-code runtime adapter. No-op if claude-code isn't
+    // installed (so codex- or opencode-only projects are unaffected).
+    // Writes 14 prefixed subagents with YAML frontmatter, slash
+    // commands, and an agent-team managed block in CLAUDE.md so that
+    // Claude Code's auto-routing can discover the team.
+    install_agent_team_claude_code_adapter(root, plan, adapters)?;
 
     Ok(())
 }
@@ -8204,6 +8247,258 @@ fn install_aieconlab_claude_code_adapter(root: &Path, plan: &mut Plan) -> Result
             )
         })?;
     update_claude_md_aieconlab_block(root, plan, &block_body)?;
+
+    Ok(())
+}
+
+const AGENT_TEAM_SLASH_COMMANDS: &[&str] = &["at-status", "at-route"];
+
+fn agent_team_managed_block(body: &str) -> String {
+    format!(
+        "{begin}\n{body}\n{end}",
+        begin = MANAGED_BEGIN_AT,
+        end = MANAGED_END_AT,
+        body = body.trim()
+    )
+}
+
+fn update_claude_md_agent_team_block(root: &Path, plan: &mut Plan, body: &str) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let current = read_text_if_exists(&abs)?;
+    let block = agent_team_managed_block(body);
+    let next = match current.as_deref() {
+        None => format!("{block}\n"),
+        Some(text) if text.trim().is_empty() => format!("{block}\n"),
+        Some(text) => {
+            let begin_count = text.matches(MANAGED_BEGIN_AT).count();
+            let end_count = text.matches(MANAGED_END_AT).count();
+            if begin_count != end_count
+                || begin_count > 1
+                || (begin_count == 1 && text.find(MANAGED_BEGIN_AT) > text.find(MANAGED_END_AT))
+            {
+                return Err(CliError::new(
+                    1,
+                    "ERROR malformed or duplicate AiPlus Agent Team managed block in CLAUDE.md",
+                )
+                .into());
+            }
+            if begin_count == 1 {
+                replace_between(text, MANAGED_BEGIN_AT, MANAGED_END_AT, &block)?
+            } else {
+                format!(
+                    "{}{}{}\n",
+                    text,
+                    if text.ends_with('\n') { "\n" } else { "\n\n" },
+                    block
+                )
+            }
+        }
+    };
+    if current.is_none() {
+        write_file_safe(
+            root,
+            rel,
+            next.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )
+    } else {
+        write_managed_text(root, rel, &next, plan)
+    }
+}
+
+fn remove_claude_md_agent_team_block(root: &Path, plan: &mut Plan) -> Result<()> {
+    let rel = "CLAUDE.md";
+    let abs = rel_to_abs(root, rel)?;
+    let Some(current) = read_text_if_exists(&abs)? else {
+        return Ok(());
+    };
+    if !current.contains(MANAGED_BEGIN_AT) {
+        return Ok(());
+    }
+    let next = replace_between(&current, MANAGED_BEGIN_AT, MANAGED_END_AT, "")?;
+    if next != current {
+        write_managed_text(root, rel, &next, plan)?;
+    }
+    Ok(())
+}
+
+/// Wrap an agent-team persona body with YAML frontmatter so Claude Code's
+/// subagent auto-routing sees `name` and `description`. Reuses the same
+/// shape as the AEL adapter — see `wrap_aieconlab_subagent`.
+fn wrap_agent_team_subagent(entry: &AielSubagentEntry, persona_body: &str) -> String {
+    // Sanitize description: collapse internal newlines and quote-escape so
+    // YAML stays valid even if the manifest entry spans lines.
+    let description = entry
+        .description
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('"', "\\\"");
+    format!(
+        "---\nname: {name}\ndescription: \"{desc}\"\n---\n\n{body}",
+        name = entry.name,
+        desc = description,
+        body = persona_body.trim_start_matches("---\n").trim_start()
+    )
+}
+
+/// Install the AiPlus Agent Team's Claude Code adapter content into the
+/// project. No-op if claude-code is not among the project's runtime
+/// adapters. Mirrors the AEL adapter design (see
+/// `install_aieconlab_claude_code_adapter`) — same shape, different
+/// prefix and managed-block markers, so the two teams coexist cleanly.
+///
+/// Closes #31: before this adapter shipped, `aiplus add agent-team` left
+/// `.claude/agents/<role>.md` files without YAML frontmatter (only the
+/// raw persona body), so Claude Code's auto-routing could not see them.
+///
+/// `adapters` is the live runtime-adapter list for this install operation
+/// — passed in directly instead of reading from `.aiplus/manifest.json`,
+/// because during the auto-install path (`aiplus install claude-code` →
+/// agent-team is auto_install=true) `agent_team_init` runs *before*
+/// `write_manifest`, so a manifest read would return an empty list and
+/// silently no-op this entire adapter.
+fn install_agent_team_claude_code_adapter(
+    root: &Path,
+    plan: &mut Plan,
+    adapters: &[String],
+) -> Result<()> {
+    if !adapters.iter().any(|a| a == "claude-code") {
+        return Ok(());
+    }
+
+    // 1. Read subagent manifest from embedded assets.
+    let manifest_text = embedded_asset_text(
+        "aiplus-agent-team/adapters/claude-code/subagents.toml",
+    )
+    .map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR agent-team claude-code subagents manifest missing: {e}"),
+        )
+    })?;
+    let manifest: AielSubagentManifest = toml::from_str(&manifest_text).map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR parse aiplus-agent-team/adapters/claude-code/subagents.toml: {e}"),
+        )
+    })?;
+    if manifest.subagent.is_empty() {
+        return Err(CliError::new(
+            1,
+            "ERROR agent-team subagent manifest declared zero entries",
+        )
+        .into());
+    }
+
+    // 2. Collect the set of unprefixed role names so we can clean up
+    //    duplicates from the older `mirror_personas_to_runtimes` path.
+    let mut role_basenames: BTreeSet<String> = BTreeSet::new();
+
+    // 3. Write subagent files with YAML frontmatter (one per role).
+    let agents_rel = ".claude/agents";
+    for entry in &manifest.subagent {
+        // entry.name is like "agent-team-engineer-a" → strip the prefix
+        // to get the bare basename "engineer-a" used by the legacy
+        // mirror path.
+        let unprefixed = entry
+            .name
+            .strip_prefix("agent-team-")
+            .unwrap_or(&entry.name);
+        role_basenames.insert(format!("{unprefixed}.md"));
+
+        let persona_asset = format!("aiplus-agent-team/{}", entry.persona_file);
+        let persona_body = embedded_asset_text(&persona_asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!(
+                    "ERROR persona file {} missing for subagent {}: {}",
+                    persona_asset, entry.name, e
+                ),
+            )
+        })?;
+        let body = wrap_agent_team_subagent(entry, &persona_body);
+        let rel = format!("{agents_rel}/{}.md", entry.name);
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 4. Clean up duplicate unprefixed persona files that
+    //    mirror_personas_to_runtimes wrote at install time. We have now
+    //    written the prefixed, frontmatter-bearing versions; the bare
+    //    `engineer-a.md` etc. would confuse Claude Code's routing.
+    //    Defensive: only delete a bare file if it does NOT carry
+    //    user-authored frontmatter (we only remove what mirror wrote).
+    for basename in &role_basenames {
+        let target = rel_to_abs(root, &format!("{agents_rel}/{basename}"))?;
+        if target.exists() {
+            if let Some(text) = read_text_if_exists(&target)? {
+                // Mirror writes the raw persona body, which never starts
+                // with a `---` frontmatter delimiter. A user-authored
+                // file (or a re-run of the adapter) would have `---` at
+                // top — leave those alone.
+                let has_user_frontmatter = text.starts_with("---");
+                if !has_user_frontmatter {
+                    let _ = std::fs::remove_file(&target);
+                    plan.items.push(PlanItem {
+                        action: "remove-duplicate".to_string(),
+                        path: format!("{agents_rel}/{basename}"),
+                    });
+                }
+            }
+        }
+    }
+
+    // 5. Copy slash commands.
+    let commands_rel = ".claude/commands";
+    for cmd in AGENT_TEAM_SLASH_COMMANDS {
+        let asset = format!("aiplus-agent-team/adapters/claude-code/commands/{cmd}.md");
+        let body = embedded_asset_text(&asset).map_err(|e| {
+            CliError::new(
+                1,
+                format!("ERROR agent-team slash command {cmd} missing: {e}"),
+            )
+        })?;
+        let rel = format!("{commands_rel}/{cmd}.md");
+        write_file_safe(
+            root,
+            &rel,
+            body.as_bytes(),
+            plan,
+            &Options {
+                force: true,
+                backup: false,
+                yes: true,
+            },
+        )?;
+    }
+
+    // 6. Insert agent-team managed block into CLAUDE.md.
+    let block_body = embedded_asset_text(
+        "aiplus-agent-team/adapters/claude-code/claude-md-block.md",
+    )
+    .map_err(|e| {
+        CliError::new(
+            1,
+            format!("ERROR agent-team CLAUDE.md block body missing: {e}"),
+        )
+    })?;
+    update_claude_md_agent_team_block(root, plan, &block_body)?;
 
     Ok(())
 }
@@ -9699,6 +9994,30 @@ fn compact_readiness(result: &CompactValidation, root: &Path) -> CompactReadines
         };
     }
     if !result.pending_gates.is_empty() {
+        // Issue #34: distinguish "fresh install — Owner gates have
+        // never been touched yet" from "Owner gates exist and are
+        // pending review post-edit". The seed compact templates ship
+        // a single UNKNOWN_PENDING gate ("Owner review of compact
+        // handoff before first real use") and a seed Current Goal
+        // ("Initialize compact/resume handoff state ..."). When both
+        // signals are still in their seed state, the project simply
+        // hasn't been used yet — the PreCompact hook should not flag
+        // this as needs-review on every host compact attempt.
+        let handoff = read_compact_text(root, "current-handoff.md").unwrap_or_default();
+        if is_fresh_install_compact_state(&handoff, &result.pending_gates) {
+            reasons.extend(result.pending_gates.iter().cloned());
+            return CompactReadiness {
+                state: "FRESH_INSTALL_AWAITING_FIRST_USE",
+                pressure: "INFO",
+                explanation:
+                    "Compact protocol is in its seed state from `aiplus install` — no real work yet, so Owner gates have not been touched. This is informational, not a blocker.",
+                next_action:
+                    "When you start a real task, edit .aiplus/compact/current-handoff.md (Current Goal + Owner Gates) and rerun aiplus compact prepare."
+                        .to_string(),
+                manual_compact_recommended: false,
+                reasons,
+            };
+        }
         reasons.extend(result.pending_gates.iter().cloned());
         return CompactReadiness {
             state: "UNKNOWN_NEEDS_REVIEW",
@@ -9779,9 +10098,46 @@ fn print_readiness(readiness: &CompactReadiness) {
 fn readiness_exit_code(readiness: &CompactReadiness) -> i32 {
     match readiness.state {
         "READY_TO_COMPACT" => 0,
+        // Issue #34: fresh-install state is informational, not a
+        // failure. The PreCompact hook treats non-zero as "noisy
+        // problem" — exit 0 keeps fresh installs quiet and reserves
+        // the warning channel for genuine UNKNOWN_NEEDS_REVIEW.
+        "FRESH_INSTALL_AWAITING_FIRST_USE" => 0,
         "BLOCKED_BY_OWNER_GATE" => 1,
         _ => 2,
     }
+}
+
+/// Issue #34: detect the just-installed state of the compact protocol.
+/// Returns true when both the handoff Current Goal is still the seed
+/// text AND every pending gate matches one of the seed gate
+/// placeholders shipped by the compact templates. Conservative on
+/// purpose: any custom edit to the handoff Current Goal or any
+/// non-seed Owner Gate drops the project out of "fresh install" and
+/// back into the normal UNKNOWN_NEEDS_REVIEW loop.
+fn is_fresh_install_compact_state(handoff_text: &str, pending_gates: &[String]) -> bool {
+    const SEED_GOAL_MARKER: &str = "Initialize compact/resume handoff state for";
+    // The seed templates ship one UNKNOWN_PENDING gate per compact
+    // file; each file's gate has a distinct, file-specific placeholder
+    // text (so a fresh install reports four pending gates, all from
+    // the bundled templates). Any of these markers tagged on a
+    // pending-gate line means the line came verbatim from the seed.
+    const SEED_GATE_MARKERS: &[&str] = &[
+        "Owner review of compact handoff before first real use",
+        "Owner review of first real decision entries",
+        "Owner review required before relying on delegated results",
+        "Owner review of evidence quality before first real compact",
+    ];
+    let goal = section_body(handoff_text, "Current Goal");
+    if !goal.contains(SEED_GOAL_MARKER) {
+        return false;
+    }
+    if pending_gates.is_empty() {
+        return false;
+    }
+    pending_gates
+        .iter()
+        .all(|g| SEED_GATE_MARKERS.iter().any(|m| g.contains(m)))
 }
 
 fn compact_section_or_unknown(text: &str, heading: &str) -> String {
@@ -11198,6 +11554,7 @@ fn is_supported_manifest_schema(version: &str) -> bool {
             | "0.5.12"
             | "0.5.13"
             | "0.5.14"
+            | "0.5.15"
     )
 }
 
@@ -13222,7 +13579,38 @@ fn read_velocity_json<T: for<'de> serde::Deserialize<'de>>(
 // the aiplus entry already exists.
 // ---------------------------------------------------------------------------
 
-fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> Result<()> {
+/// P1.5: `--scope global|project` selects where to write the config.
+/// Each runtime has an idiomatic default — codex is global (matches how
+/// codex itself stores all config user-wide), claude / opencode are
+/// project-local (matches how they auto-discover .mcp.json /
+/// opencode.json in cwd). The flag lets the user override either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpScope {
+    Global,
+    Project,
+}
+
+fn resolve_scope_for(runtime: &str, requested: Option<&str>) -> Result<McpScope> {
+    match requested {
+        Some("global") => Ok(McpScope::Global),
+        Some("project") => Ok(McpScope::Project),
+        None => match runtime {
+            "codex" => Ok(McpScope::Global),
+            "claude" | "opencode" => Ok(McpScope::Project),
+            _ => unreachable!("runtime allowlist guarded above"),
+        },
+        Some(other) => Err(anyhow!(
+            "unknown --scope '{other}'. Valid: global, project."
+        )),
+    }
+}
+
+fn command_mcp_register(
+    runtime: Option<String>,
+    dry_run: bool,
+    force: bool,
+    scope: Option<String>,
+) -> Result<()> {
     let bin = std::env::current_exe().context("locate current aiplus binary path")?;
     let bin_str = bin.to_string_lossy().into_owned();
 
@@ -13248,10 +13636,11 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> 
 
     let mut any_change = false;
     for rt in runtimes {
+        let rt_scope = resolve_scope_for(rt, scope.as_deref())?;
         let changed = match rt {
-            "codex" => register_mcp_codex(&bin_str, dry_run, force)?,
-            "claude" => register_mcp_claude(&bin_str, dry_run, force)?,
-            "opencode" => register_mcp_opencode(&bin_str, dry_run, force)?,
+            "codex" => register_mcp_codex(&bin_str, dry_run, force, rt_scope)?,
+            "claude" => register_mcp_claude(&bin_str, dry_run, force, rt_scope)?,
+            "opencode" => register_mcp_opencode(&bin_str, dry_run, force, rt_scope)?,
             _ => unreachable!(),
         };
         any_change = any_change || changed;
@@ -13267,19 +13656,43 @@ fn command_mcp_register(runtime: Option<String>, dry_run: bool, force: bool) -> 
     Ok(())
 }
 
-fn register_mcp_codex(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let codex_dir = match home {
-        Some(h) => h.join(".codex"),
-        None => {
-            println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME");
-            return Ok(false);
+fn register_mcp_codex(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects whether to write user-global or project-local
+    // codex config. The project-local case is rare (codex itself reads
+    // config from ~/.codex), but we support it for users who want a
+    // project-scoped aiplus-only codex setup.
+    let codex_dir: PathBuf = match scope {
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            let dir = home.join(".codex");
+            if !dir.exists() {
+                println!(
+                    "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed scope=global \
+                     hint=run `codex --version` to verify install"
+                );
+                return Ok(false);
+            }
+            dir
+        }
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for codex project scope")?;
+            let dir = cwd.join(".codex");
+            if !dir.exists() {
+                println!(
+                    "MCP_REGISTER_CODEX=SKIP reason=no_project_codex_dir scope=project \
+                     hint=create ./.codex/ to opt into project-scoped codex config"
+                );
+                return Ok(false);
+            }
+            dir
         }
     };
-    if !codex_dir.exists() {
-        println!("MCP_REGISTER_CODEX=SKIP reason=codex_not_installed (no ~/.codex)");
-        return Ok(false);
-    }
     let config_path = codex_dir.join("config.toml");
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
@@ -13353,9 +13766,32 @@ fn register_mcp_codex(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_claude(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let cwd = std::env::current_dir().context("get cwd for claude registration")?;
-    let config_path = cwd.join(".mcp.json");
+fn register_mcp_claude(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects ./.mcp.json (project) vs ~/.claude/.mcp.json
+    // (global). Project is the natural home for claude-code MCP config,
+    // but a power user might want a global default that every project
+    // inherits — we support both.
+    let config_path: PathBuf = match scope {
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for claude project scope")?;
+            cwd.join(".mcp.json")
+        }
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_CLAUDE=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            // ~/.claude/ may not exist on a fresh machine. Create it so
+            // global registration is self-contained — claude itself will
+            // create the dir on first run otherwise.
+            let dir = home.join(".claude");
+            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+            dir.join(".mcp.json")
+        }
+    };
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
             .with_context(|| format!("read {}", config_path.display()))?
@@ -13421,9 +13857,28 @@ fn register_mcp_claude(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool) -> Result<bool> {
-    let cwd = std::env::current_dir().context("get cwd for opencode registration")?;
-    let config_path = cwd.join("opencode.json");
+fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+    // P1.5: scope selects ./opencode.json (project) vs
+    // ~/.opencode/opencode.json (global). Project is the default and
+    // matches opencode's auto-discovery.
+    let config_path: PathBuf = match scope {
+        McpScope::Project => {
+            let cwd = std::env::current_dir().context("get cwd for opencode project scope")?;
+            cwd.join("opencode.json")
+        }
+        McpScope::Global => {
+            let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                Some(h) => h,
+                None => {
+                    println!("MCP_REGISTER_OPENCODE=SKIP reason=no_HOME scope=global");
+                    return Ok(false);
+                }
+            };
+            let dir = home.join(".opencode");
+            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+            dir.join("opencode.json")
+        }
+    };
     let existing = if config_path.exists() {
         fs::read_to_string(&config_path)
             .with_context(|| format!("read {}", config_path.display()))?

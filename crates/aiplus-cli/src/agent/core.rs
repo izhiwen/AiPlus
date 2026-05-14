@@ -1,7 +1,7 @@
 use crate::agent::worktree::get_repo_name;
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -186,6 +186,79 @@ const STUB_EXPERTS: &[&str] = &[
     "compliance-reviewer",
 ];
 
+/// Issue #32: roster owned by each installed virtual team. When both
+/// `agent-team` and `aieconlab` install into the same project, every
+/// role's TOML/persona ends up under `.aiplus/agents/` (the init paths
+/// don't pre-clear the other team), so naive `read_dir` returns ~37
+/// roles and `aiplus agent status` no longer reflects the active team.
+///
+/// These constants are the source of truth for membership; the active
+/// team's roster is what `load_team_config` retains.
+const AGENT_TEAM_CORE: &[&str] = &[
+    "advisor",
+    "ceo",
+    "architect",
+    "pm",
+    "engineer-a",
+    "engineer-b",
+    "reviewer",
+    "qa",
+];
+const AGENT_TEAM_EXPERTS: &[&str] = &[
+    "ai-integration",
+    "security-reviewer",
+    "tech-writer",
+    "devops",
+    "ui-designer",
+    "researcher",
+    "data-analyst",
+    "customer-researcher",
+    "performance-engineer",
+    "accessibility",
+    "compliance-reviewer",
+];
+const AIECONLAB_CORE: &[&str] = &[
+    "advisor",
+    "pi",
+    "theorist",
+    "pm",
+    "ra-stata",
+    "ra-python",
+    "referee",
+    "replicator",
+];
+const AIECONLAB_EXPERTS: &[&str] = &[
+    "coauthor-liaison",
+    "computation",
+    "econometrician",
+    "ethics-irb",
+    "historical-sources",
+    "job-talk-coach",
+    "lit-reviewer",
+    "llm-measurement",
+    "reproducibility",
+    "survey-experiment",
+    "viz-specialist",
+    "writer",
+];
+
+/// Return the set of role IDs that belong to `team`, including experts.
+/// `None` for unknown team names — callers should treat that as "do not
+/// filter" (preserve the legacy unfiltered behavior).
+fn team_roster(team: &str) -> Option<HashSet<String>> {
+    let (core, experts): (&[&str], &[&str]) = match team {
+        "agent-team" => (AGENT_TEAM_CORE, AGENT_TEAM_EXPERTS),
+        "aieconlab" => (AIECONLAB_CORE, AIECONLAB_EXPERTS),
+        _ => return None,
+    };
+    Some(
+        core.iter()
+            .chain(experts.iter())
+            .map(|s| (*s).to_string())
+            .collect(),
+    )
+}
+
 /// Check if a role is a v0.2 stub (not yet functional in v0.1)
 pub fn is_stub(role: &str) -> bool {
     STUB_EXPERTS.contains(&role)
@@ -256,6 +329,24 @@ pub fn load_team_config(project_root: &Path) -> Result<TeamState> {
                 }
                 state.agents.insert(config.role.clone(), config);
             }
+        }
+    }
+
+    // Issue #32: When both `agent-team` and `aieconlab` are installed
+    // in the same project, every role's TOML lands under
+    // `.aiplus/agents/` (the init paths don't pre-clear the other
+    // team), so the raw read above produces ~37 mixed roles regardless
+    // of which team is active. Filter the roster to the active team
+    // before computing active/disabled/stub lists, so `aiplus agent
+    // status` (and every other consumer of this function) reflects
+    // only the team the project is currently using.
+    if let Some(active_team) = crate::agent::set_team::read_active_team(project_root) {
+        if let Some(roster) = team_roster(&active_team) {
+            state.agents.retain(|role, _| roster.contains(role));
+            state.worktree_paths.retain(|role, _| roster.contains(role));
+            state
+                .stub_roles
+                .retain(|role| state.agents.contains_key(role));
         }
     }
 
