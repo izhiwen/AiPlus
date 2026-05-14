@@ -4,6 +4,7 @@ pub mod commands;
 pub mod core;
 pub mod disable;
 pub mod dismiss;
+pub mod dispatch_history;
 pub mod doctor;
 pub mod enable;
 pub mod integrate;
@@ -47,6 +48,17 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         AgentSub::Enable { role } => enable::handle_enable(&role),
         AgentSub::Integrate { role } => integrate::handle_integrate(&role),
         AgentSub::Transcript => transcript::handle_transcript(),
+        AgentSub::DispatchHistory {
+            role,
+            outcome,
+            since_days,
+            json,
+        } => dispatch_history::handle_dispatch_history(
+            role.as_deref(),
+            outcome.as_deref(),
+            since_days,
+            json,
+        ),
         AgentSub::PruneWorktrees { yes } => prune_worktrees::handle_prune_worktrees(yes),
         AgentSub::Audit(args) => audit::dispatch(args),
     }

@@ -70,6 +70,25 @@ pub enum AgentSub {
     #[command(visible_aliases = ["看活", "记录"])]
     Transcript,
 
+    /// P1.3: dispatch-history view of `.aiplus/agents/dispatch-log.jsonl`.
+    /// Shows success / fail / canceled outcomes with reason + detail.
+    /// Filter by role, outcome, or time window.
+    #[command(name = "dispatch-history", visible_aliases = ["派单史", "历史"])]
+    DispatchHistory {
+        /// Only show entries from this role (slug).
+        #[arg(long)]
+        role: Option<String>,
+        /// Only show entries with this outcome: success / fail / canceled.
+        #[arg(long)]
+        outcome: Option<String>,
+        /// Only show entries from the last N days (default: all).
+        #[arg(long, value_name = "DAYS")]
+        since_days: Option<u64>,
+        /// Emit JSON instead of human-readable table.
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        json: bool,
+    },
+
     #[command(name = "prune-worktrees", visible_aliases = ["清", "清理"])]
     PruneWorktrees {
         #[arg(long, action = clap::ArgAction::SetTrue)]
