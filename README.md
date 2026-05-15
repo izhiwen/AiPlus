@@ -317,8 +317,8 @@ in every AiPlus project:
 
 Two verbs, two distinct purposes:
 
-- **`aiplus install <runtime>`** — wire a runtime adapter (Codex /
-  Claude Code / OpenCode) into your project's `.codex/` / `.claude/` /
+- **`aiplus install <runtime>`** — wire a runtime adapter (Claude Code /
+  Codex / OpenCode) into your project's `.claude/` / `.codex/` /
   `.opencode/` directories. Run once per project per runtime.
 - **`aiplus add <module>`** — add a bundled module (agent-memory,
   compact-reminder, auto-team-consultant, agent-team, agent-key,

@@ -4,7 +4,7 @@ AiPlus Compact Reminder 是 AiPlus 家族里的独立子产品，用来做 compa
 checkpoint / resume handoff。它可以作为 AiPlus CLI（`aiplus`）安装的 bundled
 module 使用，也可以被只想采用 compact workflow 的用户直接阅读和改造。
 
-当 Codex、Claude Code 或 OpenCode 的长任务快要 context compaction 时，它帮助
+当 Claude Code、Codex 或 OpenCode 的长任务快要 context compaction 时，它帮助
 agent 检查 compact readiness、compact 前创建 checkpoint、compact 后从
 checkpoint resume，让 handoff 更干净。
 
@@ -20,12 +20,12 @@ runtime 设置，也不会保证 compact 一定安全。
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
-如果项目里已经有旧版 AiPlus install，`aiplus install codex` 会安全升级 AiPlus
-managed files，把被替换的 managed files 备份到 `.aiplus/backups/`，并保留已有
-`.codex/compact/` state。
+如果项目里已经有旧版 AiPlus install，`aiplus install claude-code` 会安全升级
+AiPlus managed files，把被替换的 managed files 备份到 `.aiplus/backups/`，并
+保留已有 `.codex/compact/` state。
 
 ### Path B: 已安装 `aiplus` command
 
@@ -33,20 +33,20 @@ managed files，把被替换的 managed files 备份到 `.aiplus/backups/`，并
 
 ```bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
 其他 runtime：
 
 ```bash
-aiplus install claude-code
+aiplus install codex
 aiplus install opencode
 aiplus install all
 ```
 
-安装是 project-local。它可能写入 `.aiplus/`、`.codex/compact/`、project `.claude/` files、project `.opencode/` files，以及 project `AGENTS.md` 里的 AiPlus managed block。它不会修改全局 Codex、Claude Code、OpenCode、shell 或 package-manager 配置。
+安装是 project-local。它可能写入 `.aiplus/`、`.claude/`、`.codex/compact/`、project `.opencode/` files，以及 project `AGENTS.md` 里的 AiPlus managed block。它不会修改全局 Claude Code、Codex、OpenCode、shell 或 package-manager 配置。
 
-然后在同一个项目里已经打开的 Codex、Claude Code 或 OpenCode session 输入：
+然后在同一个项目里已经打开的 Claude Code、Codex 或 OpenCode session 输入：
 
 ```text
 AiPlus 刷新
@@ -238,8 +238,8 @@ aiplus uninstall --dry-run
 
 | Runtime | Install command | Auto compact support | Recommended use |
 | --- | --- | --- | --- |
-| Codex | `aiplus install codex` | reminder/checkpoint only | 运行 `aiplus compact checkpoint`，review 输出，然后手动使用 Codex `/compact` 或 UI compact。 |
 | Claude Code | `aiplus install claude-code` | optional reviewed hooks and commands | 使用 project-local Claude Code adapter files；启用 hooks 前先 review。 |
+| Codex | `aiplus install codex` | reminder/checkpoint only | 运行 `aiplus compact checkpoint`，review 输出，然后手动使用 Codex `/compact` 或 UI compact。 |
 | OpenCode | `aiplus install opencode` | project-local command workflow | 使用 project `.opencode/` commands、agents、prompts；默认不改 global config。 |
 
 AiPlus CLI 也支持兼容 alias：

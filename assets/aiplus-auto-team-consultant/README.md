@@ -4,7 +4,7 @@ AiPlus Auto Team Consultant is an independent AiPlus subproduct and project-loca
 
 It is part of the AiPlus ecosystem, and it can also be understood or adopted by itself from this repo. AiPlus is the main ecosystem and CLI distribution entry. AiPlus Auto Team Consultant is one module in that family; it does not pretend to be the full AiPlus CLI.
 
-It is not a separate running app, does not upload your data, does not change global Codex / Claude Code / OpenCode settings, and does not automatically execute dangerous actions.
+It is not a separate running app, does not upload your data, does not change global Claude Code / Codex / OpenCode settings, and does not automatically execute dangerous actions.
 
 ## Start Here
 
@@ -33,7 +33,7 @@ Install AiPlus first, then install this module into your project. Replace `MyPro
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
 Then in your already-open agent session, type:
@@ -49,7 +49,7 @@ AiPlus 刷新
 刷新 AiPlus
 ```
 
-If the project already has an older AiPlus install, `aiplus install codex` safely upgrades AiPlus managed files, backs up replaced managed files under `.aiplus/backups/`, and preserves existing `.codex/compact/` state.
+If the project already has an older AiPlus install, `aiplus install claude-code` safely upgrades AiPlus managed files, backs up replaced managed files under `.aiplus/backups/`, and preserves existing `.codex/compact/` state.
 
 ## Path B: Existing `aiplus` Command
 
@@ -57,7 +57,7 @@ From your project. Replace `MyProject` with your project folder:
 
 ```bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
 Then in your already-open agent session, type:
@@ -93,8 +93,8 @@ This is not the ordinary install path. Most users should use the AiPlus CLI path
 ## Runtime Choices
 
 ```bash
-aiplus install codex
 aiplus install claude-code
+aiplus install codex
 aiplus install opencode
 aiplus install all
 ```
@@ -277,8 +277,8 @@ The current agent remains responsible for scope control, verification, and Owner
 
 | Runtime | Install command | What gets added | Automation level |
 | --- | --- | --- | --- |
-| Codex | `aiplus install codex` | project-local Codex instructions | session-local |
 | Claude Code | `aiplus install claude-code` | project-local Claude Code commands/instructions | project-local |
+| Codex | `aiplus install codex` | project-local Codex instructions | session-local |
 | OpenCode | `aiplus install opencode` | project-local OpenCode commands/prompts | project-local |
 | All | `aiplus install all` | all supported runtime files | project-local |
 
@@ -319,7 +319,7 @@ Expected: JSON parses, examples are synthetic, and no package automation appears
 This repo is the public source module for AiPlus Auto Team Consultant. The preferred user path is the Rust-first `aiplus` CLI:
 
 ```bash
-aiplus install codex
+aiplus install claude-code
 ```
 
 No npm package, package registry publish, GitHub Release, git tag, marketplace submission, global install, telemetry, MCP server, App connector, or autonomous executor is included.

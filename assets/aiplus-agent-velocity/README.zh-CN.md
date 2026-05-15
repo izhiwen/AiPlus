@@ -38,7 +38,7 @@ AiPlus Agent Velocity 把每次估时和每次实际完成时间都记成本地 
 
 ```bash
 cd MyProject
-aiplus install codex          # 或：claude-code, opencode, all
+aiplus install claude-code    # 或：codex, opencode, all
 aiplus velocity init
 ```
 

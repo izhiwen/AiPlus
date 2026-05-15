@@ -31,7 +31,7 @@ Other backends (1Password, AWS Secrets Manager, HashiCorp Vault, env-file fallba
 
 ## The pain
 
-You run AI coding agents (Codex / Claude Code / OpenCode) all day. Each agent needs API keys: an OpenAI key, an Anthropic key, maybe a separate work account, maybe a tools key (Linear, Slack, AWS). Five recurring failure modes:
+You run AI coding agents (Claude Code / Codex / OpenCode) all day. Each agent needs API keys: an OpenAI key, an Anthropic key, maybe a separate work account, maybe a tools key (Linear, Slack, AWS). Five recurring failure modes:
 
 1. **Leaked into git.** A `.env` file gets accidentally committed. Or a key sits in shell history. Or it appears in an agent's chat transcript before you remember to delete it.
 
@@ -192,7 +192,7 @@ See [`DESIGN.md`](DESIGN.md) for the full design rationale, threat model, and ba
 - `core/example-aliases.tsv` — 24 realistic example alias rows
 - `core/example-aliases.md` — annotated walkthrough of the TSV format
 - `core/alias-conventions.md` — naming conventions guide
-- `adapters/{codex,claude-code,opencode}/` — runtime-adapter scaffolds (v0.1 placeholders)
+- `adapters/{claude-code,codex,opencode}/` — runtime-adapter scaffolds (v0.1 placeholders)
 - `examples/` — synthetic walkthrough
 - `DESIGN.md` — design rationale and threat model
 - `.aiplus/agent-key/acceptance/v0.1.0/schema.yaml` — acceptance schema

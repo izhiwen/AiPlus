@@ -111,7 +111,7 @@ inside the CLI binary as a bundled module. Add it to a project with:
 ```bash
 cd MyResearchProject
 aiplus add aieconlab
-aiplus install codex          # or: claude-code, opencode, all
+aiplus install claude-code    # or: codex, opencode, all
 ```
 
 This is the simplest path. The version you get is whatever was bundled
@@ -126,7 +126,7 @@ If you want the absolute latest AiEconLab without waiting for an
 ```bash
 cd MyResearchProject
 aiplus add --from-git https://github.com/izhiwen/AiEconLab
-aiplus install codex          # or: claude-code, opencode, all
+aiplus install claude-code    # or: codex, opencode, all
 ```
 
 You can pin to a specific tag, branch, or commit:

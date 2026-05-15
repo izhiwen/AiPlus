@@ -7,7 +7,7 @@ checkpoint, and resume handoffs. It can be used as a bundled module installed
 by the AiPlus CLI (`aiplus`), or inspected directly by users who only want the
 compact workflow.
 
-Use it when a long Codex, Claude Code, or OpenCode session is close to context
+Use it when a long Claude Code, Codex, or OpenCode session is close to context
 compaction and you want a cleaner local handoff. It helps the agent validate
 compact readiness, create a checkpoint before compact, and resume from that
 checkpoint after compact.
@@ -24,10 +24,10 @@ Install AiPlus, then install the project-local compact module:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhiwen/aiplus/main/install.sh | bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
-If the project already has an older AiPlus install, `aiplus install codex`
+If the project already has an older AiPlus install, `aiplus install claude-code`
 safely upgrades AiPlus managed files, backs up replaced managed files under
 `.aiplus/backups/`, and preserves existing `.codex/compact/` state.
 
@@ -35,20 +35,20 @@ safely upgrades AiPlus managed files, backs up replaced managed files under
 
 ```bash
 cd MyProject
-aiplus install codex
+aiplus install claude-code
 ```
 
 For other runtimes, use:
 
 ```bash
-aiplus install claude-code
+aiplus install codex
 aiplus install opencode
 aiplus install all
 ```
 
-The install is project-local. It may write `.aiplus/`, `.codex/compact/`, project `.claude/` files, project `.opencode/` files, and the AiPlus managed block in project `AGENTS.md`. It does not modify global Codex, Claude Code, OpenCode, shell, or package-manager configuration.
+The install is project-local. It may write `.aiplus/`, `.claude/`, `.codex/compact/`, project `.opencode/` files, and the AiPlus managed block in project `AGENTS.md`. It does not modify global Claude Code, Codex, OpenCode, shell, or package-manager configuration.
 
-Then type this in the already-open Codex, Claude Code, or OpenCode session:
+Then type this in the already-open Claude Code, Codex, or OpenCode session:
 
 ```text
 aiplus refresh
@@ -261,8 +261,8 @@ Only recommend manual compact after `checkpoint` returns `SAFE_TO_COMPACT` and e
 
 | Runtime | Install command | Auto compact support | Recommended use |
 | --- | --- | --- | --- |
-| Codex | `aiplus install codex` | Reminder/checkpoint only | Run `aiplus compact checkpoint`, review output, then manually use Codex `/compact` or UI compact. |
 | Claude Code | `aiplus install claude-code` | Optional reviewed hooks and commands | Use project-local Claude Code adapter files; review hooks before enabling them. |
+| Codex | `aiplus install codex` | Reminder/checkpoint only | Run `aiplus compact checkpoint`, review output, then manually use Codex `/compact` or UI compact. |
 | OpenCode | `aiplus install opencode` | Project-local command workflow | Use project `.opencode/` commands, agents, and prompts; keep global config unchanged. |
 
 Compatibility aliases are supported by the AiPlus CLI:

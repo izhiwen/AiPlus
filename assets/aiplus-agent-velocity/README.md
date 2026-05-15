@@ -50,7 +50,7 @@ If you already have AiPlus installed:
 
 ```bash
 cd MyProject
-aiplus install codex          # or: claude-code, opencode, all
+aiplus install claude-code    # or: codex, opencode, all
 aiplus velocity init
 ```
 

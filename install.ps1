@@ -117,7 +117,7 @@ try {
 
     Write-Host "Next:"
     Write-Host "  cd MyProject"
-    Write-Host "  aiplus install codex"
+    Write-Host "  aiplus install claude-code"
 
 } finally {
     if (Test-Path $Tmp) { Remove-Item -Recurse -Force $Tmp }

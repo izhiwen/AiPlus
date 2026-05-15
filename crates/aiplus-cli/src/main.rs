@@ -1124,8 +1124,8 @@ fn command_install(
     let runtime = normalize_runtime(runtime_arg.as_deref());
     let Some(runtime) = runtime else {
         eprintln!("NEEDS_RUNTIME");
-        eprintln!("Choose one runtime: codex, claude-code, opencode, all");
-        eprintln!("Example: aiplus install codex");
+        eprintln!("Choose one runtime: claude-code, codex, opencode, all");
+        eprintln!("Example: aiplus install claude-code");
         return Err(CliError::new(1, "INSTALL_STATUS=NEEDS_RUNTIME").into());
     };
     let root = target_root()?;
@@ -1948,7 +1948,7 @@ fn command_status(terse: bool) -> Result<()> {
             "next=For already-open agent sessions, type \"AiPlus 刷新\", \"刷新 AiPlus\", \"aiplus refresh\", or \"aiplus status\"."
         );
     } else {
-        println!("next=run install codex");
+        println!("next=run install claude-code");
     }
     if terse {
         println!("STATUS=PASS");

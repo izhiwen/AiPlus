@@ -310,4 +310,4 @@ fi
 
 echo "Next:"
 echo "  cd MyProject"
-echo "  aiplus install codex"
+echo "  aiplus install claude-code"

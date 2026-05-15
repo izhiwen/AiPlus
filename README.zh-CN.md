@@ -4,7 +4,7 @@
 
 [English README](README.md)
 
-我用 AI coding agent 全职写代码已经有大半年 —— 一天 Codex，一天 Claude Code，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍 —— 顺带把同一把 API key 也对同一个 agent 重新粘贴了第四遍。每天都在烧时间的是这七件事：跨 session 失忆、`/compact` 上反复烧 token、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子，还有每次 session 都要重新给 agent 配 key。AiPlus 就是我为治这七件事写的六个小 Rust 模块（Agent Team 同时治两件）。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
+我用 AI coding agent 全职写代码已经有大半年 —— 平时主要 Claude Code，偶尔 Codex 拿第二意见，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍 —— 顺带把同一把 API key 也对同一个 agent 重新粘贴了第四遍。每天都在烧时间的是这七件事：跨 session 失忆、`/compact` 上反复烧 token、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子，还有每次 session 都要重新给 agent 配 key。AiPlus 就是我为治这七件事写的六个小 Rust 模块（Agent Team 同时治两件）。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
 
 ![AiPlus 30 秒演示](docs/demo.gif)
 
@@ -27,7 +27,7 @@ AiPlus 是六个小模块治这**七件项目内**的事（Agent Team 同时治 
 
 **Agent Memory** —— Agent 不再失忆。项目约定、命名规则、架构决定，作为本地 JSONL 存在 `.aiplus/memory/`。写入前会过 12 条 redaction 规则剥敏感串，所以你可以放心记偏好，不用担心泄漏。
 
-**Compact Reminder** —— **长对话省 token**。长 Codex / Claude Code / OpenCode session 会两头漏 token：忘了 `/compact` 时上下文溢出、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 全花在重新解释上。本模块在 token 阈值 + 任务切点双信号下提醒你恰当时机 compact，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
+**Compact Reminder** —— **长对话省 token**。长 Claude Code / Codex / OpenCode session 会两头漏 token：忘了 `/compact` 时上下文溢出、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 全花在重新解释上。本模块在 token 阈值 + 任务切点双信号下提醒你恰当时机 compact，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
 
 **Agent Key** —— **不再每个 session 重配 key**。**免费、零配置默认**：每个 key 直接存在你机器的 OS keyring 里（macOS Keychain / Linux Secret Service / Windows Credential Manager），从不落盘。每台机器一次性：
 
@@ -37,7 +37,7 @@ aiplus secret-broker set --alias openai --auto-prompt   # 原生 OS 密码框
 # 每个 provider 重复一次（anthropic、github、…）
 ```
 
-之后任何项目的任何 Codex / Claude Code / OpenCode session 都自动拿到 key：
+之后任何项目的任何 Claude Code / Codex / OpenCode session 都自动拿到 key：
 
 ```bash
 aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
@@ -65,7 +65,7 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 AiPlus 同时服务两类受众，底座（substrate）共享：
 
-- **软件工程师** —— 用 Codex / Claude Code / OpenCode 写代码的。`aiplus install` 默认装 SWE 团队（Advisor / CEO / Architect / PM / 2× Engineer / Reviewer / QA + 11 SWE expert）。
+- **软件工程师** —— 用 Claude Code / Codex / OpenCode 写代码的。`aiplus install` 默认装 SWE 团队（Advisor / CEO / Architect / PM / 2× Engineer / Reviewer / QA + 11 SWE expert）。
 - **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab)：8 个研究角色（Advisor / PI / Theorist / PM / RA-Stata / RA-Python / Referee / Replicator）+ 12 个 expert（含 LLM-as-Measurement Specialist）。**替换** SWE consultant 团队为应用经济学专属版本。
 
 两类受众共用六个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity`。
@@ -112,7 +112,7 @@ bash install.sh
 
 ```bash
 cd MyProject
-aiplus install codex          # 或：claude-code, opencode, all
+aiplus install claude-code    # 或：codex, opencode, all
 ```
 
 验证：
@@ -126,8 +126,8 @@ aiplus doctor
 
 | Runtime     | 安装命令                       | adapter 落到哪里                          |
 |-------------|--------------------------------|-------------------------------------------|
-| Codex       | `aiplus install codex`         | `AGENTS.md` 里的托管块                    |
 | Claude Code | `aiplus install claude-code`   | `.claude/` 命令                           |
+| Codex       | `aiplus install codex`         | `AGENTS.md` 里的托管块                    |
 | OpenCode    | `aiplus install opencode`      | `.opencode/` prompts                      |
 | 三个全装    | `aiplus install all`           | 全部 adapter                              |
 
@@ -141,7 +141,7 @@ aiplus doctor                        # 跨模块健康检查
 
 # Memory
 aiplus memory status
-aiplus memory context --runtime codex --budget 2000
+aiplus memory context --runtime claude-code --budget 2000
 
 # Compact
 aiplus compact prepare               # 建 handoff + capsule
