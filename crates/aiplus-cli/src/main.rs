@@ -174,6 +174,11 @@ enum Commands {
         override_bundled: bool,
     },
     Doctor {
+        /// Safely repair supported project-local doctor findings. The
+        /// initial scope reconciles installed modules against installed
+        /// runtime adapters, including adapter files and managed blocks.
+        #[arg(long = "fix", action = ArgAction::SetTrue)]
+        fix: bool,
         /// Probe the OS keyring backend (Keychain / Secret Service /
         /// Credential Manager) by writing, reading, and deleting a
         /// scratch entry. Reports the detected backend, each probe
@@ -879,11 +884,18 @@ fn run(command: Commands) -> Result<()> {
                 command_add(module, dry_run, verbose)
             }
         }
-        Commands::Doctor { check_keyring } => {
+        Commands::Doctor { fix, check_keyring } => {
+            if fix && check_keyring {
+                return Err(CliError::new(
+                    1,
+                    "ERROR doctor --fix cannot be combined with --check-keyring",
+                )
+                .into());
+            }
             if check_keyring {
                 command_doctor_check_keyring()
             } else {
-                command_doctor()
+                command_doctor(fix)
             }
         }
         Commands::McpServe => mcp_server::run_server(),
@@ -1048,7 +1060,7 @@ fn run(command: Commands) -> Result<()> {
 
 fn print_usage() {
     println!(
-        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
+        "AiPlus CLI {VERSION}\n\nUsage:\n  aiplus <command> [options]\n\nCommands:\n  install codex|claude-code|opencode|all [--dry-run] [--verbose] [--force --backup --yes]\n  update [all|compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab] [--dry-run] [--verbose]\n  add compact-reminder|auto-team-consultant|agent-memory|agent-team|aieconlab [--dry-run] [--verbose]\n  add --from-git URL[@REF] [--trust] [--override-bundled] [--dry-run] [--verbose]\n  doctor [--fix]\n  status\n  refresh\n  uninstall --dry-run\n  uninstall --yes [--force]\n  rollback --dry-run\n  rollback --id latest --dry-run\n  rollback --id latest --yes\n  compact init|validate|prepare|score|checkpoint|resume|remind|savings [--json] [--level light|standard|full]\n  memory status|doctor|init|context|add|search|forget|conflicts|auto-capture|session|snapshot|profile|show-used|stale|migrate\n  identity status|init|context\n  skill-candidate status|propose|reject|consolidate\n  pricing update|status\n  profile status|install|update|link|disable|uninstall|migrate|cleanup|doctor|context\n  user context [--profile <name>]\n  secret-broker status|doctor|list|resolve|run [--aliases a,b|--alias a]|token\n  self update [--dry-run] [--yes]\n  velocity init|estimate|complete|bias|report|doctor|purge [--task-type <type>] [--human-estimate <duration>] [--model <model>] [--workflow LIGHT|MEDIUM|HEAVY] [--task-id <id>] [--actual <duration>] [--outcome pass|needs_fix|blocked] [--task <id>] [--yes]\n\nSafety:\n  Project-local project writes are limited to .aiplus/, .aiplus/compact/, and\n  the AiPlus managed block in AGENTS.md. User-level profile writes are limited to\n  ~/.config/aiplus and never include secret values. `aiplus pricing update`,\n  `aiplus self update`, and `aiplus secret-broker` may fetch public release/pricing\n  data or read approved Bitwarden secrets at runtime. No npm publish, global install,\n  telemetry, user-data upload, secret persistence, or global config edits are implemented."
     );
 }
 
@@ -1144,6 +1156,14 @@ fn command_install(
         dry_run,
         ..Plan::default()
     };
+    let existing_manifest = read_manifest(&root, true).unwrap_or_default();
+    let mut installed_modules: BTreeSet<String> =
+        normalize_existing_modules(existing_manifest.modules.as_ref())
+            .keys()
+            .cloned()
+            .collect();
+    installed_modules.extend(default_module_names());
+    let installed_modules: Vec<String> = installed_modules.into_iter().collect();
     install_base(
         &root,
         &mut plan,
@@ -1163,6 +1183,7 @@ fn command_install(
         &default_module_names(),
         &default_module_names(),
     )?;
+    reconcile_installed_module_adapters(&root, &mut plan, &installed_modules, &adapters)?;
     print_install_summary(&plan, verbose, &adapters, upgrade_existing);
     println!(
         "COMPACT_HANDOFF_MIGRATION={}",
@@ -1459,34 +1480,42 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
         dry_run,
         ..Plan::default()
     };
+    let already_installed = installed.contains_key(requested);
     let mut message = format!("AiPlus module added: {requested}");
-    if !installed.contains_key(requested) {
-        let spec = module_spec(requested).unwrap();
-        copy_embedded_module(&root, spec, &mut plan, &Options::default())?;
+    let spec = module_spec(requested).unwrap();
+    if already_installed {
+        message = format!("AiPlus module already installed; reconciled adapters: {requested}");
+    }
+    let default_options = Options::default();
+    let rematerialize_options = Options {
+        force: true,
+        backup: false,
+        yes: true,
+    };
+    copy_embedded_module(
+        &root,
+        spec,
+        &mut plan,
+        if already_installed {
+            &rematerialize_options
+        } else {
+            &default_options
+        },
+    )?;
+    if !already_installed {
         if requested == MODULE_SLUG_COMPACT_REMINDER {
             compact_init(&root, &mut plan, false)?;
         }
         if requested == "agent-memory" && !dry_run {
             memory_init(&root)?;
         }
-        if requested == MODULE_SLUG_AGENT_TEAM && !dry_run {
-            // command_add runs after the project's initial install, so
-            // .aiplus/manifest.json exists and is the source of truth
-            // for which runtime adapters are live.
-            let adapters = read_installed_runtime_adapters(&root);
-            agent_team_init(&root, &mut plan, &adapters)?;
-        }
-        if requested == MODULE_SLUG_AIECONLAB && !dry_run {
-            aieconlab_init(&root, &mut plan)?;
-        }
-    } else {
-        message = format!("AiPlus module already installed: {requested}");
     }
     let mut modules: Vec<String> = installed.keys().cloned().collect();
     if !modules.iter().any(|name| name == requested) {
         modules.push(requested.to_string());
     }
     let adapters = existing.runtime_adapters.unwrap_or_default();
+    reconcile_installed_module_adapters(&root, &mut plan, &[requested.to_string()], &adapters)?;
     write_manifest(
         &root,
         &mut plan,
@@ -2174,8 +2203,86 @@ fn module_refresh_status_en(
     }
 }
 
-fn command_doctor() -> Result<()> {
+#[derive(Default)]
+struct DoctorFixReport {
+    attempted: bool,
+    reconciled_modules: Vec<String>,
+    reconciled_runtimes: Vec<String>,
+    changed_items: usize,
+    unsupported: Vec<String>,
+}
+
+fn command_doctor_fix(root: &Path) -> DoctorFixReport {
+    let mut report = DoctorFixReport {
+        attempted: true,
+        ..DoctorFixReport::default()
+    };
+    let manifest = match read_manifest(root, false) {
+        Ok(manifest) if manifest.installer.as_deref() == Some(INSTALLER) => manifest,
+        Ok(_) => {
+            report.unsupported.push(
+                "manifest installer is not aiplus; run `aiplus install <runtime>` first"
+                    .to_string(),
+            );
+            return report;
+        }
+        Err(error) => {
+            report
+                .unsupported
+                .push(format!("manifest missing or invalid: {error}"));
+            return report;
+        }
+    };
+    if !manifest
+        .schema_version
+        .as_deref()
+        .is_some_and(is_supported_manifest_schema)
+    {
+        report
+            .unsupported
+            .push("manifest schemaVersion is not supported by this CLI".to_string());
+        return report;
+    }
+    let modules: Vec<String> = normalize_existing_modules(manifest.modules.as_ref())
+        .keys()
+        .cloned()
+        .collect();
+    let adapters = manifest.runtime_adapters.unwrap_or_default();
+    report.reconciled_runtimes = adapters.clone();
+    if modules.is_empty() || adapters.is_empty() {
+        return report;
+    }
+    let mut plan = Plan::default();
+    match reconcile_installed_module_adapters(root, &mut plan, &modules, &adapters) {
+        Ok(reconciled) => {
+            report.reconciled_modules = reconciled;
+            report.changed_items = plan
+                .items
+                .iter()
+                .filter(|item| {
+                    !matches!(
+                        item.action.as_str(),
+                        "skip" | "skip-identical" | "skip-user-config"
+                    )
+                })
+                .count();
+        }
+        Err(error) => {
+            report
+                .unsupported
+                .push(format!("module runtime adapter reconcile failed: {error}"));
+        }
+    }
+    report
+}
+
+fn command_doctor(fix: bool) -> Result<()> {
     let root = target_root()?;
+    let fix_report = if fix {
+        Some(command_doctor_fix(&root))
+    } else {
+        None
+    };
     let mut checks: Vec<Check> = Vec::new();
     push_check(&mut checks, "current directory exists", root.exists(), None);
     push_check(
@@ -2618,6 +2725,26 @@ fn command_doctor() -> Result<()> {
         .filter(|c| !c.ok && c.severity == CheckSeverity::NeedsFix)
         .map(|c| c.label.as_str())
         .collect();
+    if let Some(report) = fix_report.as_ref() {
+        println!(
+            "fixAttempted={}",
+            if report.attempted { "yes" } else { "no" }
+        );
+        println!(
+            "fixReconciledModules=[{}]",
+            report.reconciled_modules.join(",")
+        );
+        println!(
+            "fixReconciledRuntimes=[{}]",
+            report.reconciled_runtimes.join(",")
+        );
+        println!("fixChangedItems={}", report.changed_items);
+        let mut unsupported = report.unsupported.clone();
+        unsupported.extend(failing.iter().map(|item| (*item).to_string()));
+        unsupported.sort();
+        unsupported.dedup();
+        println!("fixRemainingUnsupported=[{}]", unsupported.join("; "));
+    }
     println!(
         "next={}",
         if pass {
@@ -8108,6 +8235,39 @@ fn install_base(
         aieconlab_init(root, plan)?;
     }
     Ok(())
+}
+
+fn reconcile_installed_module_adapters(
+    root: &Path,
+    plan: &mut Plan,
+    module_names: &[String],
+    adapters: &[String],
+) -> Result<Vec<String>> {
+    let mut reconciled = Vec::new();
+    let mut ordered: Vec<String> = module_names.to_vec();
+    if ordered.len() > 1 {
+        if let Some(active_team) = crate::agent::set_team::read_active_team(root) {
+            ordered.sort_by_key(|name| if name == &active_team { 1usize } else { 0usize });
+        }
+    }
+    for name in &ordered {
+        match name.as_str() {
+            MODULE_SLUG_AGENT_TEAM => {
+                if !plan.dry_run {
+                    agent_team_init(root, plan, adapters)?;
+                }
+                reconciled.push(name.clone());
+            }
+            MODULE_SLUG_AIECONLAB => {
+                if !plan.dry_run {
+                    aieconlab_init(root, plan)?;
+                }
+                reconciled.push(name.clone());
+            }
+            _ => {}
+        }
+    }
+    Ok(reconciled)
 }
 
 fn aieconlab_init(root: &Path, plan: &mut Plan) -> Result<()> {
