@@ -27,7 +27,13 @@ pub enum AgentSub {
     },
 
     #[command(visible_aliases = ["跟", "找"])]
-    Talk { role: String },
+    Talk {
+        /// Runtime to open: codex, claude-code, or opencode. Omit to keep
+        /// the existing manifest/PATH auto-detection behavior.
+        #[arg(long, value_name = "RUNTIME")]
+        runtime: Option<String>,
+        role: String,
+    },
 
     #[command(visible_aliases = ["派单", "分"])]
     Route {

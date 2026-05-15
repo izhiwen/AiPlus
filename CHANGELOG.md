@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-### AEL Bundle A runtime reconciliation (#16, #17, #18)
+## 0.5.26
+
+### AEL Tier 1 Bundle A — runtime reconciliation (#16, #17, #18)
 
 - `aiplus add <module>` now re-materializes bundled module files and
   reconciles module runtime adapters even when the module is already
@@ -16,6 +18,17 @@
   installed module runtime adapters and managed blocks. It reports the
   reconciled modules/runtimes, changed item count, and any remaining
   unsupported diagnostics.
+
+### AEL Tier 1 Bundle B — runtime selection + role aliases (#19, #20)
+
+- `aiplus agent talk --runtime <codex|claude-code|opencode>` now
+  explicitly selects the runtime, rejects unsupported runtime IDs, and
+  prints runtime/role audit context before opening the session.
+- AiEconLab route/talk role aliases now resolve to canonical roles:
+  `ceo`/`CEO`/`主作者`/`主笔`/`负责人` -> `pi`, `顾问`/`导师` ->
+  `advisor`, `回归`/`主表` -> `ra-stata`, and `计量`/`识别` ->
+  `econometrician`. Dispatch logs keep the canonical role plus the
+  original alias as `roleInput`; transcripts render that source context.
 
 ### Cross-project velocity sharing (v2) (#71)
 

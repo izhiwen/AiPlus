@@ -9,6 +9,8 @@ struct DispatchRecord {
     timestamp: Option<String>,
     #[serde(default)]
     role: Option<String>,
+    #[serde(default, rename = "roleInput")]
+    role_input: Option<String>,
     #[serde(default)]
     task: Option<String>,
     #[serde(default)]
@@ -69,12 +71,17 @@ pub fn handle_transcript() -> Result<()> {
         count += 1;
         let timestamp = record.timestamp.as_deref().unwrap_or("(no timestamp)");
         let role = record.role.as_deref().unwrap_or("(no role)");
+        let role_input = record.role_input.as_deref();
         let task = record.task.as_deref().unwrap_or("(no task)");
         let source = record.source.as_deref().unwrap_or("(no source)");
         let reversibility = record.reversibility.as_deref().unwrap_or("unspecified");
         let tier = record.tier.as_deref().unwrap_or("unscored");
 
-        println!("[{timestamp}] {role}");
+        if let Some(input) = role_input.filter(|input| *input != role) {
+            println!("[{timestamp}] {role} (from {input})");
+        } else {
+            println!("[{timestamp}] {role}");
+        }
         println!("  task: {task}");
         println!("  tier: {tier}  reversibility: {reversibility}  source: {source}");
         println!();
