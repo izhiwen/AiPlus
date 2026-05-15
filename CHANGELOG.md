@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### AEL Bundle A runtime reconciliation (#16, #17, #18)
+
+- `aiplus add <module>` now re-materializes bundled module files and
+  reconciles module runtime adapters even when the module is already
+  installed. Re-running `aiplus add aieconlab` repairs missing AEL
+  Claude/OpenCode adapter artifacts without duplicating managed blocks.
+- `aiplus install <runtime>` now reconciles already-installed modules
+  into the newly installed runtime. The Codex-first AEL flow followed
+  by `aiplus install claude-code` now leaves AEL Claude agents,
+  commands, and managed blocks present with `aiplus doctor` passing.
+- Added `aiplus doctor --fix` for the supported initial repair class:
+  installed module runtime adapters and managed blocks. It reports the
+  reconciled modules/runtimes, changed item count, and any remaining
+  unsupported diagnostics.
+
 ### Cross-project velocity sharing (v2) (#71)
 
 A new global ledger at `~/.config/aiplus/velocity/` (mode `0700`,
