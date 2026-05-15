@@ -64,6 +64,10 @@ pub struct DispatchLogEntry {
     pub dispatch_id: String,
     pub timestamp: String,
     pub role: String,
+    /// Original role token from the command line when it differed from the
+    /// canonical role recorded above, e.g. AEL `ceo` -> `pi`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role_input: Option<String>,
     pub task: String,
     pub reversibility: String,
     pub source: String,
@@ -117,6 +121,24 @@ pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str
         .map(|_dispatch_id| ())
 }
 
+pub fn record_dispatch_with_role_input(
+    project_root: &Path,
+    role: &str,
+    role_input: Option<&str>,
+    task: &str,
+    source: &str,
+) -> Result<()> {
+    record_dispatch_inner(
+        project_root,
+        role,
+        role_input,
+        task,
+        source,
+        DispatchOutcome::Success,
+    )
+    .map(|_dispatch_id| ())
+}
+
 /// P1.3: full-control variant. Records the dispatch outcome (success /
 /// fail / canceled) and returns the dispatch_id so the caller can
 /// reference it in subsequent audit-trail writes. Used by:
@@ -126,6 +148,17 @@ pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str
 pub fn record_dispatch_with_outcome(
     project_root: &Path,
     role: &str,
+    task: &str,
+    source: &str,
+    outcome: DispatchOutcome<'_>,
+) -> Result<String> {
+    record_dispatch_inner(project_root, role, None, task, source, outcome)
+}
+
+fn record_dispatch_inner(
+    project_root: &Path,
+    role: &str,
+    role_input: Option<&str>,
     task: &str,
     source: &str,
     outcome: DispatchOutcome<'_>,
@@ -156,6 +189,9 @@ pub fn record_dispatch_with_outcome(
         dispatch_id: dispatch_id.clone(),
         timestamp: timestamp.clone(),
         role: role.to_string(),
+        role_input: role_input
+            .filter(|input| *input != role)
+            .map(|input| input.to_string()),
         task: task.to_string(),
         reversibility: "unspecified".to_string(),
         source: source.to_string(),
@@ -191,6 +227,7 @@ pub fn record_dispatch_with_outcome(
                 "dispatchId": dispatch_id,
                 "timestamp": timestamp,
                 "role": role,
+                "roleInput": role_input.filter(|input| *input != role),
                 "task": task,
                 "source": source,
                 "outcome": outcome.as_str(),

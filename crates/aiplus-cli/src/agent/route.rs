@@ -1,5 +1,8 @@
 use crate::agent::cache;
-use crate::agent::core::get_role_config;
+use crate::agent::core::{
+    aieconlab_alias_help, get_role_config, is_unknown_active_aieconlab_alias,
+    resolve_role_for_active_team,
+};
 use crate::agent::state;
 use crate::agent::worktree;
 use aiplus_core::consult;
@@ -9,20 +12,33 @@ use std::collections::BTreeSet;
 pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -> Result<()> {
     let approved: BTreeSet<String> = owner_approved.iter().cloned().collect();
     if let Some(candidate) = role {
-        match get_role_config(candidate) {
+        let project_root = std::env::current_dir()?;
+        if is_unknown_active_aieconlab_alias(&project_root, candidate) {
+            return Err(anyhow!(
+                "Unknown AiEconLab role alias `{}`. Supported aliases: {}. Canonical role ids continue to work.",
+                candidate,
+                aieconlab_alias_help()
+            ));
+        }
+        let resolved = resolve_role_for_active_team(&project_root, candidate);
+        let canonical_role = resolved.canonical.as_str();
+        let role_input = resolved.was_alias.then_some(resolved.input.as_str());
+        match get_role_config(canonical_role) {
             Ok(config) => {
-                let project_root = std::env::current_dir()?;
+                if let Some(input) = role_input {
+                    println!("Resolved role alias `{input}` -> `{canonical_role}`");
+                }
 
                 // W2: run the gate check *before* worktree provisioning
                 // and before recording dispatch. A pending gate cancels
                 // the dispatch. P1.3: we still record the canceled
                 // attempt so `dispatch-history --outcome canceled` can
                 // surface gate-refusal patterns.
-                let gate_state = enforce_gates(&project_root, candidate, task, &approved)?;
+                let gate_state = enforce_gates(&project_root, canonical_role, task, &approved)?;
                 if gate_state == GateOutcome::PendingBlocked {
                     let _ = state::record_dispatch_with_outcome(
                         &project_root,
-                        candidate,
+                        canonical_role,
                         task,
                         "aiplus agent route",
                         state::DispatchOutcome::Canceled {
@@ -34,22 +50,23 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                     ));
                 }
 
-                println!("Routing task to {}: {}", candidate, task);
+                println!("Routing task to {}: {}", canonical_role, task);
                 if let Ok(cache) = cache::global_cache().lock() {
-                    cache.invalidate(candidate, cache::InvalidationReason::RoleRouteCalled);
+                    cache.invalidate(canonical_role, cache::InvalidationReason::RoleRouteCalled);
                 }
                 if config.needs_worktree {
                     // Worktree provisioning requires a git repo. If the project
                     // isn't one, surface a clear note but still record the
                     // dispatch so the audit log entry isn't lost.
-                    match worktree::worktree_exists_for_role(&project_root, candidate) {
+                    match worktree::worktree_exists_for_role(&project_root, canonical_role) {
                         Ok(Some(path)) => {
                             println!("  Using existing worktree: {}", path.display());
                         }
                         Ok(None) => {
-                            println!("  Creating worktree for {}...", candidate);
+                            println!("  Creating worktree for {}...", canonical_role);
                             let template = config.worktree_path.as_deref();
-                            match worktree::create_worktree(&project_root, candidate, template) {
+                            match worktree::create_worktree(&project_root, canonical_role, template)
+                            {
                                 Ok(path) => {
                                     println!("  Worktree created: {}", path.display());
                                 }
@@ -61,7 +78,7 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                                     let detail = format!("{e}");
                                     let _ = state::record_dispatch_with_outcome(
                                         &project_root,
-                                        candidate,
+                                        canonical_role,
                                         task,
                                         "aiplus agent route",
                                         state::DispatchOutcome::Fail {
@@ -87,9 +104,23 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                 // just narrative. Phase D v0: writes audit log + marks role
                 // active. v1: mirrors to project memory and surfaces a
                 // consultant nudge for medium/heavy tasks.
-                if let Err(e) =
-                    state::record_dispatch(&project_root, candidate, task, "aiplus agent route")
-                {
+                let dispatch_result = if role_input.is_some() {
+                    state::record_dispatch_with_role_input(
+                        &project_root,
+                        canonical_role,
+                        role_input,
+                        task,
+                        "aiplus agent route",
+                    )
+                } else {
+                    state::record_dispatch(
+                        &project_root,
+                        canonical_role,
+                        task,
+                        "aiplus agent route",
+                    )
+                };
+                if let Err(e) = dispatch_result {
                     eprintln!("  WARN: failed to record dispatch: {e}");
                 } else {
                     println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
@@ -111,7 +142,7 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                     }
                 }
                 if !task.is_empty() {
-                    run_consult(&project_root, candidate, task)?;
+                    run_consult(&project_root, canonical_role, task)?;
                 }
                 return Ok(());
             }

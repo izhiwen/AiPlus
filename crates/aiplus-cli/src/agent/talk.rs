@@ -10,26 +10,52 @@ use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn handle_talk(role: &str) -> Result<()> {
+use crate::agent::core::{
+    aieconlab_alias_help, is_unknown_active_aieconlab_alias, resolve_role_for_active_team,
+};
+
+pub fn handle_talk(role: &str, runtime_id: Option<&str>) -> Result<()> {
     let project_root = std::env::current_dir()?;
-    let persona_path = persona_path_for(&project_root, role)?;
+    if is_unknown_active_aieconlab_alias(&project_root, role) {
+        return Err(anyhow!(
+            "Unknown AiEconLab role alias `{}`. Supported aliases: {}. Canonical role ids continue to work.",
+            role,
+            aieconlab_alias_help()
+        ));
+    }
+    let resolved = resolve_role_for_active_team(&project_root, role);
+    let canonical_role = resolved.canonical.as_str();
+    let role_input = resolved.was_alias.then_some(resolved.input.as_str());
+    let persona_path = persona_path_for(&project_root, canonical_role)?;
     let persona_text = std::fs::read_to_string(&persona_path).with_context(|| {
         format!(
-            "Failed to read persona at {} — is {role} a known role in this project?",
+            "Failed to read persona at {} — is {canonical_role} a known role in this project?",
             persona_path.display()
         )
     })?;
 
-    let runtime = detect_runtime(&project_root)?;
-    let prompt = build_talk_prompt(role, &persona_text);
+    let runtime = detect_runtime(&project_root, runtime_id)?;
+    let prompt = build_talk_prompt(canonical_role, &persona_text);
 
+    let persona_rel = persona_path
+        .strip_prefix(&project_root)
+        .unwrap_or(&persona_path)
+        .display();
+    if let Some(input) = role_input {
+        println!("Resolved role alias `{input}` -> `{canonical_role}`");
+    }
     println!(
-        "Opening {} session as `{role}` — persona loaded from {}",
-        runtime.label,
+        "Opening runtime={} session as role={} — persona loaded from {}",
+        runtime.id,
+        canonical_role,
         persona_path
             .strip_prefix(&project_root)
             .unwrap_or(&persona_path)
             .display()
+    );
+    println!(
+        "talk_audit runtime={} role={canonical_role} persona={persona_rel}",
+        runtime.id
     );
     println!();
 
@@ -69,13 +95,33 @@ fn persona_path_for(project_root: &Path, role: &str) -> Result<PathBuf> {
 }
 
 struct Runtime {
-    label: &'static str,
+    id: &'static str,
     binary: String,
     /// Arguments before the trailing prompt.
     args: Vec<String>,
 }
 
-fn detect_runtime(project_root: &Path) -> Result<Runtime> {
+fn detect_runtime(project_root: &Path, selected: Option<&str>) -> Result<Runtime> {
+    if let Some(selected) = selected {
+        let runtime = selected_runtime_invocation(selected)?;
+        let adapters = read_runtime_adapters(project_root);
+        if !adapters.is_empty() && !adapters.iter().any(|adapter| adapter == runtime.id) {
+            return Err(anyhow!(
+                "Runtime `{}` is supported but is not installed for this project. Installed runtimes: {}",
+                selected,
+                adapters.join(", ")
+            ));
+        }
+        if which(&runtime.binary).is_none() {
+            return Err(anyhow!(
+                "Selected runtime `{}` uses binary `{}`, but it was not found on $PATH.",
+                runtime.id,
+                runtime.binary
+            ));
+        }
+        return Ok(runtime);
+    }
+
     // Strategy: look at .aiplus/manifest.json `runtimeAdapters` for the
     // adapters this project has installed. Prefer codex if available, then
     // claude-code, then opencode. If multiple are installed but only one
@@ -109,7 +155,7 @@ fn detect_runtime(project_root: &Path) -> Result<Runtime> {
 fn runtime_invocation(binary: &str) -> Runtime {
     match binary {
         "codex" => Runtime {
-            label: "codex",
+            id: "codex",
             binary: "codex".to_string(),
             // The top-level interactive codex doesn't accept
             // --skip-git-repo-check (only `codex exec` does), so we pass
@@ -118,20 +164,32 @@ fn runtime_invocation(binary: &str) -> Runtime {
             args: vec![],
         },
         "claude" => Runtime {
-            label: "claude-code",
+            id: "claude-code",
             binary: "claude".to_string(),
             args: vec![],
         },
         "opencode" => Runtime {
-            label: "opencode",
+            id: "opencode",
             binary: "opencode".to_string(),
             args: vec![],
         },
         other => Runtime {
-            label: "runtime",
+            id: "runtime",
             binary: other.to_string(),
             args: vec![],
         },
+    }
+}
+
+fn selected_runtime_invocation(runtime_id: &str) -> Result<Runtime> {
+    match runtime_id {
+        "codex" => Ok(runtime_invocation("codex")),
+        "claude-code" => Ok(runtime_invocation("claude")),
+        "opencode" => Ok(runtime_invocation("opencode")),
+        other => Err(anyhow!(
+            "Invalid runtime `{}`. Supported runtime ids: codex, claude-code, opencode.",
+            other
+        )),
     }
 }
 

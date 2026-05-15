@@ -155,6 +155,13 @@ pub struct TeamState {
     pub worktree_paths: HashMap<String, PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRole {
+    pub input: String,
+    pub canonical: String,
+    pub was_alias: bool,
+}
+
 /// The 8 core roles available in v0.1
 const CORE_ROLES: &[&str] = &[
     "advisor",
@@ -241,6 +248,51 @@ const AIECONLAB_EXPERTS: &[&str] = &[
     "viz-specialist",
     "writer",
 ];
+
+fn aieconlab_alias_canonical(role: &str) -> Option<&'static str> {
+    let trimmed = role.trim();
+    match trimmed {
+        "主作者" | "主笔" | "负责人" => Some("pi"),
+        "顾问" | "导师" => Some("advisor"),
+        "回归" | "主表" => Some("ra-stata"),
+        "计量" | "识别" => Some("econometrician"),
+        _ if trimmed.eq_ignore_ascii_case("ceo") => Some("pi"),
+        _ => None,
+    }
+}
+
+/// Resolve active-team role aliases without changing canonical role IDs.
+///
+/// The AEL team intentionally reuses some names that mean something else in
+/// the software-engineering team (`ceo` should address the AEL `pi`). This
+/// resolver is only active when the project has AiEconLab selected.
+pub fn resolve_role_for_active_team(project_root: &Path, role: &str) -> ResolvedRole {
+    let input = role.trim().to_string();
+    let active_team = crate::agent::set_team::read_active_team(project_root);
+    let canonical = if active_team.as_deref() == Some("aieconlab") {
+        aieconlab_alias_canonical(&input)
+            .unwrap_or(&input)
+            .to_string()
+    } else {
+        input.clone()
+    };
+    let was_alias = canonical != input;
+    ResolvedRole {
+        input,
+        canonical,
+        was_alias,
+    }
+}
+
+pub fn is_unknown_active_aieconlab_alias(project_root: &Path, role: &str) -> bool {
+    crate::agent::set_team::read_active_team(project_root).as_deref() == Some("aieconlab")
+        && role.chars().any(|ch| !ch.is_ascii())
+        && aieconlab_alias_canonical(role).is_none()
+}
+
+pub fn aieconlab_alias_help() -> &'static str {
+    "ceo/CEO/主作者/主笔/负责人 -> pi; 顾问/导师 -> advisor; 回归/主表 -> ra-stata; 计量/识别 -> econometrician"
+}
 
 /// Return the set of role IDs that belong to `team`, including experts.
 /// `None` for unknown team names — callers should treat that as "do not

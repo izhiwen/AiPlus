@@ -33,7 +33,7 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         AgentSub::Status { verbose: _, json } => status::handle_status(json),
         AgentSub::Doctor => doctor::handle_doctor(),
         AgentSub::List { functional } => list::handle_list(functional),
-        AgentSub::Talk { role } => talk::handle_talk(&role),
+        AgentSub::Talk { role, runtime } => talk::handle_talk(&role, runtime.as_deref()),
         AgentSub::Route {
             role,
             task,
