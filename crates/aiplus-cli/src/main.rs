@@ -1157,6 +1157,7 @@ fn command_install(
         ..Plan::default()
     };
     let existing_manifest = read_manifest(&root, true).unwrap_or_default();
+    let existing_active_team = crate::agent::set_team::read_active_team(&root);
     let mut installed_modules: BTreeSet<String> =
         normalize_existing_modules(existing_manifest.modules.as_ref())
             .keys()
@@ -1183,7 +1184,13 @@ fn command_install(
         &default_module_names(),
         &default_module_names(),
     )?;
-    reconcile_installed_module_adapters(&root, &mut plan, &installed_modules, &adapters)?;
+    reconcile_installed_module_adapters(
+        &root,
+        &mut plan,
+        &installed_modules,
+        &adapters,
+        existing_active_team.as_deref(),
+    )?;
     print_install_summary(&plan, verbose, &adapters, upgrade_existing);
     println!(
         "COMPACT_HANDOFF_MIGRATION={}",
@@ -1515,7 +1522,13 @@ fn command_add(module: Option<String>, dry_run: bool, verbose: bool) -> Result<(
         modules.push(requested.to_string());
     }
     let adapters = existing.runtime_adapters.unwrap_or_default();
-    reconcile_installed_module_adapters(&root, &mut plan, &[requested.to_string()], &adapters)?;
+    reconcile_installed_module_adapters(
+        &root,
+        &mut plan,
+        &[requested.to_string()],
+        &adapters,
+        None,
+    )?;
     write_manifest(
         &root,
         &mut plan,
@@ -2253,7 +2266,7 @@ fn command_doctor_fix(root: &Path) -> DoctorFixReport {
         return report;
     }
     let mut plan = Plan::default();
-    match reconcile_installed_module_adapters(root, &mut plan, &modules, &adapters) {
+    match reconcile_installed_module_adapters(root, &mut plan, &modules, &adapters, None) {
         Ok(reconciled) => {
             report.reconciled_modules = reconciled;
             report.changed_items = plan
@@ -8242,11 +8255,15 @@ fn reconcile_installed_module_adapters(
     plan: &mut Plan,
     module_names: &[String],
     adapters: &[String],
+    preferred_active_team: Option<&str>,
 ) -> Result<Vec<String>> {
     let mut reconciled = Vec::new();
     let mut ordered: Vec<String> = module_names.to_vec();
     if ordered.len() > 1 {
-        if let Some(active_team) = crate::agent::set_team::read_active_team(root) {
+        let active_team = preferred_active_team
+            .map(str::to_string)
+            .or_else(|| crate::agent::set_team::read_active_team(root));
+        if let Some(active_team) = active_team {
             ordered.sort_by_key(|name| if name == &active_team { 1usize } else { 0usize });
         }
     }
