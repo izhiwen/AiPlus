@@ -189,6 +189,12 @@ fn identity_init_status_and_context_roles() {
     let project = temp.path().join("project");
     fs::create_dir_all(&project).unwrap();
 
+    let help = stdout(&run(&project, &env, &["identity", "context", "--help"], 0));
+    assert!(help.contains("--runtime <RUNTIME>"));
+    assert!(help.contains("--with-memory"));
+    assert!(help.contains("--memory-budget <MEMORY_BUDGET>"));
+    assert!(help.contains("--memory-scope <MEMORY_SCOPE>"));
+
     let before = stdout(&run(&project, &env, &["identity", "status"], 0));
     assert!(before.contains("installed=no"));
     run(&project, &env, &["identity", "init", "--project"], 0);
@@ -211,6 +217,13 @@ fn identity_init_status_and_context_roles() {
     assert!(advisor.contains("owner_gates="));
     assert!(advisor.contains("permissions=none"));
     assert!(advisor.contains("identity_grants_permission=no"));
+    assert!(advisor.contains("activation_patterns_count="));
+    assert!(advisor.contains("role_activation_count=1"));
+    assert!(advisor.contains("memory_bundle=none"));
+    assert!(advisor.contains("memory_is_instruction=no"));
+    assert!(advisor.contains("secret_values=none"));
+    assert!(!advisor.contains("ROLE_ACTIVATED"));
+    assert!(!advisor.contains("MEMORY_BUNDLE"));
     let ceo = stdout(&run(
         &project,
         &env,
@@ -220,6 +233,120 @@ fn identity_init_status_and_context_roles() {
     assert!(ceo.contains("role=ceo"));
     assert!(ceo.contains("role_name=CEO"));
     assert!(ceo.contains("identity_grants_permission=no"));
+}
+
+#[test]
+fn identity_context_with_memory_bundle_counts_and_role_personal_alias() {
+    let temp = tempfile::tempdir().unwrap();
+    let env = fake_env(temp.path());
+    let project = temp.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+
+    run(
+        &project,
+        &env,
+        &[
+            "memory",
+            "add",
+            "--scope",
+            "role-personal",
+            "--role",
+            "advisor",
+            "--kind",
+            "preference",
+            "--text",
+            "Advisor personal memory should stay scoped.",
+        ],
+        0,
+    );
+    run(
+        &project,
+        &env,
+        &[
+            "memory",
+            "add",
+            "--scope",
+            "team",
+            "--kind",
+            "preference",
+            "--text",
+            "Team memory should be counted in bundles.",
+        ],
+        0,
+    );
+    run(
+        &project,
+        &env,
+        &[
+            "memory",
+            "add",
+            "--scope",
+            "project",
+            "--kind",
+            "preference",
+            "--text",
+            "Project memory should be counted in bundles.",
+        ],
+        0,
+    );
+
+    let all = stdout(&run(
+        &project,
+        &env,
+        &[
+            "identity",
+            "context",
+            "--role",
+            "advisor",
+            "--runtime",
+            "codex",
+            "--with-memory",
+            "--memory-budget",
+            "4000",
+        ],
+        0,
+    ));
+    assert!(all.contains("memory_bundle=present"));
+    assert!(all.contains("MEMORY_BUNDLE"));
+    assert!(all.contains("runtime=codex"));
+    assert!(all.contains("memory_scope=all"));
+    assert!(all.contains("budget=4000"));
+    assert!(all.contains("record_load_cap=20"));
+    assert!(all.contains("role_personal_total=1"));
+    assert!(all.contains("role_personal_used=1"));
+    assert!(all.contains("team_total=1"));
+    assert!(all.contains("team_used=1"));
+    assert!(all.contains("project_total=1"));
+    assert!(all.contains("project_used=1"));
+    assert!(all.contains("records_total=3"));
+    assert!(all.contains("records_used=3"));
+    assert!(all.contains("secret_values=none"));
+    assert!(all.contains("memory_is_instruction=no"));
+    assert!(all.contains("MEMORY_BUNDLE_STATUS=PASS"));
+    assert!(!all.contains("ROLE_ACTIVATED"));
+
+    let role_personal = stdout(&run(
+        &project,
+        &env,
+        &[
+            "identity",
+            "context",
+            "--role",
+            "advisor",
+            "--with-memory",
+            "--memory-scope",
+            "role-personal",
+        ],
+        0,
+    ));
+    assert!(role_personal.contains("memory_scope=personal"));
+    assert!(role_personal.contains("memory_scope_input=role-personal"));
+    assert!(role_personal.contains("role_personal_total=1"));
+    assert!(role_personal.contains("role_personal_used=1"));
+    assert!(role_personal.contains("team_total=1"));
+    assert!(role_personal.contains("team_used=0"));
+    assert!(role_personal.contains("project_total=1"));
+    assert!(role_personal.contains("project_used=0"));
 }
 
 #[test]
@@ -307,6 +434,23 @@ fn memory_role_scopes_and_bounded_context() {
     assert!(personal.contains("records_total=1"));
     assert!(personal.contains("Engineer A prefers"));
     assert!(!personal.contains("Team handoffs"));
+
+    let personal_alias = stdout(&run(
+        &project,
+        &env,
+        &[
+            "memory",
+            "list",
+            "--scope",
+            "role-personal",
+            "--role",
+            "engineer-a",
+        ],
+        0,
+    ));
+    assert!(personal_alias.contains("scope=personal"));
+    assert!(personal_alias.contains("role=engineer-a"));
+    assert!(personal_alias.contains("records_total=1"));
 
     let team = stdout(&run(
         &project,
@@ -438,7 +582,8 @@ chinese_aliases = ["主作者"]
     assert!(engineer.contains("role=engineer-a"));
     assert!(engineer.contains("role_name=Engineer A"));
     assert!(engineer.contains("identity_source=.aiplus/agents"));
-    assert!(engineer.contains("ROLE_ACTIVATED role=engineer-a count=1"));
+    assert!(engineer.contains("role_activation_count=1"));
+    assert!(!engineer.contains("ROLE_ACTIVATED"));
 
     let engineer_again = stdout(&run(
         &project,
@@ -446,7 +591,8 @@ chinese_aliases = ["主作者"]
         &["identity", "context", "--role", "engineer-a"],
         0,
     ));
-    assert!(engineer_again.contains("ROLE_ACTIVATED role=engineer-a count=2"));
+    assert!(engineer_again.contains("role_activation_count=2"));
+    assert!(!engineer_again.contains("ROLE_ACTIVATED"));
 
     fs::write(agents.join("active-team.txt"), "aieconlab\n").unwrap();
     let pi = stdout(&run(
@@ -458,7 +604,8 @@ chinese_aliases = ["主作者"]
     assert!(pi.contains("role=pi"));
     assert!(pi.contains("role_input=ceo"));
     assert!(pi.contains("role_name=PI"));
-    assert!(pi.contains("ROLE_ACTIVATED role=pi count=1"));
+    assert!(pi.contains("role_activation_count=1"));
+    assert!(!pi.contains("ROLE_ACTIVATED"));
 }
 
 fn assert_nl_role_trigger_catalog(text: &str) {

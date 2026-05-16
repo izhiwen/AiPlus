@@ -341,6 +341,14 @@ enum Commands {
         project: bool,
         #[arg(long)]
         role: Option<String>,
+        #[arg(long)]
+        runtime: Option<String>,
+        #[arg(long = "with-memory", action = ArgAction::SetTrue)]
+        with_memory: bool,
+        #[arg(long = "memory-budget")]
+        memory_budget: Option<usize>,
+        #[arg(long = "memory-scope")]
+        memory_scope: Option<String>,
     },
     User {
         subcommand: Option<String>,
@@ -995,7 +1003,19 @@ fn run(command: Commands) -> Result<()> {
             subcommand,
             project,
             role,
-        } => command_identity(subcommand, project, role),
+            runtime,
+            with_memory,
+            memory_budget,
+            memory_scope,
+        } => command_identity(IdentityCommandArgs {
+            subcommand,
+            project,
+            role,
+            runtime,
+            with_memory,
+            memory_budget,
+            memory_scope,
+        }),
         Commands::User {
             subcommand,
             profile,
@@ -4219,15 +4239,31 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
     }
 }
 
-fn command_identity(subcommand: Option<String>, project: bool, role: Option<String>) -> Result<()> {
-    match subcommand.as_deref() {
+struct IdentityCommandArgs {
+    subcommand: Option<String>,
+    project: bool,
+    role: Option<String>,
+    runtime: Option<String>,
+    with_memory: bool,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+}
+
+fn command_identity(args: IdentityCommandArgs) -> Result<()> {
+    match args.subcommand.as_deref() {
         Some("status") => identity_status(),
         Some("list") => identity_list(),
-        Some("init") => identity_init_command(project),
-        Some("context") => identity_context(role),
+        Some("init") => identity_init_command(args.project),
+        Some("context") => identity_context(IdentityContextArgs {
+            role: args.role,
+            runtime: args.runtime,
+            with_memory: args.with_memory,
+            memory_budget: args.memory_budget,
+            memory_scope: args.memory_scope,
+        }),
         _ => {
             println!(
-                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo"
+                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all]"
             );
             process::exit(2);
         }
@@ -4739,7 +4775,7 @@ fn memory_add(
     text: Option<String>,
 ) -> Result<()> {
     let root = target_root()?;
-    let scope = scope.unwrap_or_else(|| "project".to_string());
+    let scope = normalize_memory_scope(&scope.unwrap_or_else(|| "project".to_string()));
     let kind = kind.unwrap_or_else(|| "preference".to_string());
     let text = text.ok_or_else(|| CliError::new(2, "ERROR memory add requires --text"))?;
     validate_memory_field(
@@ -5343,9 +5379,17 @@ fn identity_init_command(project: bool) -> Result<()> {
     Ok(())
 }
 
-fn identity_context(role: Option<String>) -> Result<()> {
+struct IdentityContextArgs {
+    role: Option<String>,
+    runtime: Option<String>,
+    with_memory: bool,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+}
+
+fn identity_context(args: IdentityContextArgs) -> Result<()> {
     let root = target_root()?;
-    let role_input = role.unwrap_or_else(|| "advisor".to_string());
+    let role_input = args.role.unwrap_or_else(|| "advisor".to_string());
     let role = crate::agent::core::resolve_role_for_active_team(&root, &role_input).canonical;
     validate_role_slug(&role)?;
     identity_init(&root)?;
@@ -5370,7 +5414,7 @@ fn identity_context(role: Option<String>) -> Result<()> {
         Some(ref name) => inherits.contains(name.as_str()),
         None => false,
     };
-    let activation_count = record_role_activation(&root, &role)?;
+    let role_activation_count = record_role_activation(&root, &role)?;
     println!("IDENTITY_CONTEXT");
     println!("role={role}");
     if role_input != role {
@@ -5379,7 +5423,7 @@ fn identity_context(role: Option<String>) -> Result<()> {
     println!("role_name={}", context.role_name);
     println!("identity_source={}", context.source);
     println!("activation={activation}");
-    println!("activation_count={}", identity.activation.len());
+    println!("activation_patterns_count={}", identity.activation.len());
     println!("output_contract={}", identity.output_contract);
     println!("owner_gates={owner_gates}");
     println!("permissions=none");
@@ -5391,9 +5435,169 @@ fn identity_context(role: Option<String>) -> Result<()> {
     );
     println!("inherits={inherits}");
     println!("global_agent_config_edits=none");
-    println!("ROLE_ACTIVATED role={role} count={activation_count}");
+    println!("role_activation_count={role_activation_count}");
+    if args.with_memory {
+        println!("memory_bundle=present");
+        print_identity_memory_bundle(
+            &root,
+            &role,
+            args.runtime,
+            args.memory_budget,
+            args.memory_scope,
+        )?;
+    } else {
+        println!("memory_bundle=none");
+        println!("memory_is_instruction=no");
+        println!("secret_values=none");
+    }
     println!("IDENTITY_CONTEXT_STATUS=PASS");
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum IdentityMemoryScope {
+    All,
+    Project,
+    Team,
+    RolePersonal,
+}
+
+impl IdentityMemoryScope {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Project => "project",
+            Self::Team => "team",
+            Self::RolePersonal => "personal",
+        }
+    }
+
+    fn includes_project(self) -> bool {
+        matches!(self, Self::All | Self::Project)
+    }
+
+    fn includes_team(self) -> bool {
+        matches!(self, Self::All | Self::Team)
+    }
+
+    fn includes_role_personal(self) -> bool {
+        matches!(self, Self::All | Self::RolePersonal)
+    }
+}
+
+fn parse_identity_memory_scope(
+    scope: Option<String>,
+) -> Result<(IdentityMemoryScope, Option<String>)> {
+    let Some(input) = scope else {
+        return Ok((IdentityMemoryScope::All, None));
+    };
+    match normalize_memory_scope(&input).as_str() {
+        "all" => Ok((IdentityMemoryScope::All, Some(input))),
+        "project" => Ok((IdentityMemoryScope::Project, Some(input))),
+        "team" => Ok((IdentityMemoryScope::Team, Some(input))),
+        "personal" => Ok((IdentityMemoryScope::RolePersonal, Some(input))),
+        other => Err(CliError::new(
+            2,
+            format!("ERROR invalid memory-scope={other}; allowed=[all,project,team,personal,role-personal]"),
+        )
+        .into()),
+    }
+}
+
+fn print_identity_memory_bundle(
+    root: &Path,
+    role: &str,
+    runtime: Option<String>,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+) -> Result<()> {
+    let runtime = runtime.unwrap_or_else(|| "codex".to_string());
+    let budget = memory_budget.unwrap_or(2000);
+    let record_load_cap = DEFAULT_MEMORY_LOAD_LIMIT;
+    let (scope, scope_input) = parse_identity_memory_scope(memory_scope)?;
+    let role_personal = identity_memory_bucket_counts(
+        root,
+        Some("personal"),
+        Some(role),
+        scope.includes_role_personal(),
+        budget,
+        record_load_cap,
+    )?;
+    let team = identity_memory_bucket_counts(
+        root,
+        Some("team"),
+        None,
+        scope.includes_team(),
+        budget,
+        record_load_cap,
+    )?;
+    let project = identity_memory_bucket_counts(
+        root,
+        Some("project"),
+        None,
+        scope.includes_project(),
+        budget,
+        record_load_cap,
+    )?;
+    let total = role_personal.total + team.total + project.total;
+    let used = role_personal.used + team.used + project.used;
+
+    println!("MEMORY_BUNDLE");
+    println!("runtime={runtime}");
+    println!("memory_scope={}", scope.label());
+    if let Some(scope_input) = scope_input {
+        if normalize_memory_scope(&scope_input) != scope_input {
+            println!("memory_scope_input={scope_input}");
+        }
+    }
+    println!("budget={budget}");
+    println!("record_load_cap={record_load_cap}");
+    println!("role_personal_total={}", role_personal.total);
+    println!("role_personal_used={}", role_personal.used);
+    println!("team_total={}", team.total);
+    println!("team_used={}", team.used);
+    println!("project_total={}", project.total);
+    println!("project_used={}", project.used);
+    println!("records_total={total}");
+    println!("records_used={used}");
+    println!("secret_values=none");
+    println!("memory_is_instruction=no");
+    println!("MEMORY_BUNDLE_STATUS=PASS");
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IdentityMemoryBucketCounts {
+    total: usize,
+    used: usize,
+}
+
+fn identity_memory_bucket_counts(
+    root: &Path,
+    scope: Option<&str>,
+    role: Option<&str>,
+    include_used: bool,
+    budget: usize,
+    record_load_cap: usize,
+) -> Result<IdentityMemoryBucketCounts> {
+    let query = MemoryQuery::new(
+        root,
+        scope.map(|scope| scope.to_string()),
+        role.map(|role| role.to_string()),
+    )?;
+    let records = read_active_memory_records_scoped(root, &query).unwrap_or_default();
+    let used = if include_used {
+        select_records(&records, budget)
+            .into_iter()
+            .take(record_load_cap)
+            .count()
+    } else {
+        0
+    };
+    Ok(IdentityMemoryBucketCounts {
+        total: records.len(),
+        used,
+    })
 }
 
 struct IdentityContextData {
@@ -5507,7 +5711,7 @@ fn record_role_activation(root: &Path, role: &str) -> Result<usize> {
         }
     }
     let event = serde_json::json!({
-        "event": "ROLE_ACTIVATED",
+        "event": "IDENTITY_CONTEXT_ACTIVATED",
         "role": role,
         "timestamp": timestamp(),
         "count": count + 1,
@@ -8214,6 +8418,7 @@ impl MemoryQuery {
     fn new(root: &Path, scope: Option<String>, role: Option<String>) -> Result<Self> {
         let scope = match scope {
             Some(scope) => {
+                let scope = normalize_memory_scope(&scope);
                 validate_memory_field(
                     "scope",
                     &scope,
@@ -8265,6 +8470,14 @@ impl MemoryQuery {
     fn source_labels(&self) -> Vec<String> {
         self.sources()
     }
+}
+
+fn normalize_memory_scope(scope: &str) -> String {
+    let normalized = match scope.trim() {
+        "role-personal" => "personal",
+        other => other,
+    };
+    normalized.to_string()
 }
 
 fn bounded_memory_load_limit(limit: Option<usize>) -> usize {
