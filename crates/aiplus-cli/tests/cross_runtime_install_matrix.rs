@@ -196,3 +196,47 @@ fn cross_runtime_install_matrix_end_to_end() {
         }
     }
 }
+
+#[test]
+fn installing_runtime_after_aieconlab_preserves_active_team_layout() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    prepare(target);
+
+    run(target, &["install", "codex"], 0);
+    run(target, &["add", "aieconlab"], 0);
+
+    let active_before = fs::read_to_string(target.join(".aiplus/agents/active-team.txt")).unwrap();
+    assert_eq!(active_before.trim(), "aieconlab");
+    assert!(target.join(".aiplus/agents/pi.toml").exists());
+    assert!(
+        !target.join(".aiplus/agents/ceo.toml").exists(),
+        "agent-team-exclusive ceo.toml should not be active after add aieconlab"
+    );
+
+    run(target, &["install", "claude-code"], 0);
+
+    let active_after = fs::read_to_string(target.join(".aiplus/agents/active-team.txt")).unwrap();
+    assert_eq!(
+        active_after.trim(),
+        "aieconlab",
+        "installing another runtime must preserve the previously active team"
+    );
+    assert!(
+        target.join(".aiplus/agents/pi.toml").exists(),
+        "AEL pi.toml should remain in active layout after installing another runtime"
+    );
+    assert!(
+        !target.join(".aiplus/agents/ceo.toml").exists(),
+        "agent-team-exclusive ceo.toml should not replace the active AEL layout"
+    );
+    assert!(target.join(".claude/agents/aieconlab-pi.md").exists());
+    assert!(target.join(".claude/commands/aiel-talk.md").exists());
+
+    let out = run(target, &["doctor"], 0);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("DOCTOR_STATUS=PASS"),
+        "doctor not green after installing runtime post-AEL:\n{text}"
+    );
+}
