@@ -12,7 +12,6 @@ use aiplus_core::{
     detect_stale,
     embedded_asset_text,
     epoch_millis,
-    find_by_query,
     generate_estimate_id,
     generate_run_id,
     identity_dir,
@@ -316,6 +315,8 @@ enum Commands {
         #[arg(long)]
         scope: Option<String>,
         #[arg(long)]
+        role: Option<String>,
+        #[arg(long)]
         kind: Option<String>,
         #[arg(long)]
         text: Option<String>,
@@ -337,6 +338,14 @@ enum Commands {
         project: bool,
         #[arg(long)]
         role: Option<String>,
+        #[arg(long)]
+        runtime: Option<String>,
+        #[arg(long = "with-memory", action = ArgAction::SetTrue)]
+        with_memory: bool,
+        #[arg(long = "memory-budget")]
+        memory_budget: Option<usize>,
+        #[arg(long = "memory-scope")]
+        memory_scope: Option<String>,
     },
     User {
         subcommand: Option<String>,
@@ -963,6 +972,7 @@ fn run(command: Commands) -> Result<()> {
             runtime,
             budget,
             scope,
+            role,
             kind,
             text,
             title,
@@ -977,6 +987,7 @@ fn run(command: Commands) -> Result<()> {
             runtime,
             budget,
             scope,
+            role,
             kind,
             text,
             title,
@@ -989,7 +1000,19 @@ fn run(command: Commands) -> Result<()> {
             subcommand,
             project,
             role,
-        } => command_identity(subcommand, project, role),
+            runtime,
+            with_memory,
+            memory_budget,
+            memory_scope,
+        } => command_identity(IdentityCommandArgs {
+            subcommand,
+            project,
+            role,
+            runtime,
+            with_memory,
+            memory_budget,
+            memory_scope,
+        }),
         Commands::User {
             subcommand,
             profile,
@@ -2389,6 +2412,26 @@ fn command_doctor(fix: bool) -> Result<()> {
             push_check(&mut checks, label, ok, None);
         }
     }
+    let nl_role_trigger_status = nl_role_trigger_doctor_status(&root, &runtimes)?;
+    let nl_role_trigger_label = format!("nl_role_triggers={nl_role_trigger_status}");
+    if nl_role_trigger_status.starts_with("DEFERRED_") {
+        push_info_check(
+            &mut checks,
+            nl_role_trigger_label,
+            false,
+            Some("T3c OpenCode natural-language trigger validation is deferred".to_string()),
+        );
+    } else {
+        push_check(
+            &mut checks,
+            nl_role_trigger_label,
+            nl_role_trigger_status == "PASS",
+            Some(
+                "run `aiplus install <runtime>` to refresh managed role-trigger catalog"
+                    .to_string(),
+            ),
+        );
+    }
     let modules = normalize_existing_modules(parsed.as_ref().and_then(|m| m.modules.as_ref()));
     for name in modules.keys() {
         let Some(spec) = module_spec(name) else {
@@ -2714,6 +2757,7 @@ fn command_doctor(fix: bool) -> Result<()> {
         .collect();
     println!("modules=[{}]", module_text.join(","));
     print_continuity_status_lines(&continuity);
+    println!("nl_role_triggers={nl_role_trigger_status}");
     println!("refreshPrompt={REFRESH_PROMPT}");
     println!("globalConfig=untouched");
     println!("target={}", root.display());
@@ -4139,6 +4183,7 @@ struct MemoryCommandArgs {
     runtime: Option<String>,
     budget: Option<usize>,
     scope: Option<String>,
+    role: Option<String>,
     kind: Option<String>,
     text: Option<String>,
     title: Option<String>,
@@ -4153,12 +4198,14 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
         Some("status") => memory_status(),
         Some("doctor") => memory_doctor(),
         Some("init") => memory_init_command(args.project),
-        Some("context") => memory_context(args.runtime, args.budget),
-        Some("add") => memory_add(args.scope, args.kind, args.text),
-        Some("list") => memory_list(),
+        Some("context") => {
+            memory_context(args.runtime, args.budget, args.scope, args.role, args.limit)
+        }
+        Some("add") => memory_add(args.scope, args.role, args.kind, args.text),
+        Some("list") => memory_list(args.scope, args.role, args.limit),
         Some("recent") => memory_recent(),
-        Some("search") => memory_search(args.arg),
-        Some("forget") => memory_forget(args.arg),
+        Some("search") => memory_search(args.arg, args.scope, args.role),
+        Some("forget") => memory_forget(args.arg, args.scope, args.role),
         Some("conflicts") => memory_conflicts(),
         Some("propose") => memory_propose(args.text),
         Some("review") => memory_review(args.arg),
@@ -4178,15 +4225,31 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
     }
 }
 
-fn command_identity(subcommand: Option<String>, project: bool, role: Option<String>) -> Result<()> {
-    match subcommand.as_deref() {
+struct IdentityCommandArgs {
+    subcommand: Option<String>,
+    project: bool,
+    role: Option<String>,
+    runtime: Option<String>,
+    with_memory: bool,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+}
+
+fn command_identity(args: IdentityCommandArgs) -> Result<()> {
+    match args.subcommand.as_deref() {
         Some("status") => identity_status(),
         Some("list") => identity_list(),
-        Some("init") => identity_init_command(project),
-        Some("context") => identity_context(role),
+        Some("init") => identity_init_command(args.project),
+        Some("context") => identity_context(IdentityContextArgs {
+            role: args.role,
+            runtime: args.runtime,
+            with_memory: args.with_memory,
+            memory_budget: args.memory_budget,
+            memory_scope: args.memory_scope,
+        }),
         _ => {
             println!(
-                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo"
+                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all]"
             );
             process::exit(2);
         }
@@ -4594,19 +4657,38 @@ fn memory_init_command(project: bool) -> Result<()> {
     Ok(())
 }
 
-fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> {
+const DEFAULT_MEMORY_LOAD_LIMIT: usize = 20;
+const MAX_MEMORY_LOAD_LIMIT: usize = 50;
+
+fn memory_context(
+    runtime: Option<String>,
+    budget: Option<usize>,
+    scope: Option<String>,
+    role: Option<String>,
+    limit: Option<usize>,
+) -> Result<()> {
     let root = target_root()?;
     let runtime = runtime.unwrap_or_else(|| "codex".to_string());
     let budget = budget.unwrap_or(2000);
-    let records = read_memory_records(&root).unwrap_or_default();
-    let active_records = select_records(&records, budget);
+    let query = MemoryQuery::new(&root, scope, role)?;
+    let records = read_memory_records_scoped(&root, &query).unwrap_or_default();
+    let selected_records = select_records(&records, budget);
+    let record_load_cap = bounded_memory_load_limit(limit);
+    let active_records: Vec<_> = selected_records.into_iter().take(record_load_cap).collect();
     let ignored = records.len().saturating_sub(active_records.len());
     println!("MEMORY_CONTEXT");
     println!("runtime={runtime}");
     println!("budget={budget}");
+    println!("scope={}", query.scope_label());
+    println!("role={}", query.role_label());
+    println!("record_load_cap={record_load_cap}");
     println!("records_used={}", active_records.len());
     println!("records_ignored={ignored}");
-    println!("sources=[.aiplus/memory/project-memory.jsonl,.aiplus/memory/decisions.jsonl,.aiplus/memory/facts.jsonl]");
+    println!(
+        "records_capped={}",
+        records.len().saturating_sub(record_load_cap)
+    );
+    println!("sources=[{}]", query.source_labels().join(","));
     println!("owner_gates=[publish,deploy,global config,external accounts,secret exposure]");
     println!("scope=project-local");
     println!("secret_values=none");
@@ -4621,9 +4703,9 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     println!();
     println!("## Sources");
     println!();
-    println!("- .aiplus/memory/project-memory.jsonl");
-    println!("- .aiplus/memory/decisions.jsonl");
-    println!("- .aiplus/memory/facts.jsonl");
+    for source in query.source_labels() {
+        println!("- {source}");
+    }
     println!();
     println!("## Records");
     for record in active_records {
@@ -4645,12 +4727,15 @@ fn memory_context(runtime: Option<String>, budget: Option<usize>) -> Result<()> 
     Ok(())
 }
 
-fn memory_list() -> Result<()> {
+fn memory_list(scope: Option<String>, role: Option<String>, limit: Option<usize>) -> Result<()> {
     let root = target_root()?;
-    let records = read_active(&root).unwrap_or_default();
+    let query = MemoryQuery::new(&root, scope, role)?;
+    let records = read_active_memory_records_scoped(&root, &query).unwrap_or_default();
     println!("MEMORY_LIST");
+    println!("scope={}", query.scope_label());
+    println!("role={}", query.role_label());
     println!("records_total={}", records.len());
-    let shown = print_memory_rows(records.iter(), None);
+    let shown = print_memory_rows(records.iter(), limit);
     println!("records_shown={shown}");
     println!("secret_values=none");
     println!("MEMORY_LIST_STATUS=PASS");
@@ -4669,15 +4754,22 @@ fn memory_recent() -> Result<()> {
     Ok(())
 }
 
-fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>) -> Result<()> {
+fn memory_add(
+    scope: Option<String>,
+    role: Option<String>,
+    kind: Option<String>,
+    text: Option<String>,
+) -> Result<()> {
     let root = target_root()?;
-    let scope = scope.unwrap_or_else(|| "project".to_string());
+    let scope = normalize_memory_scope(&scope.unwrap_or_else(|| "project".to_string()));
     let kind = kind.unwrap_or_else(|| "preference".to_string());
     let text = text.ok_or_else(|| CliError::new(2, "ERROR memory add requires --text"))?;
     validate_memory_field(
         "scope",
         &scope,
-        &["session", "project", "profile", "global"],
+        &[
+            "session", "project", "profile", "global", "team", "personal",
+        ],
     )?;
     validate_memory_field(
         "kind",
@@ -4693,12 +4785,14 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
     )?;
     reject_sensitive_memory_text(&text)?;
     memory_init(&root)?;
+    let role = resolve_memory_role(&root, role, &scope)?;
     let now = timestamp();
     let id = format!("mem_{}_{}", epoch_millis(), stable_hash(&text));
+    let rel = memory_write_rel_for_scope(&scope, role.as_deref());
     let record = MemoryRecord {
         schema_version: MEMORY_SCHEMA_VERSION_V2.to_string(),
         id: id.clone(),
-        scope,
+        scope: scope.clone(),
         record_type: kind,
         source: "manual".to_string(),
         created_at: now.clone(),
@@ -4707,21 +4801,18 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
         status: "active".to_string(),
         summary: single_line(&text),
         evidence: Vec::new(),
-        tags: Vec::new(),
+        tags: role.iter().cloned().collect(),
         expires_at: None,
         stale_after: None,
         supersedes: Vec::new(),
         superseded_by: Vec::new(),
         conflict_group: None,
         redaction: "none".to_string(),
-        subject: Some("workflow".to_string()),
+        subject: Some(role.clone().unwrap_or_else(|| "workflow".to_string())),
         visibility: Some("project-local".to_string()),
         content_hash: Some(format!("hash:{}", stable_hash(&text))),
     };
-    append_jsonl_atomic(
-        &rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?,
-        &serde_json::to_string(&record)?,
-    )?;
+    append_jsonl_atomic(&rel_to_abs(&root, &rel)?, &serde_json::to_string(&record)?)?;
     append_audit(&root, "memory.add", &id)?;
 
     // Invalidate warm-bench cache: memory add/forget → invalidate all
@@ -4732,18 +4823,28 @@ fn memory_add(scope: Option<String>, kind: Option<String>, text: Option<String>)
     println!("MEMORY_ADD");
     println!("id={id}");
     println!("scope={}", record.scope);
+    println!("role={}", role.as_deref().unwrap_or("-"));
+    println!("path={rel}");
     println!("kind={}", record.record_type);
     println!("secret_values=none");
     println!("MEMORY_ADD_STATUS=PASS");
     Ok(())
 }
 
-fn memory_search(query: Option<String>) -> Result<()> {
+fn memory_search(query: Option<String>, scope: Option<String>, role: Option<String>) -> Result<()> {
     let root = target_root()?;
     let query = query.ok_or_else(|| CliError::new(2, "ERROR memory search requires a query"))?;
-    let records = find_by_query(&root, &query)?;
+    let memory_query = MemoryQuery::new(&root, scope, role)?;
+    let needle = query.to_ascii_lowercase();
+    let records: Vec<_> = read_active_memory_records_scoped(&root, &memory_query)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| memory_record_matches(r, &needle))
+        .collect();
     println!("MEMORY_SEARCH");
     println!("query={}", single_line(&query));
+    println!("scope={}", memory_query.scope_label());
+    println!("role={}", memory_query.role_label());
     println!("matches={}", records.len());
     for record in &records {
         println!(
@@ -4756,27 +4857,17 @@ fn memory_search(query: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn memory_forget(id: Option<String>) -> Result<()> {
+fn memory_forget(id: Option<String>, scope: Option<String>, role: Option<String>) -> Result<()> {
     let root = target_root()?;
     let id = id.ok_or_else(|| CliError::new(2, "ERROR memory forget requires an id"))?;
-    let file = rel_to_abs(&root, ".aiplus/memory/project-memory.jsonl")?;
-    let mut records = read_memory_records(&root).unwrap_or_default();
-    let mut found = false;
-    for record in &mut records {
-        if record.id == id {
-            record.status = "rejected".to_string();
-            record.updated_at = timestamp();
-            found = true;
-        }
-    }
-    if !found {
+    let query = MemoryQuery::new(&root, scope, role)?;
+    if !rewrite_memory_record_status(&root, &query, &id, "rejected")? {
         return Err(CliError::new(
             1,
             format!("MEMORY_FORGET_STATUS=FAIL id={id} reason=not_found"),
         )
         .into());
     }
-    rewrite_jsonl_atomic(&file, &records)?;
     append_audit(&root, "memory.forget", &id)?;
 
     // Invalidate warm-bench cache: memory add/forget → invalidate all
@@ -4786,6 +4877,8 @@ fn memory_forget(id: Option<String>) -> Result<()> {
 
     println!("MEMORY_FORGET");
     println!("id={id}");
+    println!("scope={}", query.scope_label());
+    println!("role={}", query.role_label());
     println!("status=rejected");
     println!("forgotten=yes");
     println!("secret_values=none");
@@ -5272,15 +5365,22 @@ fn identity_init_command(project: bool) -> Result<()> {
     Ok(())
 }
 
-fn identity_context(role: Option<String>) -> Result<()> {
+struct IdentityContextArgs {
+    role: Option<String>,
+    runtime: Option<String>,
+    with_memory: bool,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+}
+
+fn identity_context(args: IdentityContextArgs) -> Result<()> {
     let root = target_root()?;
-    let role = role.unwrap_or_else(|| "advisor".to_string());
-    validate_memory_field("role", &role, &["advisor", "ceo", "reviewer", "builder"])?;
+    let role_input = args.role.unwrap_or_else(|| "advisor".to_string());
+    let role = crate::agent::core::resolve_role_for_active_team(&root, &role_input).canonical;
+    validate_role_slug(&role)?;
     identity_init(&root)?;
-    let identity = read_identity(&root, &role)?;
-    let file = identity_dir(&root)?.join(format!("{role}.identity.toml"));
-    let text = fs::read_to_string(&file)?;
-    let role_name = toml_value_line(&text, "role").unwrap_or_else(|| role.clone());
+    let context = load_identity_context(&root, &role)?;
+    let identity = context.identity;
     let activation = if identity.activation.is_empty() {
         "[]".to_string()
     } else {
@@ -5300,10 +5400,16 @@ fn identity_context(role: Option<String>) -> Result<()> {
         Some(ref name) => inherits.contains(name.as_str()),
         None => false,
     };
+    let role_activation_count = record_role_activation(&root, &role)?;
     println!("IDENTITY_CONTEXT");
     println!("role={role}");
-    println!("role_name={role_name}");
+    if role_input != role {
+        println!("role_input={role_input}");
+    }
+    println!("role_name={}", context.role_name);
+    println!("identity_source={}", context.source);
     println!("activation={activation}");
+    println!("activation_patterns_count={}", identity.activation.len());
     println!("output_contract={}", identity.output_contract);
     println!("owner_gates={owner_gates}");
     println!("permissions=none");
@@ -5315,8 +5421,289 @@ fn identity_context(role: Option<String>) -> Result<()> {
     );
     println!("inherits={inherits}");
     println!("global_agent_config_edits=none");
+    println!("role_activation_count={role_activation_count}");
+    if args.with_memory {
+        println!("memory_bundle=present");
+        print_identity_memory_bundle(
+            &root,
+            &role,
+            args.runtime,
+            args.memory_budget,
+            args.memory_scope,
+        )?;
+    } else {
+        println!("memory_bundle=none");
+        println!("memory_is_instruction=no");
+        println!("secret_values=none");
+    }
     println!("IDENTITY_CONTEXT_STATUS=PASS");
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum IdentityMemoryScope {
+    All,
+    Project,
+    Team,
+    RolePersonal,
+}
+
+impl IdentityMemoryScope {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Project => "project",
+            Self::Team => "team",
+            Self::RolePersonal => "personal",
+        }
+    }
+
+    fn includes_project(self) -> bool {
+        matches!(self, Self::All | Self::Project)
+    }
+
+    fn includes_team(self) -> bool {
+        matches!(self, Self::All | Self::Team)
+    }
+
+    fn includes_role_personal(self) -> bool {
+        matches!(self, Self::All | Self::RolePersonal)
+    }
+}
+
+fn parse_identity_memory_scope(
+    scope: Option<String>,
+) -> Result<(IdentityMemoryScope, Option<String>)> {
+    let Some(input) = scope else {
+        return Ok((IdentityMemoryScope::All, None));
+    };
+    match normalize_memory_scope(&input).as_str() {
+        "all" => Ok((IdentityMemoryScope::All, Some(input))),
+        "project" => Ok((IdentityMemoryScope::Project, Some(input))),
+        "team" => Ok((IdentityMemoryScope::Team, Some(input))),
+        "personal" => Ok((IdentityMemoryScope::RolePersonal, Some(input))),
+        other => Err(CliError::new(
+            2,
+            format!("ERROR invalid memory-scope={other}; allowed=[all,project,team,personal,role-personal]"),
+        )
+        .into()),
+    }
+}
+
+fn print_identity_memory_bundle(
+    root: &Path,
+    role: &str,
+    runtime: Option<String>,
+    memory_budget: Option<usize>,
+    memory_scope: Option<String>,
+) -> Result<()> {
+    let runtime = runtime.unwrap_or_else(|| "codex".to_string());
+    let budget = memory_budget.unwrap_or(2000);
+    let record_load_cap = DEFAULT_MEMORY_LOAD_LIMIT;
+    let (scope, scope_input) = parse_identity_memory_scope(memory_scope)?;
+    let role_personal = identity_memory_bucket_counts(
+        root,
+        Some("personal"),
+        Some(role),
+        scope.includes_role_personal(),
+        budget,
+        record_load_cap,
+    )?;
+    let team = identity_memory_bucket_counts(
+        root,
+        Some("team"),
+        None,
+        scope.includes_team(),
+        budget,
+        record_load_cap,
+    )?;
+    let project = identity_memory_bucket_counts(
+        root,
+        Some("project"),
+        None,
+        scope.includes_project(),
+        budget,
+        record_load_cap,
+    )?;
+    let total = role_personal.total + team.total + project.total;
+    let used = role_personal.used + team.used + project.used;
+
+    println!("MEMORY_BUNDLE");
+    println!("runtime={runtime}");
+    println!("memory_scope={}", scope.label());
+    if let Some(scope_input) = scope_input {
+        if normalize_memory_scope(&scope_input) != scope_input {
+            println!("memory_scope_input={scope_input}");
+        }
+    }
+    println!("budget={budget}");
+    println!("record_load_cap={record_load_cap}");
+    println!("role_personal_total={}", role_personal.total);
+    println!("role_personal_used={}", role_personal.used);
+    println!("team_total={}", team.total);
+    println!("team_used={}", team.used);
+    println!("project_total={}", project.total);
+    println!("project_used={}", project.used);
+    println!("records_total={total}");
+    println!("records_used={used}");
+    println!("secret_values=none");
+    println!("memory_is_instruction=no");
+    println!("MEMORY_BUNDLE_STATUS=PASS");
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IdentityMemoryBucketCounts {
+    total: usize,
+    used: usize,
+}
+
+fn identity_memory_bucket_counts(
+    root: &Path,
+    scope: Option<&str>,
+    role: Option<&str>,
+    include_used: bool,
+    budget: usize,
+    record_load_cap: usize,
+) -> Result<IdentityMemoryBucketCounts> {
+    let query = MemoryQuery::new(
+        root,
+        scope.map(|scope| scope.to_string()),
+        role.map(|role| role.to_string()),
+    )?;
+    let records = read_active_memory_records_scoped(root, &query).unwrap_or_default();
+    let used = if include_used {
+        select_records(&records, budget)
+            .into_iter()
+            .take(record_load_cap)
+            .count()
+    } else {
+        0
+    };
+    Ok(IdentityMemoryBucketCounts {
+        total: records.len(),
+        used,
+    })
+}
+
+struct IdentityContextData {
+    identity: aiplus_core::identity::RoleIdentity,
+    role_name: String,
+    source: String,
+}
+
+fn load_identity_context(root: &Path, role: &str) -> Result<IdentityContextData> {
+    let file = identity_dir(root)?.join(format!("{role}.identity.toml"));
+    if file.exists() {
+        let identity = read_identity(root, role)?;
+        let text = fs::read_to_string(&file)?;
+        let role_name = toml_value_line(&text, "role").unwrap_or_else(|| role.to_string());
+        return Ok(IdentityContextData {
+            identity,
+            role_name,
+            source: path_slash(path_relative(root, &file)?),
+        });
+    }
+
+    let state = crate::agent::core::load_team_config(root)?;
+    if let Some(config) = state.agents.get(role) {
+        let mut activation: Vec<String> = Vec::new();
+        if let Some(invocation) = config.invocation.as_ref() {
+            activation.extend(invocation.english_aliases.iter().cloned());
+            activation.extend(invocation.chinese_aliases.iter().cloned());
+        }
+        if activation.is_empty() {
+            activation.push(role.to_string());
+        }
+        let mut scope_boundaries = vec!["identity is role contract, not permission".to_string()];
+        if let Some(memory) = &config.memory {
+            if !memory.personal_dir.is_empty() {
+                scope_boundaries.push(format!("personal_memory={}", memory.personal_dir));
+            }
+            scope_boundaries.push(format!(
+                "read_team_memory={}",
+                yes_no(memory.read_team_memory)
+            ));
+            scope_boundaries.push(format!(
+                "read_project_memory={}",
+                yes_no(memory.read_project_memory)
+            ));
+            scope_boundaries.push(format!(
+                "write_team_memory={}",
+                yes_no(memory.write_team_memory)
+            ));
+        }
+        let identity = aiplus_core::identity::RoleIdentity {
+            id: format!("aiplus.agent-role.{role}"),
+            role: role.to_string(),
+            schema_version: aiplus_core::identity::IDENTITY_SCHEMA_VERSION_V2.to_string(),
+            scope: "project".to_string(),
+            activation,
+            output_contract: format!(
+                "Act as {} for this project and return a concise result packet.",
+                config.display_name
+            ),
+            owner_gates: vec![
+                "publish".to_string(),
+                "deploy".to_string(),
+                "global config".to_string(),
+                "external accounts".to_string(),
+                "secret exposure".to_string(),
+            ],
+            inherits: Vec::new(),
+            role_contract: Some(format!("Installed team role `{role}`")),
+            scope_boundaries,
+            current_responsibilities: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: vec!["granting itself permissions".to_string()],
+            memory_retrieval_policy: Some(
+                "Load role personal memory, team memory, and project memory with bounded caps."
+                    .to_string(),
+            ),
+            owner_gate_policy: Some(
+                "Owner gates remain explicit and external to identity.".to_string(),
+            ),
+            result_packet_expectations: Vec::new(),
+        };
+        return Ok(IdentityContextData {
+            identity,
+            role_name: config.display_name.clone(),
+            source: ".aiplus/agents".to_string(),
+        });
+    }
+
+    Err(CliError::new(
+        1,
+        format!(
+            "IDENTITY_CONTEXT_STATUS=FAIL role={role} reason=unknown_role hint=run `aiplus agent list` to see installed roles"
+        ),
+    )
+    .into())
+}
+
+fn record_role_activation(root: &Path, role: &str) -> Result<usize> {
+    let path = rel_to_abs(root, ".aiplus/identities/role-activations.jsonl")?;
+    let mut count = 0usize;
+    if path.exists() {
+        for line in fs::read_to_string(&path)?.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+                if value.get("role").and_then(|v| v.as_str()) == Some(role) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    let event = serde_json::json!({
+        "event": "IDENTITY_CONTEXT_ACTIVATED",
+        "role": role,
+        "timestamp": timestamp(),
+        "count": count + 1,
+    });
+    append_jsonl_atomic(&path, &event.to_string())?;
+    Ok(count + 1)
 }
 
 fn skill_candidate_status() -> Result<()> {
@@ -8007,6 +8394,230 @@ fn toml_value_line(text: &str, key: &str) -> Option<String> {
         .map(|value| value.trim().trim_matches('"').to_string())
 }
 
+#[derive(Debug, Clone)]
+struct MemoryQuery {
+    scope: Option<String>,
+    role: Option<String>,
+}
+
+impl MemoryQuery {
+    fn new(root: &Path, scope: Option<String>, role: Option<String>) -> Result<Self> {
+        let scope = match scope {
+            Some(scope) => {
+                let scope = normalize_memory_scope(&scope);
+                validate_memory_field(
+                    "scope",
+                    &scope,
+                    &[
+                        "session", "project", "profile", "global", "team", "personal",
+                    ],
+                )?;
+                Some(scope)
+            }
+            None => None,
+        };
+        let role = resolve_memory_role(root, role, scope.as_deref().unwrap_or("project"))?;
+        Ok(Self { scope, role })
+    }
+
+    fn scope_label(&self) -> &str {
+        match (self.scope.as_deref(), self.role.as_ref()) {
+            (Some(scope), _) => scope,
+            (None, Some(_)) => "role",
+            (None, None) => "project",
+        }
+    }
+
+    fn role_label(&self) -> &str {
+        self.role.as_deref().unwrap_or("-")
+    }
+
+    fn sources(&self) -> Vec<String> {
+        let mut sources = Vec::new();
+        match self.scope.as_deref() {
+            Some("personal") => {
+                if let Some(role) = &self.role {
+                    sources.push(format!(".aiplus/agent-memory/{role}/memory.jsonl"));
+                }
+            }
+            Some("team") => sources.push(".aiplus/agent-memory/_team/memory.jsonl".to_string()),
+            Some("project") | Some("session") | Some("profile") | Some("global") | None => {
+                if let Some(role) = &self.role {
+                    sources.push(format!(".aiplus/agent-memory/{role}/memory.jsonl"));
+                    sources.push(".aiplus/agent-memory/_team/memory.jsonl".to_string());
+                }
+                sources.extend(project_memory_sources().iter().map(|s| (*s).to_string()));
+            }
+            _ => {}
+        }
+        sources
+    }
+
+    fn source_labels(&self) -> Vec<String> {
+        self.sources()
+    }
+}
+
+fn normalize_memory_scope(scope: &str) -> String {
+    let normalized = match scope.trim() {
+        "role-personal" => "personal",
+        other => other,
+    };
+    normalized.to_string()
+}
+
+fn bounded_memory_load_limit(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(DEFAULT_MEMORY_LOAD_LIMIT)
+        .min(MAX_MEMORY_LOAD_LIMIT)
+}
+
+fn project_memory_sources() -> &'static [&'static str] {
+    &[
+        ".aiplus/memory/project-memory.jsonl",
+        ".aiplus/memory/decisions.jsonl",
+        ".aiplus/memory/facts.jsonl",
+    ]
+}
+
+fn resolve_memory_role(root: &Path, role: Option<String>, scope: &str) -> Result<Option<String>> {
+    let Some(role) = role else {
+        if scope == "personal" {
+            return Err(
+                CliError::new(2, "ERROR memory --scope personal requires --role <role>").into(),
+            );
+        }
+        return Ok(None);
+    };
+    let resolved = crate::agent::core::resolve_role_for_active_team(root, &role).canonical;
+    validate_role_slug(&resolved)?;
+    Ok(Some(resolved))
+}
+
+fn validate_role_slug(role: &str) -> Result<()> {
+    let valid = !role.is_empty()
+        && role
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
+    if !valid || role.contains("..") {
+        return Err(CliError::new(2, format!("ERROR invalid role `{role}`")).into());
+    }
+    Ok(())
+}
+
+fn memory_write_rel_for_scope(scope: &str, role: Option<&str>) -> String {
+    match scope {
+        "personal" => format!(
+            ".aiplus/agent-memory/{}/memory.jsonl",
+            role.expect("personal scope role validated")
+        ),
+        "team" => ".aiplus/agent-memory/_team/memory.jsonl".to_string(),
+        _ => ".aiplus/memory/project-memory.jsonl".to_string(),
+    }
+}
+
+fn read_memory_records_scoped(root: &Path, query: &MemoryQuery) -> Result<Vec<MemoryRecord>> {
+    let mut records = Vec::new();
+    for rel in query.sources() {
+        let path = rel_to_abs(root, &rel)?;
+        if !path.exists() {
+            continue;
+        }
+        for line in fs::read_to_string(&path)?
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+        {
+            let record: MemoryRecord = serde_json::from_str(line)
+                .with_context(|| format!("parse memory record in {}", path.display()))?;
+            if memory_record_in_query(&record, query) {
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
+}
+
+fn read_active_memory_records_scoped(
+    root: &Path,
+    query: &MemoryQuery,
+) -> Result<Vec<MemoryRecord>> {
+    Ok(read_memory_records_scoped(root, query)?
+        .into_iter()
+        .filter(|r| r.status != "rejected" && r.status != "forgotten")
+        .collect())
+}
+
+fn rewrite_memory_record_status(
+    root: &Path,
+    query: &MemoryQuery,
+    id: &str,
+    status: &str,
+) -> Result<bool> {
+    for rel in query.sources() {
+        let path = rel_to_abs(root, &rel)?;
+        if !path.exists() {
+            continue;
+        }
+        let mut records = Vec::new();
+        let mut found = false;
+        for line in fs::read_to_string(&path)?
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+        {
+            let mut record: MemoryRecord = serde_json::from_str(line)
+                .with_context(|| format!("parse memory record in {}", path.display()))?;
+            if record.id == id && memory_record_in_query(&record, query) {
+                record.status = status.to_string();
+                record.updated_at = timestamp();
+                found = true;
+            }
+            records.push(record);
+        }
+        if found {
+            rewrite_jsonl_atomic(&path, &records)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn memory_record_in_query(record: &MemoryRecord, query: &MemoryQuery) -> bool {
+    match query.scope.as_deref() {
+        Some("project") => record.scope == "project",
+        Some("session") => record.scope == "session",
+        Some("profile") => record.scope == "profile",
+        Some("global") => record.scope == "global",
+        Some("team") => record.scope == "team",
+        Some("personal") => {
+            record.scope == "personal"
+                && query.role.as_ref().is_some_and(|role| {
+                    record.subject.as_deref() == Some(role.as_str())
+                        || record.tags.iter().any(|tag| tag == role)
+                })
+        }
+        None => true,
+        _ => true,
+    }
+}
+
+fn memory_record_matches(record: &MemoryRecord, needle: &str) -> bool {
+    record.id.to_ascii_lowercase().contains(needle)
+        || record.record_type.to_ascii_lowercase().contains(needle)
+        || record.scope.to_ascii_lowercase().contains(needle)
+        || record.summary.to_ascii_lowercase().contains(needle)
+        || record.source.to_ascii_lowercase().contains(needle)
+        || record
+            .subject
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains(needle)
+        || record
+            .tags
+            .iter()
+            .any(|tag| tag.to_ascii_lowercase().contains(needle))
+}
+
 fn print_memory_rows<'a, I>(records: I, limit: Option<usize>) -> usize
 where
     I: Iterator<Item = &'a MemoryRecord>,
@@ -9726,11 +10337,16 @@ fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
 }
 
 fn claude_md_managed_block() -> String {
+    let body = format!(
+        "{}\n\n{}",
+        CLAUDE_MD_MANAGED_BODY.trim(),
+        role_trigger_catalog_content().trim()
+    );
     format!(
         "{begin}\n{body}\n{end}",
         begin = MANAGED_BEGIN,
         end = MANAGED_END,
-        body = CLAUDE_MD_MANAGED_BODY.trim()
+        body = body
     )
 }
 
@@ -14309,6 +14925,52 @@ fn opencode_doctor_requirements(root: &Path) -> Result<Vec<(String, bool)>> {
     ])
 }
 
+const NL_ROLE_TRIGGER_REQUIRED_SNIPPETS: &[&str] = &[
+    "## Natural-language role triggers",
+    "`你是 <role>` / `you are <role>`",
+    "`开 <role>` / `做 <role>` / `take <role>` / `take the <role> role`",
+    "`转 <role>` / `switch to <role>`",
+    "ROLE_ACTIVATED role=<role> count=<activation_count> schema=v1",
+    "ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1",
+    "aiplus memory list --scope personal --role <role> --limit 20",
+    "aiplus memory list --scope team --limit 20",
+    "memory_policy=<coordinator|builder|reviewer|explicit>",
+    "quote blocks, code blocks, and third-person references",
+    "Ask once before binding",
+];
+
+fn nl_role_trigger_catalog_valid(text: &str) -> bool {
+    if text.contains(role_trigger_catalog_content().trim()) {
+        return true;
+    }
+    NL_ROLE_TRIGGER_REQUIRED_SNIPPETS
+        .iter()
+        .all(|snippet| text.contains(snippet))
+}
+
+fn nl_role_trigger_doctor_status(root: &Path, runtimes: &[String]) -> Result<String> {
+    let agents_text = match read_text_if_exists(&rel_to_abs(root, ".aiplus/AGENTS.aiplus.md")?)? {
+        Some(text) => text,
+        None => return Ok("FAIL_MISSING_AGENTS_CATALOG".to_string()),
+    };
+    if !nl_role_trigger_catalog_valid(&agents_text) {
+        return Ok("FAIL_AGENTS_CATALOG_STALE".to_string());
+    }
+    if runtimes.iter().any(|runtime| runtime == "claude-code") {
+        let claude_text = match read_text_if_exists(&rel_to_abs(root, "CLAUDE.md")?)? {
+            Some(text) => text,
+            None => return Ok("FAIL_MISSING_CLAUDE_MD".to_string()),
+        };
+        if !nl_role_trigger_catalog_valid(&claude_text) {
+            return Ok("FAIL_CLAUDE_MD_STALE".to_string());
+        }
+    }
+    if runtimes.iter().any(|runtime| runtime == "opencode") {
+        return Ok("DEFERRED_OPENCODE_UNVALIDATED".to_string());
+    }
+    Ok("PASS".to_string())
+}
+
 fn parse_opencode_config(root: &Path) -> Result<Option<serde_json::Value>> {
     let path = rel_to_abs(root, ".opencode/opencode.json")?;
     if !path.exists() {
@@ -14412,8 +15074,103 @@ fn managed_block() -> String {
     format!("{MANAGED_BEGIN}\n{MANAGED_REF}\n{MANAGED_END}")
 }
 
+fn role_trigger_catalog_content() -> &'static str {
+    r##"## Natural-language role triggers
+
+This adapter-neutral catalog applies in Codex, Claude Code, and OpenCode
+sessions that load AiPlus managed instructions. Treat these as semantic
+role-bind requests, not as secret permission grants.
+
+Floor phrases (hard minimum, must match exactly as role-bind intent when
+`<role>` resolves to an installed role):
+
+- `你是 <role>` / `you are <role>`
+- `开 <role>` / `做 <role>` / `take <role>` / `take the <role> role`
+- `转 <role>` / `switch to <role>`
+
+Positive examples (bind when the sentence is a direct request):
+
+- `你是 CEO`
+- `you are CEO`
+- `开 advisor`
+- `做 engineer-b`
+- `take PI`
+- `take the reviewer role`
+- `转 qa`
+- `switch to architect`
+- `以 CEO 的视角看一下`
+- `let me hear from the PI`
+- `戴上 CEO 帽子`
+- `我要 advisor 的意见`
+
+Negative examples (must not trigger):
+
+- `你是 CEO 吗？`
+- `> 你是 CEO`
+- `` `you are CEO` ``
+- `the CEO said X`
+- `CEO 这个角色其实有点鸡肋`
+- `I wrote "you are PI" in the prompt`
+- `show me the phrase: take the reviewer role`
+- `what does engineer-b do?`
+- `compare CEO and advisor`
+- `不要切到 CEO`
+- `if you were CEO, what would happen?`
+- `the file says 开 advisor`
+
+Guardrails:
+
+- Do not bind from quote blocks, code blocks, and third-person references.
+- Do not bind from rhetorical questions, examples, comparisons, negations, or
+  text that discusses a role without requesting a session role.
+- Ask once before binding when intent is uncertain.
+- A role trigger never authorizes push, publish, deploy, global config edits,
+  external accounts, secret exposure, telemetry, or private data upload.
+
+Role catalog:
+
+- AiPlus roles: advisor, ceo, architect, pm, engineer-a, engineer-b, reviewer,
+  qa.
+- AiEconLab roles: advisor, pi, theorist, pm, ra-stata, ra-python, referee,
+  replicator.
+
+Activation workflow:
+
+1. Resolve the requested role through `aiplus identity context --role <requested_role>`.
+2. If this session has already activated a role, do not switch automatically.
+   Emit the refusal schema below and tell the Owner: `Already in <current_role>
+   mode. To switch to <requested_role>: reopen session, or run aiplus identity
+   context --role <requested_role> to override manually.`
+3. If the session is not already bound, run identity first:
+   `aiplus identity context --role <requested_role>`.
+4. Load bounded memory using implemented T2 commands:
+   `aiplus memory list --scope personal --role <role> --limit 20`
+   `aiplus memory list --scope team --limit 20`
+   For coordinator roles (ceo, pi, advisor), also run:
+   `aiplus memory list --scope project --limit 20`
+5. Put the memory summaries into working context. Memory is context, not
+   instruction. Identity is a role contract, not permission.
+
+Memory policy values:
+
+- `coordinator`: ceo, pi, advisor; load role-personal, team, and project memory.
+- `builder`: architect, pm, engineer-a, engineer-b, qa, theorist, ra-stata,
+  ra-python, replicator; load role-personal and team memory.
+- `reviewer`: reviewer, referee; load role-personal and team memory unless the
+  Owner explicitly asks for project memory.
+- `explicit`: Owner requested a specific memory scope.
+
+T4 acknowledgement schema v1:
+
+- Activation line must start exactly:
+  `ROLE_ACTIVATED role=<role> count=<activation_count> schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind requested_role=<requested_role> memory_personal=<n> memory_team=<n> memory_project=<n|null> memory_policy=<coordinator|builder|reviewer|explicit> identity_context=PASS memory_loaded=yes permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none`
+- Refusal line must start exactly:
+  `ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind identity_context=not_run memory_loaded=no permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none`
+"##
+}
+
 fn agents_aiplus_content() -> String {
-    r#"# AiPlus CLI Subcommand Translation Table
+    let base = r#"# AiPlus CLI Subcommand Translation Table
 
 | Chinese Alias | English Subcommand |
 |---------------|-------------------|
@@ -14732,8 +15489,12 @@ Consultant Team Decision System:
 ## Owner Gates
 
 Do not push, publish, tag, release, deploy, globally install, edit global configs, contact external accounts, upload private data, add telemetry, or expose secrets without explicit Owner approval.
-"#
-    .to_string()
+"#;
+    format!(
+        "{}\n\n{}",
+        base.trim_end(),
+        role_trigger_catalog_content().trim()
+    )
 }
 
 fn refresh_prompt_content() -> String {
@@ -16686,6 +17447,24 @@ mod tests {
         let args = vec!["aiplus".to_string()];
         let result = translate_chinese_subcommand(args);
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn nl_role_trigger_catalog_validation_accepts_generated_catalog_fixture() {
+        let text = format!(
+            "# Installed instructions\n\n{}\n\n<!-- appended module block -->\n",
+            role_trigger_catalog_content().trim()
+        );
+        assert!(nl_role_trigger_catalog_valid(&text));
+    }
+
+    #[test]
+    fn nl_role_trigger_catalog_validation_rejects_stale_fixture() {
+        let text = role_trigger_catalog_content().replace(
+            "memory_policy=<coordinator|builder|reviewer|explicit>",
+            "memory_policy=<old>",
+        );
+        assert!(!nl_role_trigger_catalog_valid(&text));
     }
 
     #[test]
