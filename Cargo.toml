@@ -22,6 +22,7 @@ fs2 = "0.4"
 sha2 = "0.10"
 hex = "0.4"
 shell-words = "1.1"
+rexpect = "0.7.1"
 # keyring: cross-platform OS keyring (macOS Keychain / Linux Secret Service /
 # Windows Credential Manager) for secret-broker token storage. Phase 2 of the
 # multi-platform rollout (Phase 1 added Linux + Intel Mac binary distribution

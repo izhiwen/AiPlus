@@ -28,3 +28,6 @@ toml.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+rexpect.workspace = true
