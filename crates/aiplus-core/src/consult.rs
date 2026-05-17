@@ -975,11 +975,141 @@ fn normalize_dispatch_gate_spans(task: &str) -> Vec<TextSpan> {
     spans
 }
 
+const ACTION_BOUNDARY_CONNECTORS: &[&str] = &[
+    "and",
+    "then",
+    "but",
+    "however",
+    "also",
+    "afterward",
+    "afterwards",
+];
+
+const ACTION_BOUNDARY_PUNCTUATION: &[char] = &[',', ';', '.', '\n'];
+
 fn split_gate_clauses(text: &str) -> Vec<&str> {
-    text.split(|ch: char| matches!(ch, '\n' | '.' | ';'))
-        .flat_map(|part| part.split(" then "))
-        .flat_map(|part| part.split(" Then "))
-        .collect()
+    let mut clauses = Vec::new();
+    for part in text.split(|ch: char| matches!(ch, '\n' | '.' | ';')) {
+        clauses.extend(split_action_boundary_clauses(part));
+    }
+    clauses
+}
+
+fn split_action_boundary_clauses(text: &str) -> Vec<&str> {
+    let mut clauses = Vec::new();
+    let mut start = 0usize;
+    let mut search_start = 0usize;
+
+    while search_start < text.len() {
+        let Some((boundary_start, boundary_end)) =
+            next_action_boundary_split(text, search_start, start)
+        else {
+            break;
+        };
+        clauses.push(&text[start..boundary_start]);
+        start = boundary_end;
+        search_start = boundary_end;
+    }
+
+    clauses.push(&text[start..]);
+    clauses
+}
+
+fn next_action_boundary_split(
+    text: &str,
+    search_start: usize,
+    clause_start: usize,
+) -> Option<(usize, usize)> {
+    let mut best: Option<(usize, usize)> = None;
+
+    for connector in ACTION_BOUNDARY_CONNECTORS {
+        for (idx, _) in text[search_start..].match_indices(connector) {
+            let connector_start = search_start + idx;
+            let connector_end = connector_start + connector.len();
+            if !is_word_boundary(text, connector_start, connector_end) {
+                continue;
+            }
+            let prefix = &text[clause_start..connector_start];
+            let after = trim_leading_boundary_padding(&text[connector_end..]);
+            if mentions_any_gate_kind(prefix) && starts_executor_or_negated_segment(after) {
+                continue;
+            }
+            if !starts_action_boundary_segment(after) {
+                continue;
+            }
+            best = Some(best.map_or((connector_start, connector_end), |current| {
+                if connector_start < current.0 {
+                    (connector_start, connector_end)
+                } else {
+                    current
+                }
+            }));
+        }
+    }
+
+    for (idx, ch) in text[search_start..].char_indices() {
+        if ch != ',' {
+            continue;
+        }
+        let boundary_start = search_start + idx;
+        let boundary_end = boundary_start + ch.len_utf8();
+        let prefix = &text[clause_start..boundary_start];
+        let after = trim_leading_boundary_padding(&text[boundary_end..]);
+        if mentions_any_gate_kind(prefix) || !starts_executor_or_negated_segment(after) {
+            continue;
+        }
+        best = Some(best.map_or((boundary_start, boundary_end), |current| {
+            if boundary_start < current.0 {
+                (boundary_start, boundary_end)
+            } else {
+                current
+            }
+        }));
+    }
+
+    best
+}
+
+fn trim_leading_boundary_padding(text: &str) -> &str {
+    text.trim_start_matches(|ch: char| {
+        ch.is_ascii_whitespace() || matches!(ch, '`' | '"' | '\'' | ':' | '-' | '(' | ')' | ',')
+    })
+}
+
+fn starts_action_boundary_segment(text: &str) -> bool {
+    starts_executor_or_negated_segment(text) || starts_outward_action_segment(text)
+}
+
+fn starts_executor_or_negated_segment(text: &str) -> bool {
+    starts_with_any_word(
+        text,
+        &[
+            "run",
+            "running",
+            "execute",
+            "executing",
+            "perform",
+            "performing",
+            "do",
+            "don't",
+            "dont",
+            "never",
+            "no",
+            "without",
+            "avoid",
+        ],
+    )
+}
+
+fn starts_outward_action_segment(text: &str) -> bool {
+    starts_with_any_word(
+        text,
+        &[
+            "publish", "release", "deploy", "tag", "push", "upload", "contact", "email", "send",
+            "create", "modify", "delete", "mutate", "print", "show", "expose", "read", "rotate",
+            "resolve", "update", "edit", "repair", "bump", "prepare", "add", "enable",
+        ],
+    )
 }
 
 fn gate_kind_for_id(id: &str) -> Option<GateKind> {
@@ -1132,6 +1262,24 @@ fn mentions_gate_kind(clause: &str, kind: GateKind) -> bool {
         GateKind::VersionTag => has_word(clause, "tag") || clause.contains("version bump"),
         GateKind::ArtifactUpload => has_word(clause, "upload") || has_word(clause, "artifact"),
     }
+}
+
+fn mentions_any_gate_kind(clause: &str) -> bool {
+    [
+        GateKind::Publish,
+        GateKind::Release,
+        GateKind::Deploy,
+        GateKind::RemoteVcs,
+        GateKind::GlobalConfig,
+        GateKind::ExternalAccount,
+        GateKind::SecretExposure,
+        GateKind::PrivateDataUpload,
+        GateKind::Telemetry,
+        GateKind::VersionTag,
+        GateKind::ArtifactUpload,
+    ]
+    .into_iter()
+    .any(|kind| mentions_gate_kind(clause, kind))
 }
 
 fn is_safe_gate_clause(clause: &str) -> bool {
@@ -1488,9 +1636,18 @@ fn is_actionable_executor_connector(before_executor: &str) -> bool {
     if trimmed.is_empty() || trimmed == "please" {
         return true;
     }
-    ["and", "then", "by", "to", "please"]
+    if ACTION_BOUNDARY_PUNCTUATION
+        .iter()
+        .any(|punctuation| trimmed.ends_with(*punctuation))
+    {
+        return true;
+    }
+    ACTION_BOUNDARY_CONNECTORS
         .iter()
         .any(|connector| trimmed.ends_with(&format!(" {connector}")))
+        || ["by", "to", "please"]
+            .iter()
+            .any(|connector| trimmed.ends_with(&format!(" {connector}")))
 }
 
 fn last_word_span(text: &str, word: &str) -> Option<(usize, usize)> {
@@ -1526,12 +1683,26 @@ fn has_negated_executor_prefix(prefix: &str) -> bool {
 }
 
 fn local_negation_scope_before_executor(prefix: &str) -> &str {
-    let last_connector_end = [" and ", " then "]
-        .iter()
-        .filter_map(|connector| prefix.rfind(connector).map(|idx| idx + connector.len()))
-        .max()
-        .unwrap_or(0);
+    let last_connector_end = action_boundary_ends(prefix).into_iter().max().unwrap_or(0);
     prefix[last_connector_end..].trim()
+}
+
+fn action_boundary_ends(text: &str) -> Vec<usize> {
+    let mut ends = Vec::new();
+    for connector in ACTION_BOUNDARY_CONNECTORS {
+        for (start, _) in text.match_indices(connector) {
+            let end = start + connector.len();
+            if is_word_boundary(text, start, end) {
+                ends.push(end);
+            }
+        }
+    }
+    for (idx, ch) in text.char_indices() {
+        if ACTION_BOUNDARY_PUNCTUATION.contains(&ch) {
+            ends.push(idx + ch.len_utf8());
+        }
+    }
+    ends
 }
 
 fn has_intervening_safety_marker(text: &str) -> bool {
@@ -1553,6 +1724,18 @@ fn has_intervening_safety_marker(text: &str) -> bool {
 
 fn has_any_word(text: &str, words: &[&str]) -> bool {
     words.iter().any(|word| has_word(text, word))
+}
+
+fn starts_with_any_word(text: &str, words: &[&str]) -> bool {
+    let text = text.trim_start();
+    words.iter().any(|word| {
+        text == *word
+            || text.strip_prefix(word).is_some_and(|rest| {
+                rest.chars()
+                    .next()
+                    .is_some_and(|ch| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
+            })
+    })
 }
 
 fn has_word(text: &str, word: &str) -> bool {
@@ -1923,6 +2106,13 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
             "Do not run tests and run \"git push origin main\".",
             "Do not execute local tests and execute 'git push origin main'.",
             "Never run the test suite and perform the remote VCS update.",
+            "Do not run tests but run git push origin main.",
+            "Do not run tests, run git push origin main.",
+            "Do not run tests however, deploy production.",
+            "Do not run tests and afterward perform the remote VCS update.",
+            "Do not run tests and afterwards push origin main.",
+            "Do not run tests also publish the package.",
+            "Do not run tests but push origin main.",
         ] {
             let matched = match_members(&team, task, Tier::Heavy);
             let gates = match_gates(&team, &matched, task);
@@ -1939,7 +2129,13 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
         for task in [
             "Do not run tests and do not run `git push origin main`.",
             "Do not run tests and never execute \"git push origin main\".",
+            "Do not run tests but do not run git push origin main.",
+            "Do not run tests, do not deploy production.",
+            "Do not run tests however, never publish the package.",
+            "Do not run tests also avoid pushing origin main.",
+            "Do not run tests afterward do not perform the remote VCS update.",
             "Do not run tests and document that `git push origin main` is owner-gated; do not execute the command.",
+            "No publish, release, deploy, global config, external accounts, or secrets.",
         ] {
             let matched = match_members(&team, task, Tier::Heavy);
             let analysis = analyze_dispatch_gate(task, &matched, &team);
