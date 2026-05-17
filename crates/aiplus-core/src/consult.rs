@@ -1516,11 +1516,22 @@ fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
 }
 
 fn has_negated_executor_prefix(prefix: &str) -> bool {
-    prefix.contains("do not")
-        || prefix.contains("don't")
-        || prefix.contains("dont")
-        || prefix.contains("never")
-        || prefix.contains("without")
+    let local = local_negation_scope_before_executor(prefix);
+    local.contains("do not")
+        || local.contains("don't")
+        || local.contains("dont")
+        || local.contains("never")
+        || local.contains("without")
+        || local.starts_with("no ")
+}
+
+fn local_negation_scope_before_executor(prefix: &str) -> &str {
+    let last_connector_end = [" and ", " then "]
+        .iter()
+        .filter_map(|connector| prefix.rfind(connector).map(|idx| idx + connector.len()))
+        .max()
+        .unwrap_or(0);
+    prefix[last_connector_end..].trim()
 }
 
 fn has_intervening_safety_marker(text: &str) -> bool {
@@ -1900,6 +1911,42 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
             assert!(
                 !gates.is_empty(),
                 "{task:?} should fire even with descriptive setup text"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_gate_fires_when_unrelated_negation_precedes_protected_action() {
+        let team = g2_gate_team();
+        for task in [
+            "Do not run tests and run `git push origin main`.",
+            "Do not run tests and run \"git push origin main\".",
+            "Do not execute local tests and execute 'git push origin main'.",
+            "Never run the test suite and perform the remote VCS update.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, task);
+            assert!(
+                !gates.is_empty(),
+                "{task:?} should fire because the protected action is not negated"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_gate_keeps_fully_negated_protected_action_safe_after_conjunction() {
+        let team = g2_gate_team();
+        for task in [
+            "Do not run tests and do not run `git push origin main`.",
+            "Do not run tests and never execute \"git push origin main\".",
+            "Do not run tests and document that `git push origin main` is owner-gated; do not execute the command.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let analysis = analyze_dispatch_gate(task, &matched, &team);
+            assert!(
+                analysis.fired.is_empty(),
+                "{task:?} should stay safe because the protected action is negated or descriptive: {:?}",
+                analysis
             );
         }
     }
