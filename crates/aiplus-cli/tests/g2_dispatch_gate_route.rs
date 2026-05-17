@@ -71,7 +71,7 @@ schema_version = "0.1"
 id = "release_automation"
 name = "Release / Automation"
 default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
-triggers = ["release", "tag", "publish", "artifact", "upload", "deploy"]
+triggers = ["release", "tag", "publish", "artifact", "upload", "deploy", "push", "remote update"]
 
 [[members]]
 id = "trust_safety"
@@ -81,7 +81,7 @@ triggers = ["secret", "external account", "private data", "telemetry", "global c
 
 [[triggers]]
 id = "release"
-patterns = ["release", "tag", "publish", "artifact", "upload", "deploy"]
+patterns = ["release", "tag", "publish", "artifact", "upload", "deploy", "push", "remote update"]
 tier = "HEAVY"
 members = ["release_automation", "trust_safety"]
 stop_gate = true
