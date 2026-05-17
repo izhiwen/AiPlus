@@ -1,13 +1,17 @@
 use crate::agent::cache;
+use crate::agent::core::AgentConfig;
 use crate::agent::core::{
-    aieconlab_alias_help, get_role_config, is_unknown_active_aieconlab_alias,
-    resolve_role_for_active_team,
+    aieconlab_alias_help, get_role_config, get_role_config_for_project,
+    is_unknown_active_aieconlab_alias, resolve_role_for_active_team,
 };
 use crate::agent::state;
 use crate::agent::worktree;
 use aiplus_core::consult;
 use anyhow::{anyhow, Result};
 use std::collections::BTreeSet;
+use std::path::Path;
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -> Result<()> {
     let approved: BTreeSet<String> = owner_approved.iter().cloned().collect();
@@ -50,99 +54,26 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                     ));
                 }
 
-                println!("Routing task to {}: {}", canonical_role, task);
-                if let Ok(cache) = cache::global_cache().lock() {
-                    cache.invalidate(canonical_role, cache::InvalidationReason::RoleRouteCalled);
-                }
-                if config.needs_worktree {
-                    // Worktree provisioning requires a git repo. If the project
-                    // isn't one, surface a clear note but still record the
-                    // dispatch so the audit log entry isn't lost.
-                    match worktree::worktree_exists_for_role(&project_root, canonical_role) {
-                        Ok(Some(path)) => {
-                            println!("  Using existing worktree: {}", path.display());
-                        }
-                        Ok(None) => {
-                            println!("  Creating worktree for {}...", canonical_role);
-                            let template = config.worktree_path.as_deref();
-                            match worktree::create_worktree(&project_root, canonical_role, template)
-                            {
-                                Ok(path) => {
-                                    println!("  Worktree created: {}", path.display());
-                                }
-                                Err(e) => {
-                                    eprintln!("  ERROR: Failed to create worktree: {}", e);
-                                    // P1.3: record the failed dispatch so
-                                    // `dispatch-history --outcome fail` can
-                                    // surface worktree-creation regressions.
-                                    let detail = format!("{e}");
-                                    let _ = state::record_dispatch_with_outcome(
-                                        &project_root,
-                                        canonical_role,
-                                        task,
-                                        "aiplus agent route",
-                                        state::DispatchOutcome::Fail {
-                                            reason: "worktree_create_failed",
-                                            detail: &detail,
-                                        },
-                                    );
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            // Likely "not a git repository" — non-fatal. Warn
-                            // and continue so we still record the dispatch.
-                            eprintln!(
-                                "  NOTE: skipping worktree provisioning ({err}); \
-                                 init this project with `git init` to enable per-role worktrees."
-                            );
-                        }
-                    }
-                }
-                // Persist the dispatch so this becomes a real side effect, not
-                // just narrative. Phase D v0: writes audit log + marks role
-                // active. v1: mirrors to project memory and surfaces a
-                // consultant nudge for medium/heavy tasks.
-                let dispatch_result = if role_input.is_some() {
-                    state::record_dispatch_with_role_input(
+                let sidecars = requested_sidecars(canonical_role);
+                if sidecars.is_empty() {
+                    route_known_role(
                         &project_root,
                         canonical_role,
                         role_input,
                         task,
-                        "aiplus agent route",
-                    )
+                        config,
+                        None,
+                        DispatchKind::Primary,
+                    )?;
                 } else {
-                    state::record_dispatch(
+                    route_batch(
                         &project_root,
                         canonical_role,
+                        role_input,
                         task,
-                        "aiplus agent route",
-                    )
-                };
-                if let Err(e) = dispatch_result {
-                    eprintln!("  WARN: failed to record dispatch: {e}");
-                } else {
-                    println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
-                }
-                // S7: surface this role's secret needs so the agent
-                // that receives the dispatch knows which broker
-                // aliases to pull. We do NOT auto-resolve here (that
-                // would require the keyring unlock at every route);
-                // we do print the recommended command. Future v1:
-                // detect a child process arg and wrap automatically.
-                if let Some(ref needs) = config.secret_needs {
-                    if !needs.aliases.is_empty() {
-                        let aliases = needs.aliases.join(",");
-                        println!(
-                            "  Secret needs (broker-required): [{aliases}]. \
-                             Run via: aiplus secret-broker run --aliases {aliases} \
-                             -- <child>"
-                        );
-                    }
-                }
-                if !task.is_empty() {
-                    run_consult(&project_root, canonical_role, task)?;
+                        config,
+                        sidecars,
+                    )?;
                 }
                 return Ok(());
             }
@@ -177,6 +108,282 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
     println!("Routing task to PI/CEO for scoring and dispatch: {task}");
     run_consult(&project_root, "pi", task)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchKind {
+    Primary,
+    Sidecar,
+}
+
+impl DispatchKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            DispatchKind::Primary => "primary",
+            DispatchKind::Sidecar => "sidecar",
+        }
+    }
+}
+
+fn requested_sidecars(primary_role: &str) -> Vec<String> {
+    let raw = std::env::var("AIPLUS_AGENT_ROUTE_SIDECARS")
+        .or_else(|_| std::env::var("AIPLUS_PERF1_SIDECARS"))
+        .unwrap_or_default();
+    raw.split(',')
+        .map(str::trim)
+        .filter(|role| !role.is_empty())
+        .filter(|role| *role != primary_role)
+        .filter(|role| matches!(*role, "reviewer" | "qa"))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn route_batch(
+    project_root: &Path,
+    primary_role: &str,
+    primary_role_input: Option<&str>,
+    task: &str,
+    primary_config: AgentConfig,
+    sidecars: Vec<String>,
+) -> Result<()> {
+    let batch_id = format!(
+        "batch-{}-{}",
+        aiplus_core::epoch_millis(),
+        primary_role.replace('/', "-")
+    );
+    println!(
+        "Dispatch batch {batch_id}: primary={primary_role} sidecars=[{}]",
+        sidecars.join(",")
+    );
+
+    let mut handles = Vec::new();
+    {
+        let project_root = project_root.to_path_buf();
+        let role = primary_role.to_string();
+        let role_input = primary_role_input.map(ToString::to_string);
+        let task = task.to_string();
+        let batch_id = batch_id.clone();
+        handles.push(thread::spawn(move || {
+            route_known_role(
+                &project_root,
+                &role,
+                role_input.as_deref(),
+                &task,
+                primary_config,
+                Some(&batch_id),
+                DispatchKind::Primary,
+            )
+        }));
+    }
+
+    for sidecar in sidecars {
+        let project_root = project_root.to_path_buf();
+        let task = sidecar_task(&sidecar, task);
+        let batch_id = batch_id.clone();
+        handles.push(thread::spawn(move || {
+            let config = get_role_config_for_project(&project_root, &sidecar)?;
+            route_known_role(
+                &project_root,
+                &sidecar,
+                None,
+                &task,
+                config,
+                Some(&batch_id),
+                DispatchKind::Sidecar,
+            )
+        }));
+    }
+
+    for handle in handles {
+        match handle.join() {
+            Ok(result) => result?,
+            Err(_) => return Err(anyhow!("dispatch batch worker panicked")),
+        }
+    }
+    Ok(())
+}
+
+fn sidecar_task(role: &str, task: &str) -> String {
+    match role {
+        "reviewer" => format!(
+            "{task}\n\nPERF-1 sidecar: review the primary implementation plan and flag correctness, safety, and regression risks."
+        ),
+        "qa" => format!(
+            "{task}\n\nPERF-1 sidecar: verify acceptance criteria and list focused test evidence."
+        ),
+        _ => task.to_string(),
+    }
+}
+
+fn route_known_role(
+    project_root: &Path,
+    role: &str,
+    role_input: Option<&str>,
+    task: &str,
+    config: AgentConfig,
+    batch_id: Option<&str>,
+    kind: DispatchKind,
+) -> Result<()> {
+    maybe_delay_for_perf_fixture(role);
+    let started = Instant::now();
+    println!("Routing task to {}: {}", role, task);
+    if kind == DispatchKind::Primary {
+        if let Ok(cache) = cache::global_cache().lock() {
+            cache.invalidate(role, cache::InvalidationReason::RoleRouteCalled);
+        }
+    }
+
+    let mut worktree_status = "skipped".to_string();
+    if config.needs_worktree {
+        // Worktree provisioning requires a git repo. If the project
+        // isn't one, surface a clear note but still record the
+        // dispatch so the audit log entry isn't lost.
+        match worktree::worktree_exists_for_role(project_root, role) {
+            Ok(Some(path)) => {
+                worktree_status = "reused".to_string();
+                println!("  Using existing worktree: {}", path.display());
+            }
+            Ok(None) => {
+                println!("  Creating worktree for {}...", role);
+                let template = config.worktree_path.as_deref();
+                match worktree::create_worktree(project_root, role, template) {
+                    Ok(path) => {
+                        worktree_status = "created".to_string();
+                        println!("  Worktree created: {}", path.display());
+                    }
+                    Err(e) => {
+                        worktree_status = "failed".to_string();
+                        eprintln!("  ERROR: Failed to create worktree: {}", e);
+                        // P1.3: record the failed dispatch so
+                        // `dispatch-history --outcome fail` can
+                        // surface worktree-creation regressions.
+                        let detail = format!("{e}");
+                        let _ = state::record_dispatch_with_outcome(
+                            project_root,
+                            role,
+                            task,
+                            "aiplus agent route",
+                            state::DispatchOutcome::Fail {
+                                reason: "worktree_create_failed",
+                                detail: &detail,
+                            },
+                        );
+                        record_dispatch_metric(
+                            project_root,
+                            batch_id,
+                            role,
+                            kind,
+                            "fail",
+                            &worktree_status,
+                            started.elapsed(),
+                        );
+                        return Err(e);
+                    }
+                }
+            }
+            Err(err) => {
+                // Likely "not a git repository" — non-fatal. Warn
+                // and continue so we still record the dispatch.
+                eprintln!(
+                    "  NOTE: skipping worktree provisioning ({err}); \
+                     init this project with `git init` to enable per-role worktrees."
+                );
+            }
+        }
+    }
+    // Persist the dispatch so this becomes a real side effect, not
+    // just narrative. Phase D v0: writes audit log + marks role
+    // active. v1: mirrors to project memory and surfaces a
+    // consultant nudge for medium/heavy tasks.
+    let dispatch_result = if role_input.is_some() {
+        state::record_dispatch_with_role_input(
+            project_root,
+            role,
+            role_input,
+            task,
+            "aiplus agent route",
+        )
+    } else {
+        state::record_dispatch(project_root, role, task, "aiplus agent route")
+    };
+    if let Err(e) = dispatch_result {
+        eprintln!("  WARN: failed to record dispatch: {e}");
+    } else {
+        println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
+    }
+    // S7: surface this role's secret needs so the agent
+    // that receives the dispatch knows which broker
+    // aliases to pull. We do NOT auto-resolve here (that
+    // would require the keyring unlock at every route);
+    // we do print the recommended command. Future v1:
+    // detect a child process arg and wrap automatically.
+    if let Some(ref needs) = config.secret_needs {
+        if !needs.aliases.is_empty() {
+            let aliases = needs.aliases.join(",");
+            println!(
+                "  Secret needs (broker-required): [{aliases}]. \
+                 Run via: aiplus secret-broker run --aliases {aliases} \
+                 -- <child>"
+            );
+        }
+    }
+    if !task.is_empty() {
+        run_consult(project_root, role, task)?;
+    }
+    record_dispatch_metric(
+        project_root,
+        batch_id,
+        role,
+        kind,
+        "success",
+        &worktree_status,
+        started.elapsed(),
+    );
+    Ok(())
+}
+
+fn maybe_delay_for_perf_fixture(role: &str) {
+    let key = format!(
+        "AIPLUS_PERF1_DELAY_{}_MS",
+        role.to_ascii_uppercase().replace('-', "_")
+    );
+    let Ok(raw) = std::env::var(key) else {
+        return;
+    };
+    let Ok(ms) = raw.parse::<u64>() else {
+        return;
+    };
+    if ms > 0 {
+        thread::sleep(Duration::from_millis(ms));
+    }
+}
+
+fn record_dispatch_metric(
+    project_root: &Path,
+    batch_id: Option<&str>,
+    role: &str,
+    kind: DispatchKind,
+    outcome: &str,
+    worktree_status: &str,
+    elapsed: Duration,
+) {
+    let Some(batch_id) = batch_id else {
+        return;
+    };
+    let path = project_root.join(".aiplus/agents/dispatch-metrics.jsonl");
+    let line = serde_json::json!({
+        "schemaVersion": "0.1.0",
+        "event": "dispatch_batch_role",
+        "batchId": batch_id,
+        "role": role,
+        "kind": kind.as_str(),
+        "outcome": outcome,
+        "worktree": worktree_status,
+        "elapsedMs": elapsed.as_millis(),
+        "timestamp": aiplus_core::timestamp(),
+        "secretValues": "none"
+    });
+    let _ = aiplus_core::append_jsonl_atomic(&path, &line.to_string());
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

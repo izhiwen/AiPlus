@@ -424,9 +424,8 @@ pub fn list_roles(team: &TeamState, functional_only: bool) -> Vec<&AgentConfig> 
 }
 
 /// Load a specific role's configuration
-pub fn get_role_config(role: &str) -> Result<AgentConfig> {
-    let project_root = std::env::current_dir()?;
-    let state = load_team_config(&project_root)?;
+pub fn get_role_config_for_project(project_root: &Path, role: &str) -> Result<AgentConfig> {
+    let state = load_team_config(project_root)?;
 
     if let Some(config) = state.agents.get(role) {
         return Ok(config.clone());
@@ -445,6 +444,12 @@ pub fn get_role_config(role: &str) -> Result<AgentConfig> {
     } else {
         anyhow::bail!("Unknown role: {}", role)
     }
+}
+
+/// Load a specific role's configuration from the current working directory.
+pub fn get_role_config(role: &str) -> Result<AgentConfig> {
+    let project_root = std::env::current_dir()?;
+    get_role_config_for_project(&project_root, role)
 }
 
 impl AgentConfig {
