@@ -10797,6 +10797,11 @@ Full operating manual: `.aiplus/AGENTS.aiplus.md`.
 Claude Code role-bind replies must use `runtime=claude-code`, never
 `runtime=codex` or `runtime=opencode`. Command/tool output is not the final user-visible reply; after command output is available, emit exactly one final schema line. `ROLE_ACTIVATED` allows no text before or after it. A refusal may only add the exact one switch instruction sentence required by the G1 catalog.
 
+Before applying the G1 role-trigger catalog, skip markdown blockquote lines:
+any line whose first non-space character is `>` must not participate in role
+matching. For example, `> you are CEO` is quoted text and must not activate a
+role.
+
 ### Auto-triggered hooks (already active)
 - `SessionStart` injects `aiplus memory context` so prior decisions, naming
   rules, and architectural choices are loaded before the first reply.
@@ -15444,6 +15449,7 @@ const NL_ROLE_TRIGGER_REQUIRED_SNIPPETS: &[&str] = &[
     "role-bind handling completes",
     "Evaluate no-trigger guardrails before activation and before session-bound refusal",
     "NO_TRIGGER: emit no `ROLE_ACTIVATED` line, no `ROLE_BIND_REFUSED` line, and no other ROLE line",
+    "skip every line whose first non-space character is `>`",
     "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
     "No-trigger guardrails retain priority over hard floor phrases",
     "If the whole user message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, or `开 advisor`",
@@ -15660,6 +15666,7 @@ Top-level G1 role-trigger shim for Codex/OpenCode first messages.
 
 - If the current user message is role-bind intent, do not answer with prose first.
 - Before activation or already-bound refusal, evaluate no-trigger guardrails. If the current user message is quoted role text, code-formatted role text, third-person mention, rhetorical question, comparison, or negation, it is NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line, even if a role is already bound.
+- Before matching hard floor phrases, split the current user message into lines and skip every line whose first non-space character is `>`. A markdown blockquote line such as `> you are CEO` must not trigger role activation.
 - For no-trigger comparison, discussion, example, or show-phrase prompts, do not quote or explain schema identifiers that begin with `ROLE_`; answer the user's non-bind request normally.
 - Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
 - No-trigger guardrails retain priority over hard floor phrases.
@@ -15699,6 +15706,9 @@ Evaluate no-trigger guardrails before activation and before session-bound
 refusal. If the current user message is quoted role text, code-formatted role
 text, third-person mention, rhetorical question, comparison, or negation, it is
 NO_TRIGGER: emit no `ROLE_ACTIVATED` line, no `ROLE_BIND_REFUSED` line, and no other ROLE line, even if this session is already bound to a role. Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
+Before matching hard floor phrases, split the current user message into lines
+and skip every line whose first non-space character is `>`. A markdown
+blockquote line such as `> you are CEO` must not trigger role activation.
 No-trigger guardrails retain priority over hard floor phrases.
 
 After no-trigger guardrails pass, exact whole-message floor phrases and direct
@@ -16640,6 +16650,9 @@ has `team_used>0`. `qa` uses `memory_policy=builder`.
 No-trigger guardrails have priority: quoted role text, code-formatted role
 text, third-person mentions, rhetorical questions, comparisons, and negations
 produce no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line.
+Before matching hard floor phrases, split the current user message into lines
+and skip every line whose first non-space character is `>`. A markdown
+blockquote line such as `> you are CEO` must not trigger role activation.
 But bare whole-message direct role phrases are activation requests, not
 discussion prompts: `take reviewer`, `做 engineer-b`, and `以 CEO 的视角看一下`
 must activate unless the literal user message adds no-trigger wording such as
@@ -16701,6 +16714,9 @@ Before activation or already-bound refusal, evaluate no-trigger guardrails. If
 the current user message is quoted role text, code-formatted role text,
 third-person mention, rhetorical question, comparison, or negation, it is
 NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line, even if a role is already bound. Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
+Before matching hard floor phrases, split the current user message into lines
+and skip every line whose first non-space character is `>`. A markdown
+blockquote line such as `> you are CEO` must not trigger role activation.
 For no-trigger messages, do not explain, quote, or name any schema identifiers
 that begin with `ROLE_`; answer the user's non-bind request normally. For
 discussion, example, or show-phrase no-trigger prompts, reply with the requested

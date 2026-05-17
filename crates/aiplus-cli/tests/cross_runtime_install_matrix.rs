@@ -66,6 +66,7 @@ fn assert_top_level_g1_role_shim(agents: &str) {
         "role-bind intent, do not answer with prose first",
         "Before activation or already-bound refusal, evaluate no-trigger guardrails",
         "NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line",
+        "skip every line whose first non-space character is `>`",
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
         "Resolve the requested role to its lowercase installed role ID",
         "aiplus identity --role <canonical_role> --runtime <codex|claude-code|opencode> --with-memory --memory-budget 4000 --emit-role-activated context",

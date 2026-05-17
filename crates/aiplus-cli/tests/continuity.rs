@@ -723,6 +723,7 @@ fn assert_nl_role_trigger_catalog(text: &str) {
         "do not emit prose",
         "role-bind handling completes",
         "NO_TRIGGER: emit no `ROLE_ACTIVATED` line, no `ROLE_BIND_REFUSED` line, and no other ROLE line",
+        "skip every line whose first non-space character is `>`",
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
         "No-trigger guardrails retain priority over hard floor phrases",
         "exact whole-message floor phrases and direct",
@@ -851,6 +852,7 @@ fn nl_role_trigger_catalog_installs_for_codex_and_claude_code() {
     assert!(top_level_agents.contains(
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line"
     ));
+    assert!(top_level_agents.contains("skip every line whose first non-space character is `>`"));
     assert!(
         top_level_agents.contains("No-trigger guardrails retain priority over hard floor phrases")
     );
@@ -892,6 +894,8 @@ fn nl_role_trigger_catalog_installs_for_codex_and_claude_code() {
     assert!(claude.contains(
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line"
     ));
+    assert!(claude
+        .contains("any line whose first non-space character is `>` must not participate in role"));
     assert!(claude.contains("`ROLE_ACTIVATED` allows no text before or after it"));
     assert!(claude.contains("only add the exact one switch instruction sentence"));
     let doctor = stdout(&run(&claude_project, &env, &["doctor"], 0));
@@ -963,6 +967,7 @@ fn opencode_install_writes_project_local_g1_instructions() {
     assert!(instructions.contains(
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line"
     ));
+    assert!(instructions.contains("skip every line whose first non-space character is `>`"));
     assert!(instructions.contains("Do not treat OpenCode transcript rendering"));
     assert!(instructions.contains("strip that one"));
     assert!(instructions.contains("No-trigger guardrails retain priority over hard floor phrases"));
@@ -1022,6 +1027,7 @@ fn opencode_install_writes_project_local_g1_instructions() {
     );
     assert!(primary_prompt.contains("Do not treat OpenCode transcript rendering"));
     assert!(primary_prompt.contains("quoted whole-message floor phrase"));
+    assert!(primary_prompt.contains("skip every line whose first non-space character is `>`"));
     assert!(primary_prompt.contains(
         "For no-trigger messages, do not explain, quote, or name any schema identifiers"
     ));

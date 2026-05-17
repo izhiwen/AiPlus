@@ -54,6 +54,7 @@ fn assert_top_level_g1_role_shim(agents: &str) {
         "role-bind intent, do not answer with prose first",
         "Before activation or already-bound refusal, evaluate no-trigger guardrails",
         "NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line",
+        "skip every line whose first non-space character is `>`",
         "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
         "No-trigger guardrails retain priority over hard floor phrases",
         "If the whole user message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, or `开 advisor`",

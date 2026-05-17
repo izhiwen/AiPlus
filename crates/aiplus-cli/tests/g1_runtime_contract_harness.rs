@@ -20,6 +20,37 @@ struct BaselinePrompt {
     expected: ExpectedDisposition,
 }
 
+fn skip_markdown_blockquote_lines(prompt: &str) -> String {
+    prompt
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('>'))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn offline_expected_disposition_after_quote_skip(prompt: &str) -> ExpectedDisposition {
+    match skip_markdown_blockquote_lines(prompt).as_str() {
+        "" => ExpectedDisposition::NoTrigger,
+        "you are CEO"
+        | "你是 CEO"
+        | "you are qa"
+        | "你是 qa"
+        | "开 advisor"
+        | "做 engineer-b"
+        | "take reviewer"
+        | "take the reviewer role"
+        | "以 CEO 的视角看一下" => ExpectedDisposition::Activate,
+        "switch to architect" => ExpectedDisposition::RefuseAlreadyBound,
+        "你是 CEO 吗？" | "compare CEO and advisor" | "不要切到 CEO" => {
+            ExpectedDisposition::NoTrigger
+        }
+        "maybe use the PM perspective here" => ExpectedDisposition::AskOnce,
+        _ => ExpectedDisposition::AskOnce,
+    }
+}
+
 const BASELINE_PROMPTS: &[BaselinePrompt] = &[
     BaselinePrompt {
         prompt: "you are CEO",
@@ -151,6 +182,31 @@ fn g1_harness_records_quote_block_as_no_trigger_with_no_role_line() {
         ExpectedDisposition::RefuseAlreadyBound,
         "quote-block role text must not emit ROLE_BIND_REFUSED after a prior bind"
     );
+}
+
+#[test]
+fn g1_detector_skips_markdown_blockquote_lines_before_floor_matching() {
+    assert_eq!(
+        offline_expected_disposition_after_quote_skip("> you are CEO"),
+        ExpectedDisposition::NoTrigger
+    );
+    assert_eq!(
+        offline_expected_disposition_after_quote_skip("   > you are CEO"),
+        ExpectedDisposition::NoTrigger,
+        "lines whose first non-space character is > must not trigger"
+    );
+    assert_eq!(
+        offline_expected_disposition_after_quote_skip("> quoted role text\nyou are CEO"),
+        ExpectedDisposition::Activate,
+        "non-blockquote floor phrases still activate after quoted lines are skipped"
+    );
+    for prompt in ["you are CEO", "you are qa", "take reviewer", "开 advisor"] {
+        assert_eq!(
+            offline_expected_disposition_after_quote_skip(prompt),
+            ExpectedDisposition::Activate,
+            "positive trigger behavior must be preserved for {prompt}"
+        );
+    }
 }
 
 #[test]
