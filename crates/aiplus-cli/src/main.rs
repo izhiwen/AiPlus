@@ -1686,8 +1686,7 @@ fn command_add_from_git(
     };
     if !dry_run {
         if target_dir.exists() {
-            std::fs::remove_dir_all(&target_dir)
-                .with_context(|| format!("remove existing {}", target_dir.display()))?;
+            remove_dir_all_if_untracked(&root, &target_dir, "external module refresh")?;
         }
         copy_external_module_files(&clone_target, &target_dir)?;
     }
@@ -9560,27 +9559,51 @@ fn clear_other_team_residue(root: &Path, my_team: &str) -> Result<()> {
 
     // Sweep role TOMLs and core personas.
     for role in exclusive_roles {
-        let _ = std::fs::remove_file(agents_dir.join(format!("{role}.toml")));
-        let _ = std::fs::remove_file(personas_dir.join(format!("{role}.md")));
+        remove_file_if_untracked(
+            root,
+            &agents_dir.join(format!("{role}.toml")),
+            "team residue cleanup",
+        )?;
+        remove_file_if_untracked(
+            root,
+            &personas_dir.join(format!("{role}.md")),
+            "team residue cleanup",
+        )?;
     }
     // Sweep expert configs and their personas (aieconlab puts expert
     // personas in personas/, agent-team puts none — only stubs).
     for expert in experts {
-        let _ = std::fs::remove_file(experts_dir.join(format!("{expert}.toml")));
-        let _ = std::fs::remove_file(personas_dir.join(format!("{expert}.md")));
+        remove_file_if_untracked(
+            root,
+            &experts_dir.join(format!("{expert}.toml")),
+            "team residue cleanup",
+        )?;
+        remove_file_if_untracked(
+            root,
+            &personas_dir.join(format!("{expert}.md")),
+            "team residue cleanup",
+        )?;
     }
     // Sweep agent-team's stub personas under personas/_stubs/.
     for stub in stub_personas {
-        let _ = std::fs::remove_file(stubs_dir.join(format!("{stub}.md")));
+        remove_file_if_untracked(
+            root,
+            &stubs_dir.join(format!("{stub}.md")),
+            "team residue cleanup",
+        )?;
     }
     // Sweep the OTHER team's top-level team-config file.
-    let _ = std::fs::remove_file(agents_dir.join(team_config_file));
+    remove_file_if_untracked(
+        root,
+        &agents_dir.join(team_config_file),
+        "team residue cleanup",
+    )?;
     // Sweep the OTHER team's module dir (config-only; live module
     // content lives under `.aiplus/modules/`). Defensive: only remove
     // if it exists.
     let module_path = root.join(module_dir);
     if module_path.exists() {
-        let _ = std::fs::remove_dir_all(&module_path);
+        remove_dir_all_if_untracked(root, &module_path, "team residue cleanup")?;
     }
     // Intentionally do NOT wipe the OTHER team's `_teams/<other>/`
     // snapshot here. The snapshot system exists precisely so users
@@ -11315,7 +11338,7 @@ fn install_aieconlab_claude_code_adapter(root: &Path, plan: &mut Plan) -> Result
                     && text.contains("aieconlab")
                     && text.lines().take(10).any(|l| l.starts_with("name:"));
                 if !has_aieconlab_frontmatter {
-                    let _ = std::fs::remove_file(&target);
+                    remove_file_if_untracked(root, &target, "duplicate persona cleanup")?;
                     plan.items.push(PlanItem {
                         action: "remove-duplicate".to_string(),
                         path: format!("{agents_rel}/{basename}"),
@@ -11446,7 +11469,7 @@ fn install_aieconlab_opencode_adapter(root: &Path, plan: &mut Plan) -> Result<()
         if target.exists() {
             if let Some(text) = read_text_if_exists(&target)? {
                 if !text.starts_with("---") {
-                    let _ = std::fs::remove_file(&target);
+                    remove_file_if_untracked(root, &target, "duplicate persona cleanup")?;
                     plan.items.push(PlanItem {
                         action: "remove-duplicate".to_string(),
                         path: format!("{agents_rel}/{basename}"),
@@ -11860,7 +11883,7 @@ fn install_agent_team_claude_code_adapter(
                 // top — leave those alone.
                 let has_user_frontmatter = text.starts_with("---");
                 if !has_user_frontmatter {
-                    let _ = std::fs::remove_file(&target);
+                    remove_file_if_untracked(root, &target, "duplicate persona cleanup")?;
                     plan.items.push(PlanItem {
                         action: "remove-duplicate".to_string(),
                         path: format!("{agents_rel}/{basename}"),
@@ -11991,7 +12014,7 @@ fn install_agent_team_opencode_adapter(
         if target.exists() {
             if let Some(text) = read_text_if_exists(&target)? {
                 if !text.starts_with("---") {
-                    let _ = std::fs::remove_file(&target);
+                    remove_file_if_untracked(root, &target, "duplicate persona cleanup")?;
                     plan.items.push(PlanItem {
                         action: "remove-duplicate".to_string(),
                         path: format!("{agents_rel}/{basename}"),
@@ -17327,6 +17350,80 @@ fn read_text_if_exists(file: &Path) -> Result<Option<String>> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
+}
+
+fn remove_file_if_untracked(root: &Path, target: &Path, reason: &str) -> Result<bool> {
+    if !target.exists() {
+        return Ok(false);
+    }
+    assert_no_symlink_path(root, target)?;
+    ensure_deletion_does_not_remove_git_tracked(root, target, reason)?;
+    let _ = fs::remove_file(target);
+    Ok(true)
+}
+
+fn remove_dir_all_if_untracked(root: &Path, target: &Path, reason: &str) -> Result<bool> {
+    if !target.exists() {
+        return Ok(false);
+    }
+    assert_no_symlink_path(root, target)?;
+    ensure_deletion_does_not_remove_git_tracked(root, target, reason)?;
+    fs::remove_dir_all(target).with_context(|| format!("remove existing {}", target.display()))?;
+    Ok(true)
+}
+
+fn ensure_deletion_does_not_remove_git_tracked(
+    root: &Path,
+    target: &Path,
+    reason: &str,
+) -> Result<()> {
+    let tracked = git_tracked_entries_under(root, target)?;
+    if tracked.is_empty() {
+        return Ok(());
+    }
+    Err(CliError::new(
+        1,
+        format!(
+            "ERROR refusing to delete git-tracked file(s) during {reason}: {}. AiPlus only deletes untracked managed files. If these files should be managed by this module, file an issue so they can be added to the bundled module manifest.",
+            tracked.join(", ")
+        ),
+    )
+    .into())
+}
+
+fn git_tracked_entries_under(root: &Path, target: &Path) -> Result<Vec<String>> {
+    if !git_available_in_worktree(root) {
+        return Ok(Vec::new());
+    }
+    let rel = path_slash(path_relative(root, target)?);
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("ls-files")
+        .arg("--")
+        .arg(&rel)
+        .output()
+        .context("git ls-files failed to start")?;
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect())
+}
+
+fn git_available_in_worktree(root: &Path) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("rev-parse")
+        .arg("--is-inside-work-tree")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 fn replace_between(text: &str, begin: &str, end: &str, replacement: &str) -> Result<String> {

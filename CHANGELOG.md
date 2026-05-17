@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Installer/module cleanup now refuses to delete git-tracked project files.
+  If cleanup encounters a tracked file, it aborts with a clear error and a
+  module-manifest issue hint while preserving the file; untracked managed
+  cleanup behavior is unchanged.
+
 ## 0.5.26
 
 ### AEL Tier 1 Bundle A — runtime reconciliation (#16, #17, #18)
