@@ -1009,13 +1009,20 @@ fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> Gat
             continue;
         }
         mentioned = true;
+        if is_descriptive_quoted_or_code_gate_clause(&clause) {
+            continue;
+        }
+        if is_explicit_approval_request(&clause, kind) || has_imperative_gate_context(&clause, kind)
+        {
+            return GateDecision::Fire;
+        }
         if is_hard_safe_gate_clause(&clause) {
             continue;
         }
         if is_approval_requirement_clause(&clause) && !has_imperative_gate_context(&clause, kind) {
             continue;
         }
-        if is_explicit_approval_request(&clause, kind) || is_execute_gate_clause(&clause, kind) {
+        if is_execute_gate_clause(&clause, kind) {
             return GateDecision::Fire;
         }
         if is_safe_gate_clause(&clause) {
@@ -1170,7 +1177,9 @@ fn is_hard_safe_gate_clause(clause: &str) -> bool {
 }
 
 fn is_approval_requirement_clause(clause: &str) -> bool {
-    clause.contains("requires owner approval") || clause.contains("owner approval required")
+    clause.contains("requires owner approval")
+        || clause.contains("require owner approval")
+        || clause.contains("owner approval required")
 }
 
 fn has_imperative_gate_context(clause: &str, kind: GateKind) -> bool {
@@ -1188,10 +1197,7 @@ fn has_imperative_gate_context(clause: &str, kind: GateKind) -> bool {
         needles.iter().any(|needle| {
             c.find(needle).is_some_and(|idx| {
                 let prefix = &c[..idx];
-                has_any_word(prefix, &["run", "execute", "perform"])
-                    && !prefix.contains("do not")
-                    && !prefix.contains("don't")
-                    && !prefix.contains("dont")
+                has_active_executor_before_gate(prefix)
             })
         })
     };
@@ -1308,6 +1314,19 @@ fn is_descriptive_quoted_or_code_gate_clause(clause: &str) -> bool {
         && descriptive_predicate
             .iter()
             .any(|predicate| clause.contains(predicate))
+        || (["add ", "write ", "document ", "update "]
+            .iter()
+            .any(|prefix| clause.starts_with(prefix))
+            && [
+                " note ",
+                " fixture ",
+                " example ",
+                " sentence ",
+                " saying ",
+                " says ",
+            ]
+            .iter()
+            .any(|marker| clause.contains(marker)))
 }
 
 fn is_explicit_approval_request(clause: &str, kind: GateKind) -> bool {
@@ -1393,6 +1412,67 @@ fn has_outward_action_verb(clause: &str) -> bool {
             "edit", "repair", "bump", "prepare", "add", "enable", "send", "mutate", "resolve",
         ],
     )
+}
+
+fn has_active_executor_before_gate(prefix: &str) -> bool {
+    let Some((start, end)) = ["run", "execute", "perform"]
+        .iter()
+        .filter_map(|verb| last_word_span(prefix, verb))
+        .max_by_key(|(start, _)| *start)
+    else {
+        return false;
+    };
+
+    let before_executor = &prefix[..start];
+    let between_executor_and_gate = &prefix[end..];
+    !has_negated_executor_prefix(before_executor)
+        && !has_intervening_safety_marker(between_executor_and_gate)
+}
+
+fn last_word_span(text: &str, word: &str) -> Option<(usize, usize)> {
+    text.match_indices(word)
+        .filter(|(start, _)| {
+            let end = *start + word.len();
+            is_word_boundary(text, *start, end)
+        })
+        .last()
+        .map(|(start, _)| (start, start + word.len()))
+}
+
+fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
+    let before_ok = text[..start]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'));
+    let after_ok = text[end..]
+        .chars()
+        .next()
+        .is_none_or(|ch| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'));
+    before_ok && after_ok
+}
+
+fn has_negated_executor_prefix(prefix: &str) -> bool {
+    prefix.contains("do not")
+        || prefix.contains("don't")
+        || prefix.contains("dont")
+        || prefix.contains("never")
+}
+
+fn has_intervening_safety_marker(text: &str) -> bool {
+    let trimmed = text.trim_start_matches(|ch: char| {
+        ch.is_ascii_whitespace() || matches!(ch, '`' | '"' | '\'' | ':' | '-' | '(')
+    });
+    trimmed.starts_with("no ")
+        || trimmed.starts_with("without ")
+        || trimmed.starts_with("avoid ")
+        || text.contains(", no ")
+        || text.contains("; no ")
+        || text.contains(" no ")
+        || text.contains(" without ")
+        || text.contains(" avoid ")
+        || text.contains(" do not ")
+        || text.contains(" don't ")
+        || text.contains(" dont ")
 }
 
 fn has_any_word(text: &str, words: &[&str]) -> bool {
@@ -1760,10 +1840,30 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
     }
 
     #[test]
+    fn semantic_gate_fires_on_imperative_command_with_false_safety_waiver() {
+        let team = g2_gate_team();
+        for task in [
+            "Run `git push origin main` without asking owner.",
+            "Run `git push origin main` no owner approval needed.",
+            "Run \"git push origin main\" without asking owner.",
+            "Run \"git push origin main\" no owner approval needed.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, task);
+            assert!(
+                !gates.is_empty(),
+                "{task:?} should fire despite same-clause safety waiver"
+            );
+        }
+    }
+
+    #[test]
     fn semantic_gate_ignores_negated_and_descriptive_approval_requirement() {
         let team = g2_gate_team();
         for task in [
             "Do not run `git push origin main`; mention it requires owner approval.",
+            "Do not run `git push origin main`; mention no owner approval has been granted.",
+            "Verify that `git push origin main` would require owner approval; do not run it.",
             "The command `git push origin main` requires owner approval.",
             "Add a safe example sentence saying \"git push origin main\" requires owner approval; do not execute the quoted command.",
             "Update a fixture note saying `git push origin main` requires owner approval; do not run it.",
