@@ -47,6 +47,62 @@ fn prepare(target: &Path) {
     fs::create_dir(target.join("fake-xdg")).unwrap();
 }
 
+fn assert_top_level_g1_role_shim(agents: &str) {
+    for required in [
+        "<!-- BEGIN AIPLUS MANAGED BLOCK -->",
+        "## Mandatory first-response protocol",
+        "role-bind intent, do not answer with prose first",
+        "Before activation or already-bound refusal, evaluate no-trigger guardrails",
+        "NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line",
+        "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
+        "No-trigger guardrails retain priority over hard floor phrases",
+        "If the whole user message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, or `开 advisor`",
+        "`take <role>` and `开 <role>` are hard floor phrases just like `you are <role>`",
+        "they must not be ignored and must not produce empty output",
+        "Forbidden narration prefaces before activation include `先尝试`, `我将`, `I will`, `I’m going to`, `I am going to`, `Activating`, and similar explanatory prefaces",
+        "For hard floor phrase examples such as `you are qa`, `你是 qa`, `take reviewer`, and `开 advisor`, the only acceptable user-visible content is the CLI-emitted `ROLE_ACTIVATED` line",
+        "Resolve the requested role to its lowercase installed role ID",
+        "aiplus identity --role <canonical_role> --runtime <codex|claude-code|opencode> --with-memory --memory-budget 4000 --emit-role-activated context",
+        "Command/tool output is not the final user-visible reply",
+        "copy the final `ROLE_ACTIVATED` line printed by the command exactly",
+        "Never synthesize `ROLE_ACTIVATED`",
+        "Runtime field binding",
+        "Codex must emit `runtime=codex`",
+        "OpenCode must emit `runtime=opencode`",
+        "Never emit another runtime's value",
+        "do not reconstruct fields from memory counters or role names",
+        "The CLI-owned final line carries memory counts and policy",
+        "A `ROLE_ACTIVATED` line with `memory_team=0` is invalid when command output has `team_used>0`",
+        "Memory policy mapping: coordinator=ceo/pi/advisor; reviewer=reviewer/referee; builder=architect/pm/engineer-a/engineer-b/qa/theorist/ra-stata/ra-python/replicator",
+        "`qa` must use `memory_policy=builder`",
+        "ROLE_ACTIVATED role=<canonical_role> count=<n> schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind requested_role=<requested_role>",
+        "with no text before or after it",
+        "Replace `runtime=<codex|claude-code|opencode>` in the command with the exact current runtime value before running it",
+        "memory_personal=<n>",
+        "memory_team=<n>",
+        "memory_project=<n|null>",
+        "Keep separate `aiplus memory --scope ... list` commands only as fallback if `--with-memory` fails",
+        "permissions=none",
+        "identity_grants_permission=no",
+        "secret_values=none",
+        "global_agent_config_edits=none",
+        "ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind",
+        "plus exactly this one switch instruction sentence and nothing else",
+        "Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.",
+        "Identity grants no permissions; Owner gates remain required",
+        "@./.aiplus/AGENTS.aiplus.md",
+    ] {
+        assert!(
+            agents.contains(required),
+            "missing AGENTS.md shim text: {required}\n{agents}"
+        );
+    }
+    assert!(
+        !agents.contains("schema=v1..."),
+        "AGENTS.md shim must not abbreviate the v1 schema:\n{agents}"
+    );
+}
+
 #[test]
 fn codex_install_writes_agents_md_managed_block_pointing_to_aiplus() {
     let temp = tempfile::tempdir().unwrap();
@@ -64,6 +120,7 @@ fn codex_install_writes_agents_md_managed_block_pointing_to_aiplus() {
         agents.contains("@./.aiplus/AGENTS.aiplus.md"),
         "managed block should reference .aiplus/AGENTS.aiplus.md:\n{agents}"
     );
+    assert_top_level_g1_role_shim(&agents);
 }
 
 #[test]

@@ -91,6 +91,7 @@ const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
 const OPENCODE_INSTRUCTIONS_REL: &str = ".opencode/instructions/aiplus.md";
 const OPENCODE_INSTRUCTIONS_CONFIG_PATH: &str = "instructions/aiplus.md";
 const OPENCODE_AIPLUS_INSTRUCTIONS_MARKER: &str = "<!-- AIPLUS_OPENCODE_G1_ROLE_TRIGGERS_V1 -->";
+const OPENCODE_AIPLUS_PRIMARY_AGENT: &str = "aiplus";
 const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
 const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
 const MANAGED_BEGIN_AT: &str = "<!-- BEGIN AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
@@ -337,6 +338,8 @@ enum Commands {
     },
     Identity {
         subcommand: Option<String>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        trailing_args: Vec<String>,
         #[arg(long, action = ArgAction::SetTrue)]
         project: bool,
         #[arg(long)]
@@ -349,6 +352,8 @@ enum Commands {
         memory_budget: Option<usize>,
         #[arg(long = "memory-scope")]
         memory_scope: Option<String>,
+        #[arg(long = "emit-role-activated", action = ArgAction::SetTrue)]
+        emit_role_activated: bool,
     },
     User {
         subcommand: Option<String>,
@@ -1001,20 +1006,24 @@ fn run(command: Commands) -> Result<()> {
         }),
         Commands::Identity {
             subcommand,
+            trailing_args,
             project,
             role,
             runtime,
             with_memory,
             memory_budget,
             memory_scope,
+            emit_role_activated,
         } => command_identity(IdentityCommandArgs {
             subcommand,
+            trailing_args,
             project,
             role,
             runtime,
             with_memory,
             memory_budget,
             memory_scope,
+            emit_role_activated,
         }),
         Commands::User {
             subcommand,
@@ -4254,15 +4263,18 @@ fn command_memory(args: MemoryCommandArgs) -> Result<()> {
 
 struct IdentityCommandArgs {
     subcommand: Option<String>,
+    trailing_args: Vec<String>,
     project: bool,
     role: Option<String>,
     runtime: Option<String>,
     with_memory: bool,
     memory_budget: Option<usize>,
     memory_scope: Option<String>,
+    emit_role_activated: bool,
 }
 
 fn command_identity(args: IdentityCommandArgs) -> Result<()> {
+    let args = normalize_identity_command_args(args)?;
     match args.subcommand.as_deref() {
         Some("status") => identity_status(),
         Some("list") => identity_list(),
@@ -4273,14 +4285,88 @@ fn command_identity(args: IdentityCommandArgs) -> Result<()> {
             with_memory: args.with_memory,
             memory_budget: args.memory_budget,
             memory_scope: args.memory_scope,
+            emit_role_activated: args.emit_role_activated,
         }),
         _ => {
             println!(
-                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all]"
+                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all] [--emit-role-activated]"
             );
             process::exit(2);
         }
     }
+}
+
+fn normalize_identity_command_args(mut args: IdentityCommandArgs) -> Result<IdentityCommandArgs> {
+    if args.trailing_args.is_empty() {
+        return Ok(args);
+    }
+    if args.subcommand.as_deref() != Some("context") {
+        return Err(CliError::new(
+            2,
+            format!(
+                "ERROR unexpected identity arguments after {:?}: {}",
+                args.subcommand,
+                args.trailing_args.join(" ")
+            ),
+        )
+        .into());
+    }
+
+    let mut i = 0;
+    while i < args.trailing_args.len() {
+        match args.trailing_args[i].as_str() {
+            "--role" => {
+                i += 1;
+                args.role = Some(identity_trailing_value(&args.trailing_args, i, "--role")?);
+            }
+            "--runtime" => {
+                i += 1;
+                args.runtime = Some(identity_trailing_value(
+                    &args.trailing_args,
+                    i,
+                    "--runtime",
+                )?);
+            }
+            "--with-memory" => {
+                args.with_memory = true;
+            }
+            "--memory-budget" => {
+                i += 1;
+                let value = identity_trailing_value(&args.trailing_args, i, "--memory-budget")?;
+                args.memory_budget = Some(value.parse().map_err(|_| {
+                    CliError::new(2, format!("ERROR invalid --memory-budget value={value}"))
+                })?);
+            }
+            "--memory-scope" => {
+                i += 1;
+                args.memory_scope = Some(identity_trailing_value(
+                    &args.trailing_args,
+                    i,
+                    "--memory-scope",
+                )?);
+            }
+            "--emit-role-activated" => {
+                args.emit_role_activated = true;
+            }
+            other => {
+                return Err(CliError::new(
+                    2,
+                    format!("ERROR unexpected identity context argument {other}"),
+                )
+                .into());
+            }
+        }
+        i += 1;
+    }
+    args.trailing_args.clear();
+    Ok(args)
+}
+
+fn identity_trailing_value(args: &[String], index: usize, flag: &str) -> Result<String> {
+    args.get(index)
+        .filter(|value| !value.starts_with("--"))
+        .cloned()
+        .ok_or_else(|| CliError::new(2, format!("ERROR {flag} requires a value")).into())
 }
 
 fn command_user(subcommand: Option<String>, profile: Option<String>) -> Result<()> {
@@ -5398,6 +5484,7 @@ struct IdentityContextArgs {
     with_memory: bool,
     memory_budget: Option<usize>,
     memory_scope: Option<String>,
+    emit_role_activated: bool,
 }
 
 fn identity_context(args: IdentityContextArgs) -> Result<()> {
@@ -5405,6 +5492,10 @@ fn identity_context(args: IdentityContextArgs) -> Result<()> {
     let role_input = args.role.unwrap_or_else(|| "advisor".to_string());
     let role = crate::agent::core::resolve_role_for_active_team(&root, &role_input).canonical;
     validate_role_slug(&role)?;
+    let runtime = normalize_identity_context_runtime(args.runtime.as_deref())?;
+    if args.emit_role_activated && !args.with_memory {
+        return Err(CliError::new(2, "ERROR --emit-role-activated requires --with-memory").into());
+    }
     identity_init(&root)?;
     let context = load_identity_context(&root, &role)?;
     let identity = context.identity;
@@ -5449,21 +5540,33 @@ fn identity_context(args: IdentityContextArgs) -> Result<()> {
     println!("inherits={inherits}");
     println!("global_agent_config_edits=none");
     println!("role_activation_count={role_activation_count}");
-    if args.with_memory {
+    let memory_bundle = if args.with_memory {
         println!("memory_bundle=present");
-        print_identity_memory_bundle(
+        Some(print_identity_memory_bundle(
             &root,
             &role,
-            args.runtime,
+            &runtime,
             args.memory_budget,
-            args.memory_scope,
-        )?;
+            args.memory_scope.as_deref(),
+        )?)
     } else {
         println!("memory_bundle=none");
         println!("memory_is_instruction=no");
         println!("secret_values=none");
-    }
+        None
+    };
     println!("IDENTITY_CONTEXT_STATUS=PASS");
+    if args.emit_role_activated {
+        let memory_bundle = memory_bundle.expect("--emit-role-activated requires --with-memory");
+        print_role_activated_line(
+            &role,
+            role_activation_count,
+            &runtime,
+            &role_input,
+            &memory_bundle,
+            args.memory_scope.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -5517,17 +5620,42 @@ fn parse_identity_memory_scope(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct IdentityMemoryBundleStats {
+    role_personal: IdentityMemoryBucketCounts,
+    team: IdentityMemoryBucketCounts,
+    project: IdentityMemoryBucketCounts,
+}
+
+fn normalize_identity_context_runtime(runtime: Option<&str>) -> Result<String> {
+    let input = runtime.unwrap_or("codex");
+    let Some(normalized) = normalize_runtime(Some(input)) else {
+        return Err(CliError::new(
+            2,
+            format!("ERROR invalid runtime={input}; allowed=[codex,claude-code,opencode]"),
+        )
+        .into());
+    };
+    if normalized == "all" {
+        return Err(CliError::new(
+            2,
+            "ERROR invalid runtime=all; allowed=[codex,claude-code,opencode]",
+        )
+        .into());
+    }
+    Ok(normalized.to_string())
+}
+
 fn print_identity_memory_bundle(
     root: &Path,
     role: &str,
-    runtime: Option<String>,
+    runtime: &str,
     memory_budget: Option<usize>,
-    memory_scope: Option<String>,
-) -> Result<()> {
-    let runtime = runtime.unwrap_or_else(|| "codex".to_string());
+    memory_scope: Option<&str>,
+) -> Result<IdentityMemoryBundleStats> {
     let budget = memory_budget.unwrap_or(2000);
     let record_load_cap = DEFAULT_MEMORY_LOAD_LIMIT;
-    let (scope, scope_input) = parse_identity_memory_scope(memory_scope)?;
+    let (scope, scope_input) = parse_identity_memory_scope(memory_scope.map(str::to_string))?;
     let role_personal = identity_memory_bucket_counts(
         root,
         Some("personal"),
@@ -5576,13 +5704,49 @@ fn print_identity_memory_bundle(
     println!("secret_values=none");
     println!("memory_is_instruction=no");
     println!("MEMORY_BUNDLE_STATUS=PASS");
-    Ok(())
+    Ok(IdentityMemoryBundleStats {
+        role_personal,
+        team,
+        project,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
 struct IdentityMemoryBucketCounts {
     total: usize,
     used: usize,
+}
+
+fn activation_memory_policy(role: &str, memory_scope: Option<&str>) -> &'static str {
+    if memory_scope.is_some() {
+        return "explicit";
+    }
+    match role {
+        "ceo" | "pi" | "advisor" => "coordinator",
+        "reviewer" | "referee" => "reviewer",
+        _ => "builder",
+    }
+}
+
+fn print_role_activated_line(
+    role: &str,
+    role_activation_count: usize,
+    runtime: &str,
+    requested_role: &str,
+    memory: &IdentityMemoryBundleStats,
+    memory_scope: Option<&str>,
+) {
+    let memory_project = if matches!(role, "ceo" | "pi" | "advisor") {
+        memory.project.used.to_string()
+    } else {
+        "null".to_string()
+    };
+    println!(
+        "ROLE_ACTIVATED role={role} count={role_activation_count} schema=v1 runtime={runtime} trigger=nl_role_bind requested_role={requested_role} memory_personal={} memory_team={} memory_project={memory_project} memory_policy={} identity_context=PASS memory_loaded=yes permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none",
+        memory.role_personal.used,
+        memory.team.used,
+        activation_memory_policy(role, memory_scope),
+    );
 }
 
 fn identity_memory_bucket_counts(
@@ -10172,7 +10336,7 @@ fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> R
                     object
                         .entry("$schema".to_string())
                         .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
-                    merge_opencode_instruction_entry(&mut value)?;
+                    merge_opencode_adapter_entries(&mut value)?;
                     write_opencode_config_json(
                         root,
                         rel,
@@ -10186,7 +10350,7 @@ fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> R
             }
 
             if opencode_config_is_preservable(&value) {
-                if merge_opencode_instruction_entry(&mut value)? {
+                if merge_opencode_adapter_entries(&mut value)? {
                     write_opencode_config_json(
                         root,
                         rel,
@@ -10211,7 +10375,7 @@ fn install_opencode_config(root: &Path, plan: &mut Plan, options: &Options) -> R
                         .entry("$schema".to_string())
                         .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
                     let mut value = serde_json::Value::Object(object);
-                    merge_opencode_instruction_entry(&mut value)?;
+                    merge_opencode_adapter_entries(&mut value)?;
                     let content = serde_json::to_string_pretty(&value)? + "\n";
                     return write_file_safe(root, rel, content.as_bytes(), plan, options);
                 }
@@ -10279,6 +10443,75 @@ fn opencode_config_has_aiplus_instruction(value: &serde_json::Value) -> bool {
         })
 }
 
+fn opencode_config_has_aiplus_primary_agent(value: &serde_json::Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    if object.get("default_agent").and_then(|value| value.as_str())
+        != Some(OPENCODE_AIPLUS_PRIMARY_AGENT)
+    {
+        return false;
+    }
+    let Some(agent) = object
+        .get("agent")
+        .and_then(|value| value.as_object())
+        .and_then(|agents| agents.get(OPENCODE_AIPLUS_PRIMARY_AGENT))
+        .and_then(|value| value.as_object())
+    else {
+        return false;
+    };
+    agent.get("mode").and_then(|value| value.as_str()) == Some("primary")
+        && agent
+            .get("prompt")
+            .and_then(|value| value.as_str())
+            .is_some_and(|prompt| {
+                prompt.contains("AiPlus primary OpenCode agent")
+                    && prompt.contains("aiplus identity --role <canonical_role> --runtime opencode --with-memory --memory-budget 4000 --emit-role-activated context")
+                    && nl_role_trigger_catalog_valid(prompt)
+            })
+}
+
+fn merge_opencode_primary_agent_entry(value: &mut serde_json::Value) -> Result<bool> {
+    let Some(object) = value.as_object_mut() else {
+        return Err(
+            CliError::new(1, "ERROR .opencode/opencode.json root must be an object").into(),
+        );
+    };
+
+    let mut changed = false;
+    if object.get("default_agent").and_then(|value| value.as_str())
+        != Some(OPENCODE_AIPLUS_PRIMARY_AGENT)
+    {
+        object.insert(
+            "default_agent".to_string(),
+            serde_json::json!(OPENCODE_AIPLUS_PRIMARY_AGENT),
+        );
+        changed = true;
+    }
+
+    let agent_config = serde_json::json!({
+        "mode": "primary",
+        "description": "AiPlus primary agent that activates project-local roles before any prose.",
+        "prompt": opencode_primary_agent_prompt_content(),
+    });
+    let agents = object
+        .entry("agent".to_string())
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    let Some(agents_object) = agents.as_object_mut() else {
+        return Err(CliError::new(
+            1,
+            "ERROR .opencode/opencode.json agent must be an object when present",
+        )
+        .into());
+    };
+    if agents_object.get(OPENCODE_AIPLUS_PRIMARY_AGENT) != Some(&agent_config) {
+        agents_object.insert(OPENCODE_AIPLUS_PRIMARY_AGENT.to_string(), agent_config);
+        changed = true;
+    }
+
+    Ok(changed)
+}
+
 fn merge_opencode_instruction_entry(value: &mut serde_json::Value) -> Result<bool> {
     let Some(object) = value.as_object_mut() else {
         return Err(
@@ -10313,6 +10546,12 @@ fn merge_opencode_instruction_entry(value: &mut serde_json::Value) -> Result<boo
     Ok(*entries != before)
 }
 
+fn merge_opencode_adapter_entries(value: &mut serde_json::Value) -> Result<bool> {
+    let instructions_changed = merge_opencode_instruction_entry(value)?;
+    let primary_agent_changed = merge_opencode_primary_agent_entry(value)?;
+    Ok(instructions_changed || primary_agent_changed)
+}
+
 fn remove_opencode_instruction_entry(value: &mut serde_json::Value) -> Result<bool> {
     let Some(object) = value.as_object_mut() else {
         return Ok(false);
@@ -10335,6 +10574,31 @@ fn remove_opencode_instruction_entry(value: &mut serde_json::Value) -> Result<bo
     let changed = entries.len() != before_len;
     if entries.is_empty() {
         object.remove("instructions");
+    }
+    Ok(changed)
+}
+
+fn remove_opencode_primary_agent_entry(value: &mut serde_json::Value) -> Result<bool> {
+    let Some(object) = value.as_object_mut() else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    if object.get("default_agent").and_then(|value| value.as_str())
+        == Some(OPENCODE_AIPLUS_PRIMARY_AGENT)
+    {
+        object.remove("default_agent");
+        changed = true;
+    }
+    if let Some(agents) = object
+        .get_mut("agent")
+        .and_then(|value| value.as_object_mut())
+    {
+        if agents.remove(OPENCODE_AIPLUS_PRIMARY_AGENT).is_some() {
+            changed = true;
+        }
+        if agents.is_empty() {
+            object.remove("agent");
+        }
     }
     Ok(changed)
 }
@@ -10529,6 +10793,9 @@ const CLAUDE_MD_MANAGED_BODY: &str = r#"## AiPlus is installed in this project
 AiPlus extends this session with persistent memory, compact-resilient handoff,
 plan-time review, velocity estimates, and a team of specialist subagents.
 Full operating manual: `.aiplus/AGENTS.aiplus.md`.
+
+Claude Code role-bind replies must use `runtime=claude-code`, never
+`runtime=codex` or `runtime=opencode`. Command/tool output is not the final user-visible reply; after command output is available, emit exactly one final schema line. `ROLE_ACTIVATED` allows no text before or after it. A refusal may only add the exact one switch instruction sentence required by the G1 catalog.
 
 ### Auto-triggered hooks (already active)
 - `SessionStart` injects `aiplus memory context` so prior decisions, naming
@@ -11273,7 +11540,9 @@ fn remove_opencode_config_instruction_injection(root: &Path, plan: &mut Plan) ->
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&text) else {
         return Ok(());
     };
-    if !remove_opencode_instruction_entry(&mut value)? {
+    let instructions_changed = remove_opencode_instruction_entry(&mut value)?;
+    let primary_agent_changed = remove_opencode_primary_agent_entry(&mut value)?;
+    if !instructions_changed && !primary_agent_changed {
         return Ok(());
     }
     write_opencode_config_json(
@@ -15137,6 +15406,12 @@ fn opencode_doctor_requirements(root: &Path) -> Result<Vec<(String, bool)>> {
                 .is_some_and(opencode_config_has_aiplus_instruction),
         ),
         (
+            ".opencode/opencode.json sets AiPlus primary default agent".to_string(),
+            parsed
+                .as_ref()
+                .is_some_and(opencode_config_has_aiplus_primary_agent),
+        ),
+        (
             format!("{OPENCODE_INSTRUCTIONS_REL} exists"),
             instructions.is_some(),
         ),
@@ -15164,19 +15439,62 @@ fn opencode_doctor_requirements(root: &Path) -> Result<Vec<(String, bool)>> {
 
 const NL_ROLE_TRIGGER_REQUIRED_SNIPPETS: &[&str] = &[
     "## Natural-language role triggers",
+    "## Mandatory first-response protocol",
+    "do not emit prose",
+    "role-bind handling completes",
+    "Evaluate no-trigger guardrails before activation and before session-bound refusal",
+    "NO_TRIGGER: emit no `ROLE_ACTIVATED` line, no `ROLE_BIND_REFUSED` line, and no other ROLE line",
+    "Quote-block rule: `> you are CEO` is quoted role text and must produce no role line",
+    "No-trigger guardrails retain priority over hard floor phrases",
+    "If the whole user message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, or `开 advisor`",
+    "do not answer with ordinary prose like `How can I help?`",
+    "Forbidden narration prefaces before activation include `先尝试`, `我将`, `I will`, `I’m going to`, `I am going to`, `Activating`, and similar explanatory prefaces",
+    "the only acceptable user-visible content is the CLI-emitted `ROLE_ACTIVATED` line",
+    "Never synthesize `ROLE_ACTIVATED`",
+    "Command/tool output is not the final user-visible reply",
+    "with no text before or after it",
+    "Runtime field binding",
+    "OpenCode sessions must emit `runtime=opencode`",
+    "Claude Code sessions must emit `runtime=claude-code`",
+    "Codex sessions must emit `runtime=codex`",
+    "`ROLE_BIND_REFUSED` v1 line",
+    "one switch instruction",
+    "Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.",
     "`你是 <role>` / `you are <role>`",
     "`开 <role>` / `做 <role>` / `take <role>` / `take the <role> role`",
+    "`take <role>` and `开 <role>` are hard floor phrases just like `you are <role>`",
+    "must not be ignored and must not produce empty output",
+    "Bare whole-message direct role phrases are activation requests, not discussion prompts",
     "`转 <role>` / `switch to <role>`",
-    "ROLE_ACTIVATED role=<role> count=<activation_count> schema=v1",
+    "resolve the requested role to its lowercase installed role ID",
+    "aiplus identity --role <canonical_role> --runtime <codex|claude-code|opencode> --with-memory --memory-budget 4000 --emit-role-activated context",
+    "Copy the final `ROLE_ACTIVATED` line printed by the command exactly",
+    "Do not reconstruct it from earlier fields",
+    "ROLE_ACTIVATED role=<canonical_role> count=<n> schema=v1",
     "ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1",
-    "aiplus memory list --scope personal --role <role> --limit 20",
-    "aiplus memory list --scope team --limit 20",
+    "`role=<canonical_role>` from `role=`",
+    "`count=<n>` from `role_activation_count=`",
+    "Never guess memory counts; never default memory counts to 0",
+    "`memory_personal` from `role_personal_used`",
+    "`memory_team` from `team_used`",
+    "for coordinator roles `memory_project` from `project_used`; for non-coordinators `memory_project=null`",
+    "A `ROLE_ACTIVATED` line with `memory_team=0` is invalid",
+    "has `team_used>0`",
+    "If `--with-memory` fails, keep the separate memory commands as fallback only",
     "memory_policy=<coordinator|builder|reviewer|explicit>",
+    "`qa` must use `memory_policy=builder`",
     "quote blocks, code blocks, and third-person references",
+    "For no-trigger messages, do not explain, quote, or name any schema",
+    "For discussion, example, or show-phrase no-trigger prompts",
+    "requested phrase or ordinary answer only",
+    "For `不要切到 CEO`, acknowledge without role schema wording",
     "Ask once before binding",
 ];
 
 fn nl_role_trigger_catalog_valid(text: &str) -> bool {
+    if text.contains("count=<activation_count>") {
+        return false;
+    }
     if text.contains(role_trigger_catalog_content().trim()) {
         return true;
     }
@@ -15220,6 +15538,9 @@ fn opencode_nl_role_trigger_project_local_status(root: &Path) -> Result<String> 
     }
     if !opencode_config_has_aiplus_instruction(&config) {
         return Ok("FAIL_OPENCODE_INSTRUCTIONS_PATH".to_string());
+    }
+    if !opencode_config_has_aiplus_primary_agent(&config) {
+        return Ok("FAIL_OPENCODE_PRIMARY_AGENT".to_string());
     }
     let Some(text) = read_text_if_exists(&rel_to_abs(root, OPENCODE_INSTRUCTIONS_REL)?)? else {
         return Ok("FAIL_MISSING_OPENCODE_INSTRUCTIONS".to_string());
@@ -15331,7 +15652,34 @@ fn managed_block_target_ok(root: &Path) -> Result<bool> {
 }
 
 fn managed_block() -> String {
-    format!("{MANAGED_BEGIN}\n{MANAGED_REF}\n{MANAGED_END}")
+    format!(
+        r#"{MANAGED_BEGIN}
+## Mandatory first-response protocol
+
+Top-level G1 role-trigger shim for Codex/OpenCode first messages.
+
+- If the current user message is role-bind intent, do not answer with prose first.
+- Before activation or already-bound refusal, evaluate no-trigger guardrails. If the current user message is quoted role text, code-formatted role text, third-person mention, rhetorical question, comparison, or negation, it is NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line, even if a role is already bound.
+- For no-trigger comparison, discussion, example, or show-phrase prompts, do not quote or explain schema identifiers that begin with `ROLE_`; answer the user's non-bind request normally.
+- Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
+- No-trigger guardrails retain priority over hard floor phrases.
+- After no-trigger guardrails pass, exact whole-message floor phrases are mandatory role-bind requests. If the whole user message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, or `开 advisor`, resolve the role case-insensitively, activate the resolved role, and do not answer with ordinary prose like `How can I help?`.
+- `take <role>` and `开 <role>` are hard floor phrases just like `you are <role>`: they must not be ignored and must not produce empty output.
+- Forbidden narration prefaces before activation include `先尝试`, `我将`, `I will`, `I’m going to`, `I am going to`, `Activating`, and similar explanatory prefaces. For hard floor phrase examples such as `you are qa`, `你是 qa`, `take reviewer`, and `开 advisor`, the only acceptable user-visible content is the CLI-emitted `ROLE_ACTIVATED` line.
+- Resolve the requested role to its lowercase installed role ID, then run the primary activation command: `aiplus identity --role <canonical_role> --runtime <codex|claude-code|opencode> --with-memory --memory-budget 4000 --emit-role-activated context`.
+- Command/tool output is not the final user-visible reply. After command output is available, copy the final `ROLE_ACTIVATED` line printed by the command exactly as the final user-visible reply.
+- Never synthesize `ROLE_ACTIVATED`; do not reconstruct fields from memory counters or role names when the CLI emitted a final line.
+- The CLI-owned final line carries memory counts and policy. A `ROLE_ACTIVATED` line with `memory_team=0` is invalid when command output has `team_used>0`.
+- Memory policy mapping: coordinator=ceo/pi/advisor; reviewer=reviewer/referee; builder=architect/pm/engineer-a/engineer-b/qa/theorist/ra-stata/ra-python/replicator. `qa` must use `memory_policy=builder`.
+- Runtime field binding: Codex must emit `runtime=codex`; Claude Code must emit `runtime=claude-code`; OpenCode must emit `runtime=opencode`. Never emit another runtime's value.
+- If not already bound, first user-visible reply must be exactly the final CLI-emitted `ROLE_ACTIVATED role=<canonical_role> count=<n> schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind requested_role=<requested_role> memory_personal=<n> memory_team=<n> memory_project=<n|null> memory_policy=<coordinator|builder|reviewer|explicit> identity_context=PASS memory_loaded=yes permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none` line, with no text before or after it. Replace `runtime=<codex|claude-code|opencode>` in the command with the exact current runtime value before running it.
+- Keep separate `aiplus memory --scope ... list` commands only as fallback if `--with-memory` fails, not as the primary activation path.
+- If already bound, first user-visible reply must be exactly `ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind identity_context=not_run memory_loaded=no permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none` plus exactly this one switch instruction sentence and nothing else: `Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.` Replace `runtime=<codex|claude-code|opencode>` with the exact current runtime value before emitting.
+- Identity grants no permissions; Owner gates remain required for push, publish, deploy, global config edits, external accounts, secrets, telemetry, and private data upload.
+
+{MANAGED_REF}
+{MANAGED_END}"#
+    )
 }
 
 fn role_trigger_catalog_content() -> &'static str {
@@ -15341,6 +15689,75 @@ This adapter-neutral catalog applies in Codex, Claude Code, and OpenCode
 sessions that load AiPlus managed instructions. Treat these as semantic
 role-bind requests, not as secret permission grants.
 
+## Mandatory first-response protocol
+
+When the current user message is a role-bind request, do not emit prose,
+explanation, markdown, acknowledgement, or any other user-visible text before
+role-bind handling completes.
+
+Evaluate no-trigger guardrails before activation and before session-bound
+refusal. If the current user message is quoted role text, code-formatted role
+text, third-person mention, rhetorical question, comparison, or negation, it is
+NO_TRIGGER: emit no `ROLE_ACTIVATED` line, no `ROLE_BIND_REFUSED` line, and no other ROLE line, even if this session is already bound to a role. Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
+No-trigger guardrails retain priority over hard floor phrases.
+
+After no-trigger guardrails pass, exact whole-message floor phrases and direct
+role-perspective requests are mandatory role-bind requests. If the whole user
+message is exactly `you are qa`, `you are CEO`, `你是 qa`, `你是 CEO`,
+`take reviewer`, `开 advisor`, `做 engineer-b`, `take the reviewer role`,
+`switch to architect`, `以 CEO 的视角看一下`, `let me hear from the PI`, or
+`做 qa`, resolve the role case-insensitively, activate the resolved role, and do
+not answer with ordinary prose like `How can I help?`.
+
+`take <role>` and `开 <role>` are hard floor phrases just like
+`you are <role>`: they must not be ignored and must not produce empty output.
+`做 <role>`, `take the <role> role`, `switch to <role>`,
+`以 <role> 的视角看一下`, and `let me hear from the <role>` are the same direct
+activation intent for any installed role.
+Bare whole-message direct role phrases are activation requests, not discussion
+prompts: `take reviewer`, `做 engineer-b`, and `以 CEO 的视角看一下` must activate
+unless the literal user message adds no-trigger wording such as `show me the
+phrase`, `I wrote`, `what does`, `compare`, `if you were`, or `the file says`.
+Forbidden narration prefaces before activation include `先尝试`, `我将`, `I will`,
+`I’m going to`, `I am going to`, `Activating`, and similar explanatory
+prefaces. For hard floor phrase examples such as `you are qa`, `你是 qa`,
+`take reviewer`, and `开 advisor`, the only acceptable user-visible content is
+the CLI-emitted `ROLE_ACTIVATED` line.
+
+OpenCode live positive matrix: these fresh-session prompts are mandatory
+activation requests and must produce the CLI-emitted `ROLE_ACTIVATED` line, not
+ordinary prose:
+
+- `做 engineer-b`
+- `take the reviewer role`
+- `switch to architect`
+- `以 CEO 的视角看一下`
+- `let me hear from the PI`
+- `做 qa`
+
+If this session is not already bound to a role, run the primary activation
+command below first. Never synthesize `ROLE_ACTIVATED` from role names,
+placeholders, memory counters, or remembered context. The CLI prints the final
+`ROLE_ACTIVATED` line. Command/tool output is not the final user-visible reply;
+after command output is available, copy the final CLI-emitted `ROLE_ACTIVATED`
+line exactly as the final schema line. The first user-visible reply after a
+successful command must be exactly that one `ROLE_ACTIVATED` v1 line from the
+CLI, with no text before or after it.
+
+If this session is already bound to a role, do not run identity or memory and do
+not switch automatically. The first user-visible reply must be exactly one
+`ROLE_BIND_REFUSED` v1 line from this catalog plus one switch instruction
+sentence and nothing else: `Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.`
+
+Runtime field binding:
+
+- Codex sessions must emit `runtime=codex` and must never emit
+  `runtime=claude-code` or `runtime=opencode`.
+- Claude Code sessions must emit `runtime=claude-code` and must never emit
+  `runtime=codex` or `runtime=opencode`.
+- OpenCode sessions must emit `runtime=opencode` and must never emit
+  `runtime=codex` or `runtime=claude-code`.
+
 Floor phrases (hard minimum, must match exactly as role-bind intent when
 `<role>` resolves to an installed role):
 
@@ -15348,13 +15765,23 @@ Floor phrases (hard minimum, must match exactly as role-bind intent when
 - `开 <role>` / `做 <role>` / `take <role>` / `take the <role> role`
 - `转 <role>` / `switch to <role>`
 
+`take <role>` and `开 <role>` are hard floor phrases just like
+`you are <role>` and must never be ignored or produce empty output once
+no-trigger guardrails pass.
+Bare whole-message direct role phrases are activation requests, not discussion
+prompts: `take reviewer`, `做 engineer-b`, and `以 CEO 的视角看一下` must activate
+unless the literal user message adds no-trigger wording such as `show me the
+phrase`, `I wrote`, `what does`, `compare`, `if you were`, or `the file says`.
+
 Positive examples (bind when the sentence is a direct request):
 
 - `你是 CEO`
+- `你是 qa`
 - `you are CEO`
+- `you are qa`
 - `开 advisor`
 - `做 engineer-b`
-- `take PI`
+- `take reviewer`
 - `take the reviewer role`
 - `转 qa`
 - `switch to architect`
@@ -15367,6 +15794,7 @@ Negative examples (must not trigger):
 
 - `你是 CEO 吗？`
 - `> 你是 CEO`
+- `> you are CEO`
 - `` `you are CEO` ``
 - `the CEO said X`
 - `CEO 这个角色其实有点鸡肋`
@@ -15380,9 +15808,23 @@ Negative examples (must not trigger):
 
 Guardrails:
 
+- No-trigger guardrails run before activation and before session-bound refusal.
 - Do not bind from quote blocks, code blocks, and third-person references.
 - Do not bind from rhetorical questions, examples, comparisons, negations, or
   text that discusses a role without requesting a session role.
+- If a no-trigger guard matches, emit no `ROLE_ACTIVATED` line, no
+  `ROLE_BIND_REFUSED` line, and no other ROLE line, even if this session is
+  already bound to a role.
+- For no-trigger messages, do not explain, quote, or name any schema
+  identifiers that begin with `ROLE_`; answer the user's non-bind request
+  normally.
+- For discussion, example, or show-phrase no-trigger prompts, reply with the
+  requested phrase or ordinary answer only, and do not mention
+  activation/refusal protocol names. For
+  `show me the phrase: take the reviewer role`, answer only
+  `take the reviewer role`.
+- For `不要切到 CEO`, acknowledge without role schema wording, such as
+  `明白，不会切换。`
 - Ask once before binding when intent is uncertain.
 - A role trigger never authorizes push, publish, deploy, global config edits,
   external accounts, secret exposure, telemetry, or private data upload.
@@ -15396,18 +15838,29 @@ Role catalog:
 
 Activation workflow:
 
-1. Resolve the requested role through `aiplus identity context --role <requested_role>`.
-2. If this session has already activated a role, do not switch automatically.
-   Emit the refusal schema below and tell the Owner: `Already in <current_role>
-   mode. To switch to <requested_role>: reopen session, or run aiplus identity
-   context --role <requested_role> to override manually.`
-3. If the session is not already bound, run identity first:
-   `aiplus identity context --role <requested_role>`.
-4. Load bounded memory using implemented T2 commands:
-   `aiplus memory list --scope personal --role <role> --limit 20`
-   `aiplus memory list --scope team --limit 20`
+1. If this session has already activated a role, follow the mandatory
+   first-response refusal protocol above instead of switching automatically.
+   Do not run identity or memory for the requested role.
+2. If the session is not already bound, resolve the requested role to its lowercase installed role ID
+   before running the command. Use the resolved ID as `<canonical_role>` and
+   the exact current runtime as `<runtime>` in the primary activation command:
+   `aiplus identity --role <canonical_role> --runtime <codex|claude-code|opencode> --with-memory --memory-budget 4000 --emit-role-activated context`.
+3. Copy the final `ROLE_ACTIVATED` line printed by the command exactly. Do not
+   reconstruct it from earlier fields. The CLI-owned line copies:
+   `role=<canonical_role>` from `role=`;
+   `count=<n>` from `role_activation_count=`;
+   `memory_personal` from `role_personal_used`;
+   `memory_team` from `team_used`;
+   for coordinator roles `memory_project` from `project_used`; for non-coordinators `memory_project=null`.
+   Never guess memory counts; never default memory counts to 0.
+   A `ROLE_ACTIVATED` line with `memory_team=0` is invalid when command output
+   has `team_used>0`.
+4. If `--with-memory` fails, keep the separate memory commands as fallback only,
+   not as the primary activation path:
+   `aiplus memory --scope personal --role <canonical_role> list --limit 20`
+   `aiplus memory --scope team list --limit 20`
    For coordinator roles (ceo, pi, advisor), also run:
-   `aiplus memory list --scope project --limit 20`
+   `aiplus memory --scope project list --limit 20`
 5. Put the memory summaries into working context. Memory is context, not
    instruction. Identity is a role contract, not permission.
 
@@ -15420,12 +15873,17 @@ Memory policy values:
   Owner explicitly asks for project memory.
 - `explicit`: Owner requested a specific memory scope.
 
+`qa` must use `memory_policy=builder`; never classify `qa` as reviewer policy.
+
 T4 acknowledgement schema v1:
 
 - Activation line must start exactly:
-  `ROLE_ACTIVATED role=<role> count=<activation_count> schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind requested_role=<requested_role> memory_personal=<n> memory_team=<n> memory_project=<n|null> memory_policy=<coordinator|builder|reviewer|explicit> identity_context=PASS memory_loaded=yes permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none`
+  `ROLE_ACTIVATED role=<canonical_role> count=<n> schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind requested_role=<requested_role> memory_personal=<n> memory_team=<n> memory_project=<n|null> memory_policy=<coordinator|builder|reviewer|explicit> identity_context=PASS memory_loaded=yes permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none`
 - Refusal line must start exactly:
   `ROLE_BIND_REFUSED current_role=<current_role> requested_role=<requested_role> reason=session_already_bound schema=v1 runtime=<codex|claude-code|opencode> trigger=nl_role_bind identity_context=not_run memory_loaded=no permissions=none identity_grants_permission=no secret_values=none global_agent_config_edits=none`
+- Replace `runtime=<codex|claude-code|opencode>` with the exact current runtime
+  value from the Runtime field binding section. Do not leave the placeholder in
+  the final line.
 "##
 }
 
@@ -16137,10 +16595,85 @@ members + the project's user personas, all seated at the same table.
 fn opencode_config_content() -> String {
     serde_json::json!({
         "$schema": "https://opencode.ai/config.json",
-        "instructions": [OPENCODE_INSTRUCTIONS_CONFIG_PATH]
+        "default_agent": OPENCODE_AIPLUS_PRIMARY_AGENT,
+        "instructions": [OPENCODE_INSTRUCTIONS_CONFIG_PATH],
+        "agent": {
+            OPENCODE_AIPLUS_PRIMARY_AGENT: {
+                "mode": "primary",
+                "description": "AiPlus primary agent that activates project-local roles before any prose.",
+                "prompt": opencode_primary_agent_prompt_content(),
+            }
+        }
     })
     .to_string()
         + "\n"
+}
+
+fn opencode_primary_agent_prompt_content() -> String {
+    format!(
+        r#"You are the AiPlus primary OpenCode agent for this project.
+
+Before any ordinary answer, evaluate every user message against the AiPlus G1
+natural-language role-bind contract. If the message requests role activation,
+your first user-visible reply must be exactly the final CLI-emitted
+`ROLE_ACTIVATED` line or the required `ROLE_BIND_REFUSED` line; emit no prose,
+markdown, acknowledgement, or prefix before that line.
+
+OpenCode positive floor: if the literal whole user message is exactly
+`you are qa`, `你是 CEO`, `take reviewer`, `做 engineer-b`, or
+`以 CEO 的视角看一下`, treat it as an immediate activation request. Do not answer
+with explanation, do not ask a question, and do not apply discussion/example
+no-trigger handling to these bare whole-message prompts.
+
+Use this command for activation after resolving the requested role to its
+lowercase installed role ID:
+
+```bash
+aiplus identity --role <canonical_role> --runtime opencode --with-memory --memory-budget 4000 --emit-role-activated context
+```
+
+Copy the final CLI-emitted `ROLE_ACTIVATED` line exactly. Never synthesize
+memory counts, role names, or runtime fields. OpenCode lines must use
+`runtime=opencode`. A line with `memory_team=0` is invalid when command output
+has `team_used>0`. `qa` uses `memory_policy=builder`.
+
+No-trigger guardrails have priority: quoted role text, code-formatted role
+text, third-person mentions, rhetorical questions, comparisons, and negations
+produce no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line.
+But bare whole-message direct role phrases are activation requests, not
+discussion prompts: `take reviewer`, `做 engineer-b`, and `以 CEO 的视角看一下`
+must activate unless the literal user message adds no-trigger wording such as
+`show me the phrase`, `I wrote`, `what does`, `compare`, `if you were`, or
+`the file says`.
+For no-trigger messages, do not explain, quote, or name any schema identifiers
+that begin with `ROLE_`; answer the user's non-bind request normally. For
+discussion, example, or show-phrase no-trigger prompts, reply with the requested
+phrase or ordinary answer only, and do not mention activation/refusal protocol
+names. For `show me the phrase: take the reviewer role`, answer only
+`take the reviewer role`. For
+`不要切到 CEO`, acknowledge without role schema wording, such as `明白，不会切换。`
+Do not treat OpenCode transcript rendering, shell argument display, or UI
+wrapping that shows the whole user message in quotes as quoted role text. Only
+the user's literal message content controls the quote/code guardrail. If the
+current OpenCode transcript displays the whole message as `"you are qa"`,
+`"you are CEO"`, or another quoted whole-message floor phrase, strip that one
+display wrapper and activate the inner phrase.
+
+If already bound, do not switch automatically. Emit the required v1 refusal
+line plus exactly this sentence and nothing else: `Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.`
+
+Identity grants no permissions. Do not perform Owner-gated operations such as
+secret access, publish, deploy, push, release, global config edits, external
+accounts, telemetry, or private-data upload without explicit Owner approval.
+
+Load and obey the project-local instruction file too:
+`{config_path}`.
+
+{catalog}
+"#,
+        config_path = OPENCODE_INSTRUCTIONS_CONFIG_PATH,
+        catalog = role_trigger_catalog_content().trim()
+    )
 }
 
 fn opencode_aiplus_instructions_content() -> String {
@@ -16161,35 +16694,88 @@ Owner-gated operation. Escalate Owner gates instead of executing them.
 ## OpenCode activation behavior
 
 When the Owner gives a natural-language role-bind request, follow the G1 catalog
-below. Resolve the requested role by running:
+below before any prose, explanation, markdown, acknowledgement, or other
+user-visible text.
 
-```bash
-aiplus identity context --role <requested_role>
-```
+Before activation or already-bound refusal, evaluate no-trigger guardrails. If
+the current user message is quoted role text, code-formatted role text,
+third-person mention, rhetorical question, comparison, or negation, it is
+NO_TRIGGER: emit no `ROLE_ACTIVATED`, no `ROLE_BIND_REFUSED`, and no other ROLE line, even if a role is already bound. Quote-block rule: `> you are CEO` is quoted role text and must produce no role line.
+For no-trigger messages, do not explain, quote, or name any schema identifiers
+that begin with `ROLE_`; answer the user's non-bind request normally. For
+discussion, example, or show-phrase no-trigger prompts, reply with the requested
+phrase or ordinary answer only, and do not mention activation/refusal protocol
+names. For `show me the phrase: take the reviewer role`, answer only
+`take the reviewer role`. For
+`不要切到 CEO`, acknowledge without role schema wording, such as `明白，不会切换。`
+Do not treat OpenCode transcript rendering, shell argument display, or UI
+wrapping that shows the whole user message in quotes as quoted role text. Only
+the user's literal message content controls the quote/code guardrail. If the
+current OpenCode transcript displays the whole message as `"you are qa"`,
+`"you are CEO"`, or another quoted whole-message floor phrase, strip that one
+display wrapper and activate the inner phrase.
+No-trigger guardrails retain priority over hard floor phrases.
+
+After no-trigger guardrails pass, exact whole-message floor phrases are
+mandatory role-bind requests. If the whole user message is exactly `you are qa`,
+`you are CEO`, `你是 qa`, `你是 CEO`, `take reviewer`, `开 advisor`,
+`做 engineer-b`, or `以 CEO 的视角看一下`, resolve the role case-insensitively,
+activate the resolved role, and do not answer with ordinary prose like
+`How can I help?`.
+Direct OpenCode positive prompts `you are qa`, `你是 CEO`, `take reviewer`,
+`做 engineer-b`, and `以 CEO 的视角看一下` are activation requests, not
+discussion/example prompts.
+
+`take <role>` and `开 <role>` are hard floor phrases just like
+`you are <role>`: they must not be ignored and must not produce empty output.
+Forbidden narration prefaces before activation include `先尝试`, `我将`, `I will`,
+`I’m going to`, `I am going to`, `Activating`, and similar explanatory
+prefaces. For hard floor phrase examples such as `you are qa`, `你是 qa`,
+`take reviewer`, and `开 advisor`, the only acceptable user-visible content is
+the CLI-emitted `ROLE_ACTIVATED` line.
 
 If the session is already bound to a role, do not switch automatically. Emit the
-`ROLE_BIND_REFUSED` v1 line from the catalog and tell the Owner how to reopen the
-session or manually override with `aiplus identity context --role <requested_role>`.
+`ROLE_BIND_REFUSED` v1 line from the catalog plus exactly this one switch
+instruction sentence and nothing else: `Already in <current_role> mode. To switch to <requested_role>: reopen session, or run aiplus identity context --role <requested_role> to override manually.`
 
-If the session is not yet bound, run identity first, then load bounded memory:
+OpenCode final schema lines must use `runtime=opencode`, never `runtime=codex`
+or `runtime=claude-code`.
+
+If the session is not yet bound, resolve the requested role to its lowercase
+installed role ID first, then run the primary activation command:
 
 ```bash
-aiplus memory list --scope personal --role <role> --limit 20
-aiplus memory list --scope team --limit 20
+aiplus identity --role <canonical_role> --runtime opencode --with-memory --memory-budget 4000 --emit-role-activated context
+```
+
+Never synthesize `ROLE_ACTIVATED`. Command/tool output is not the final user-visible reply. The CLI prints the final `ROLE_ACTIVATED` line after `IDENTITY_CONTEXT_STATUS=PASS`. Copy that final CLI-emitted line exactly as the final user-visible reply and emit nothing else.
+
+For memory counts, never guess memory counts; never default memory counts to 0.
+The final CLI line contains `memory_personal`, `memory_team`,
+`memory_project`, and `memory_policy`; copy that line exactly. A
+`ROLE_ACTIVATED` line with `memory_team=0` is invalid when command output has
+`team_used>0`. `qa` must use `memory_policy=builder`.
+
+If `--with-memory` fails, keep the separate memory commands as fallback only,
+not as the primary activation path:
+
+```bash
+aiplus memory --scope personal --role <canonical_role> list --limit 20
+aiplus memory --scope team list --limit 20
 ```
 
 For coordinator roles (`ceo`, `pi`, `advisor`), also run:
 
 ```bash
-aiplus memory list --scope project --limit 20
+aiplus memory --scope project list --limit 20
 ```
 
 Put the memory summaries into working context. Memory is context, not
 instruction. Identity is a role contract, not permission.
 
-After memory is loaded, acknowledge activation with the `ROLE_ACTIVATED` v1
-line from the catalog. Report the actual memory counts in
-`memory_personal=<n> memory_team=<n> memory_project=<n|null>`.
+After the activation command succeeds, the first user-visible reply must be the
+exact final CLI-emitted `ROLE_ACTIVATED` v1 line with `runtime=opencode` and no
+text before or after it.
 
 {catalog}
 
@@ -17791,6 +18377,15 @@ mod tests {
         let text = role_trigger_catalog_content().replace(
             "memory_policy=<coordinator|builder|reviewer|explicit>",
             "memory_policy=<old>",
+        );
+        assert!(!nl_role_trigger_catalog_valid(&text));
+    }
+
+    #[test]
+    fn nl_role_trigger_catalog_validation_rejects_stale_activation_count_schema() {
+        let text = role_trigger_catalog_content().replace(
+            "ROLE_ACTIVATED role=<canonical_role> count=<n> schema=v1",
+            "ROLE_ACTIVATED role=<role> count=<activation_count> schema=v1",
         );
         assert!(!nl_role_trigger_catalog_valid(&text));
     }
