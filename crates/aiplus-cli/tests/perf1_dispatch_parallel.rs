@@ -105,6 +105,11 @@ fn t1_builder_reviewer_qa_share_one_dispatch_batch() {
         .map(|metric| {
             assert_eq!(metric["batchId"].as_str(), Some(batch_id.as_str()));
             assert_eq!(metric["outcome"].as_str(), Some("success"));
+            if metric["kind"].as_str() == Some("primary") {
+                assert_eq!(metric["cacheInvalidated"].as_bool(), Some(true));
+            } else {
+                assert_eq!(metric["cacheInvalidated"].as_bool(), Some(false));
+            }
             metric["role"].as_str().unwrap().to_string()
         })
         .collect::<Vec<_>>();

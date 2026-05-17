@@ -19,6 +19,7 @@ pub mod status;
 pub mod talk;
 pub mod transcript;
 pub mod worktree;
+pub mod worktree_pool;
 
 #[allow(unused_imports)]
 pub use aiplus_core::agent_team::{

@@ -5,11 +5,12 @@ use crate::agent::core::{
     is_unknown_active_aieconlab_alias, resolve_role_for_active_team,
 };
 use crate::agent::state;
-use crate::agent::worktree;
+use crate::agent::worktree_pool::WorktreePool;
 use aiplus_core::consult;
 use anyhow::{anyhow, Result};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -64,6 +65,7 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                         config,
                         None,
                         DispatchKind::Primary,
+                        None,
                     )?;
                 } else {
                     route_batch(
@@ -156,6 +158,7 @@ fn route_batch(
         sidecars.join(",")
     );
 
+    let pool = Arc::new(Mutex::new(WorktreePool::default()));
     let mut handles = Vec::new();
     {
         let project_root = project_root.to_path_buf();
@@ -163,6 +166,7 @@ fn route_batch(
         let role_input = primary_role_input.map(ToString::to_string);
         let task = task.to_string();
         let batch_id = batch_id.clone();
+        let pool = Arc::clone(&pool);
         handles.push(thread::spawn(move || {
             route_known_role(
                 &project_root,
@@ -172,6 +176,7 @@ fn route_batch(
                 primary_config,
                 Some(&batch_id),
                 DispatchKind::Primary,
+                Some(pool),
             )
         }));
     }
@@ -180,6 +185,7 @@ fn route_batch(
         let project_root = project_root.to_path_buf();
         let task = sidecar_task(&sidecar, task);
         let batch_id = batch_id.clone();
+        let pool = Arc::clone(&pool);
         handles.push(thread::spawn(move || {
             let config = get_role_config_for_project(&project_root, &sidecar)?;
             route_known_role(
@@ -190,6 +196,7 @@ fn route_batch(
                 config,
                 Some(&batch_id),
                 DispatchKind::Sidecar,
+                Some(pool),
             )
         }));
     }
@@ -223,13 +230,16 @@ fn route_known_role(
     config: AgentConfig,
     batch_id: Option<&str>,
     kind: DispatchKind,
+    pool: Option<Arc<Mutex<WorktreePool>>>,
 ) -> Result<()> {
     maybe_delay_for_perf_fixture(role);
     let started = Instant::now();
     println!("Routing task to {}: {}", role, task);
+    let mut cache_invalidated = false;
     if kind == DispatchKind::Primary {
         if let Ok(cache) = cache::global_cache().lock() {
             cache.invalidate(role, cache::InvalidationReason::RoleRouteCalled);
+            cache_invalidated = true;
         }
     }
 
@@ -238,56 +248,55 @@ fn route_known_role(
         // Worktree provisioning requires a git repo. If the project
         // isn't one, surface a clear note but still record the
         // dispatch so the audit log entry isn't lost.
-        match worktree::worktree_exists_for_role(project_root, role) {
-            Ok(Some(path)) => {
-                worktree_status = "reused".to_string();
-                println!("  Using existing worktree: {}", path.display());
-            }
-            Ok(None) => {
-                println!("  Creating worktree for {}...", role);
-                let template = config.worktree_path.as_deref();
-                match worktree::create_worktree(project_root, role, template) {
-                    Ok(path) => {
-                        worktree_status = "created".to_string();
-                        println!("  Worktree created: {}", path.display());
-                    }
-                    Err(e) => {
-                        worktree_status = "failed".to_string();
-                        eprintln!("  ERROR: Failed to create worktree: {}", e);
-                        // P1.3: record the failed dispatch so
-                        // `dispatch-history --outcome fail` can
-                        // surface worktree-creation regressions.
-                        let detail = format!("{e}");
-                        let _ = state::record_dispatch_with_outcome(
-                            project_root,
-                            role,
-                            task,
-                            "aiplus agent route",
-                            state::DispatchOutcome::Fail {
-                                reason: "worktree_create_failed",
-                                detail: &detail,
-                            },
-                        );
-                        record_dispatch_metric(
-                            project_root,
-                            batch_id,
-                            role,
-                            kind,
-                            "fail",
-                            &worktree_status,
-                            started.elapsed(),
-                        );
-                        return Err(e);
+        let template = config.worktree_path.as_deref();
+        let acquire_result = if let Some(pool) = pool {
+            let mut pool = pool
+                .lock()
+                .map_err(|_| anyhow!("worktree pool lock poisoned"))?;
+            pool.acquire(project_root, role, config.needs_worktree, template)
+        } else {
+            let mut pool = WorktreePool::default();
+            pool.acquire(project_root, role, config.needs_worktree, template)
+        };
+        match acquire_result {
+            Ok(lease) => {
+                worktree_status = lease.status.as_str().to_string();
+                if let Some(path) = lease.path {
+                    match worktree_status.as_str() {
+                        "created" => println!("  Worktree created: {}", path.display()),
+                        "reused" => println!("  Using existing worktree: {}", path.display()),
+                        _ => {}
                     }
                 }
             }
-            Err(err) => {
-                // Likely "not a git repository" — non-fatal. Warn
-                // and continue so we still record the dispatch.
-                eprintln!(
-                    "  NOTE: skipping worktree provisioning ({err}); \
-                     init this project with `git init` to enable per-role worktrees."
+            Err(e) => {
+                worktree_status = "failed".to_string();
+                eprintln!("  ERROR: Failed to acquire worktree: {}", e);
+                // P1.3: record the failed dispatch so
+                // `dispatch-history --outcome fail` can
+                // surface worktree-creation regressions.
+                let detail = format!("{e}");
+                let _ = state::record_dispatch_with_outcome(
+                    project_root,
+                    role,
+                    task,
+                    "aiplus agent route",
+                    state::DispatchOutcome::Fail {
+                        reason: "worktree_create_failed",
+                        detail: &detail,
+                    },
                 );
+                record_dispatch_metric(
+                    project_root,
+                    batch_id,
+                    role,
+                    kind,
+                    "fail",
+                    &worktree_status,
+                    cache_invalidated,
+                    started.elapsed(),
+                );
+                return Err(e);
             }
         }
     }
@@ -337,6 +346,7 @@ fn route_known_role(
         kind,
         "success",
         &worktree_status,
+        cache_invalidated,
         started.elapsed(),
     );
     Ok(())
@@ -365,6 +375,7 @@ fn record_dispatch_metric(
     kind: DispatchKind,
     outcome: &str,
     worktree_status: &str,
+    cache_invalidated: bool,
     elapsed: Duration,
 ) {
     let Some(batch_id) = batch_id else {
@@ -379,6 +390,7 @@ fn record_dispatch_metric(
         "kind": kind.as_str(),
         "outcome": outcome,
         "worktree": worktree_status,
+        "cacheInvalidated": cache_invalidated,
         "elapsedMs": elapsed.as_millis(),
         "timestamp": aiplus_core::timestamp(),
         "secretValues": "none"
