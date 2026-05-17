@@ -42,6 +42,24 @@ fn git(cwd: &Path, args: &[&str]) -> Output {
     output
 }
 
+fn git_with_config(cwd: &Path, args: &[&str]) -> Output {
+    let output = Command::new("git")
+        .args(["-c", "user.name=AiPlus Test"])
+        .args(["-c", "user.email=aiplus-test@example.invalid"])
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .expect("run git");
+    assert!(
+        output.status.success(),
+        "git {} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
 fn prepare(target: &Path) {
     fs::create_dir(target.join("fake-home")).unwrap();
     fs::create_dir(target.join("fake-codex-home")).unwrap();
@@ -56,6 +74,52 @@ fn write_legacy_schema(target: &Path) {
     let schema = legacy_schema_path(target);
     fs::create_dir_all(schema.parent().unwrap()).unwrap();
     fs::write(&schema, "schemaVersion: 0.1.0\n").unwrap();
+}
+
+fn write_fake_module_repo(source: &Path) {
+    fs::create_dir(source).unwrap();
+    fs::write(
+        source.join("aiplus-module.json"),
+        r#"{
+  "schemaVersion": "0.1.0",
+  "name": "fake-module",
+  "displayName": "Fake Module",
+  "version": "0.1.0",
+  "source": "external",
+  "license": "Apache-2.0",
+  "requiredFiles": ["README.md"],
+  "managedFiles": [".aiplus/modules/fake-module"],
+  "runtimeAdapters": ["codex"],
+  "installHints": ["test-only fake module"],
+  "doctorChecks": [],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": ["test-only fake module"]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": ["test-only fake module has no secrets"]
+  },
+  "legacyStatus": null
+}
+"#,
+    )
+    .unwrap();
+    fs::write(source.join("README.md"), "# Fake Module\n").unwrap();
+    git(source, &["init"]);
+    git(source, &["add", "."]);
+    git_with_config(
+        source,
+        &["commit", "-m", "Initial fake module / 初始化假模块"],
+    );
+}
+
+fn configure_fake_module_rewrite(target: &Path, source: &Path) {
+    let gitconfig = format!(
+        "[url \"file://{}\"]\n\tinsteadOf = https://example.invalid/fake-module\n",
+        source.display()
+    );
+    fs::write(target.join("fake-home/.gitconfig"), gitconfig).unwrap();
 }
 
 #[test]
@@ -117,5 +181,55 @@ fn install_still_removes_untracked_legacy_aieconlab_schema() {
     assert!(
         !legacy_schema_path(target).exists(),
         "untracked legacy schema should still be removed by residue cleanup"
+    );
+}
+
+#[test]
+fn add_fake_module_refuses_to_delete_tracked_unmanaged_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("project");
+    let source = temp.path().join("fake-module-source");
+    fs::create_dir(&target).unwrap();
+    prepare(&target);
+    write_fake_module_repo(&source);
+    configure_fake_module_rewrite(&target, &source);
+    git(&target, &["init"]);
+    run(&target, &["install", "codex", "--yes"], 0);
+
+    let unmanaged = target.join(".aiplus/modules/fake-module/unmanaged.txt");
+    fs::create_dir_all(unmanaged.parent().unwrap()).unwrap();
+    fs::write(&unmanaged, "tracked user content\n").unwrap();
+    git(
+        &target,
+        &["add", ".aiplus/modules/fake-module/unmanaged.txt"],
+    );
+
+    let output = run(
+        &target,
+        &[
+            "add",
+            "--from-git",
+            "example.invalid/fake-module",
+            "--trust",
+        ],
+        1,
+    );
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        combined.contains("ERROR refusing to delete git-tracked file(s)"),
+        "{combined}"
+    );
+    assert!(
+        combined.contains(".aiplus/modules/fake-module/unmanaged.txt"),
+        "{combined}"
+    );
+    assert!(
+        unmanaged.exists(),
+        "tracked but unmanaged fake-module file must be preserved"
     );
 }
