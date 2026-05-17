@@ -148,6 +148,38 @@ fn doctor_with_no_stale_registry_still_passes() {
 }
 
 #[test]
+fn doctor_accepts_legacy_registry_with_trailing_delimiters() {
+    // A prior writer bug could leave a valid registry object followed
+    // by stray JSON delimiters. Doctor should not fail the current
+    // project when the first registry object is recoverable.
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    prepare(target);
+
+    run(target, &["install", "codex"], 0);
+
+    let registry_path = target
+        .join("fake-xdg")
+        .join("aiplus")
+        .join("installed-projects.json");
+    let mut registry = fs::read_to_string(&registry_path).unwrap();
+    registry.push_str("\n}]\n}");
+    fs::write(&registry_path, registry).unwrap();
+
+    let out = run(target, &["doctor"], 0);
+    let text = String::from_utf8_lossy(&out.stdout);
+
+    assert!(
+        text.contains("DOCTOR_STATUS=PASS"),
+        "recoverable trailing registry delimiters should not fail doctor:\n{text}"
+    );
+    assert!(
+        text.contains("PASS registry parses as JSON with schema_version=1.0"),
+        "registry parse check should pass after recovery:\n{text}"
+    );
+}
+
+#[test]
 fn doctor_with_genuine_needs_fix_still_reports_needs_fix() {
     // Regression guard: the INFO classification must only soften
     // stale-registry entries. Genuine install-correctness failures

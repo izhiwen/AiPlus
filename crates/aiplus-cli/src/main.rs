@@ -2727,8 +2727,9 @@ fn command_doctor(fix: bool) -> Result<()> {
         .as_ref()
         .filter(|p| p.exists())
         .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|text| serde_json::from_str::<Registry>(&text).ok())
-        .is_some();
+        .and_then(|text| parse_registry_text(&text).ok())
+        .map(|registry| registry.schema_version == REGISTRY_SCHEMA_VERSION)
+        .unwrap_or(false);
     push_check(
         &mut checks,
         "registry parses as JSON with schema_version=1.0".to_string(),
@@ -8263,6 +8264,8 @@ fn config_home() -> Result<PathBuf> {
 // Cross-project registry (~/.config/aiplus/installed-projects.json)
 // ------------------------------------------------------------------
 
+const REGISTRY_SCHEMA_VERSION: &str = "1.0";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Registry {
     schema_version: String,
@@ -8288,13 +8291,25 @@ fn read_registry() -> Result<Registry> {
     let path = registry_file()?;
     if !path.exists() {
         return Ok(Registry {
-            schema_version: "1.0".to_string(),
+            schema_version: REGISTRY_SCHEMA_VERSION.to_string(),
             installed_projects: Vec::new(),
         });
     }
     let text = fs::read_to_string(&path).context("read registry")?;
-    let registry: Registry = serde_json::from_str(&text).context("parse registry")?;
-    Ok(registry)
+    parse_registry_text(&text)
+}
+
+fn parse_registry_text(text: &str) -> Result<Registry> {
+    match serde_json::from_str::<Registry>(text) {
+        Ok(registry) => Ok(registry),
+        Err(strict_error) => {
+            // Recover registries written with a valid first object and
+            // legacy stray delimiters after it; the next write normalizes.
+            let mut deserializer = serde_json::Deserializer::from_str(text);
+            Registry::deserialize(&mut deserializer)
+                .with_context(|| format!("parse registry (strict parse failed: {strict_error})"))
+        }
+    }
 }
 
 fn write_registry(registry: &Registry) -> Result<()> {
