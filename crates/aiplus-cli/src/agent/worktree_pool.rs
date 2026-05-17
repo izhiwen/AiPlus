@@ -61,12 +61,16 @@ impl WorktreePool {
             }
         }
 
-        if let Some(path) = worktree::worktree_exists_for_role(project_root, role)? {
-            self.leases.insert(role.to_string(), path.clone());
-            return Ok(WorktreeLease {
-                status: WorktreePoolStatus::Reused,
-                path: Some(path),
-            });
+        match worktree::worktree_exists_for_role(project_root, role) {
+            Ok(Some(path)) => {
+                self.leases.insert(role.to_string(), path.clone());
+                return Ok(WorktreeLease {
+                    status: WorktreePoolStatus::Reused,
+                    path: Some(path),
+                });
+            }
+            Ok(None) => {}
+            Err(_) => return Ok(WorktreeLease::skipped()),
         }
 
         let path = worktree::create_worktree(project_root, role, template)?;
@@ -87,6 +91,16 @@ mod tests {
         let mut pool = WorktreePool::default();
         let lease = pool
             .acquire(Path::new("/definitely/not/a/repo"), "reviewer", false, None)
+            .unwrap();
+        assert_eq!(lease.status, WorktreePoolStatus::Skipped);
+        assert!(lease.path.is_none());
+    }
+
+    #[test]
+    fn missing_git_repo_skips_worktree_without_failing_dispatch() {
+        let mut pool = WorktreePool::default();
+        let lease = pool
+            .acquire(Path::new("/definitely/not/a/repo"), "ra-stata", true, None)
             .unwrap();
         assert_eq!(lease.status, WorktreePoolStatus::Skipped);
         assert!(lease.path.is_none());
