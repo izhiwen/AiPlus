@@ -169,6 +169,68 @@ pub struct FiredGate {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateKind {
+    Publish,
+    Release,
+    Deploy,
+    RemoteVcs,
+    GlobalConfig,
+    ExternalAccount,
+    SecretExposure,
+    PrivateDataUpload,
+    Telemetry,
+    VersionTag,
+    ArtifactUpload,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentKind {
+    ExecuteOutwardAction,
+    RequestApproval,
+    LocalSafetyConstraint,
+    MentionOnly,
+    QuotedOrCode,
+    Negated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateDecision {
+    Fire,
+    Ignore,
+    UncertainAskOwner,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateConfidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextSpan {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IgnoredGateMention {
+    pub gate_id: String,
+    pub mention: String,
+    pub intent: IntentKind,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DispatchGateAnalysis {
+    pub fired: Vec<FiredGate>,
+    pub ignored: Vec<IgnoredGateMention>,
+    pub normalized_spans: Vec<TextSpan>,
+    pub confidence: GateConfidence,
+}
+
 pub fn consult_team_path(project_root: &Path) -> PathBuf {
     project_root.join(CONSULT_TEAM_PATH)
 }
@@ -729,82 +791,101 @@ pub fn build_findings(
     (tier, complexity, risk, out)
 }
 
-/// Identify the owner gates that fire for `task`, given the consult
-/// team. Two sources contribute:
-///   * Members whose own `owner_gate=true` and whose triggers match the
-///     task. These come back tagged with `source="member_owner_gate"`.
-///   * Top-level `[owner_gates]` entries whose `id` (or, for SWE-shape
-///     flat gates, the gate name) appears as a substring of the task.
-///     Tagged with `source="declared_gate"`.
+/// Run the semantic dispatch owner-gate analyzer for `task`.
 ///
-/// The same gate id can fire from both sources; we keep the first
-/// occurrence (member-driven), since that's the higher-fidelity signal
-/// (it knows which member raised the flag).
-pub fn match_gates<'a>(
-    team: &'a ConsultTeam,
-    matched_members: &[&'a Member],
+/// Known AiPlus safety gates use deterministic verb-object intent
+/// matching: a gate fires only when the task asks for an outward/global
+/// action, or asks for permission to take one. Markdown blockquotes,
+/// fenced code, inline code, quoted examples, and clearly negated local
+/// safety clauses are ignored. Domain-specific gates that are not in
+/// the AiPlus safety catalog keep the historical substring behavior so
+/// existing project/team owner gates remain conservative.
+pub fn analyze_dispatch_gate<'a>(
     task: &str,
-) -> Vec<FiredGate> {
-    let mut fired: Vec<FiredGate> = Vec::new();
-    let task_lower = task.to_lowercase();
+    matched_members: &[&'a Member],
+    team: &'a ConsultTeam,
+) -> DispatchGateAnalysis {
+    let mut analysis = DispatchGateAnalysis {
+        fired: Vec::new(),
+        ignored: Vec::new(),
+        normalized_spans: normalize_dispatch_gate_spans(task),
+        confidence: GateConfidence::High,
+    };
 
     for member in matched_members {
         if !member.owner_gate {
             continue;
         }
-        if fired.iter().any(|g| g.gate_id == member.id) {
-            continue;
-        }
-        fired.push(FiredGate {
-            gate_id: member.id.clone(),
-            description: format!("{} member flagged owner gate", member.name),
-            source: "member_owner_gate".to_string(),
-        });
+        push_unique_gate(
+            &mut analysis.fired,
+            FiredGate {
+                gate_id: member.id.clone(),
+                description: format!("{} member flagged owner gate", member.name),
+                source: "member_owner_gate".to_string(),
+            },
+        );
     }
 
-    // Declared gates: [owner_gates].gates[]: trigger if the gate id is
-    // a substring of the task. Treat hyphens as soft separators so
-    // "authorship-change" fires on either token, not just the exact id.
     for gate in &team.owner_gates {
         if gate.id.is_empty() {
             continue;
         }
+
+        let description = if gate.description.is_empty() {
+            format!("owner gate '{}' declared in consult team", gate.id)
+        } else {
+            gate.description.clone()
+        };
+
+        if let Some(kind) = gate_kind_for_id(&gate.id) {
+            match semantic_gate_decision(task, &analysis.normalized_spans, kind) {
+                GateDecision::Fire | GateDecision::UncertainAskOwner => {
+                    push_unique_gate(
+                        &mut analysis.fired,
+                        FiredGate {
+                            gate_id: gate.id.clone(),
+                            description,
+                            source: "declared_gate".to_string(),
+                        },
+                    );
+                }
+                GateDecision::Ignore => {
+                    if gate_mentioned(task, &gate.id, kind) {
+                        analysis.ignored.push(IgnoredGateMention {
+                            gate_id: gate.id.clone(),
+                            mention: gate.id.clone(),
+                            intent: IntentKind::LocalSafetyConstraint,
+                            reason: "gate mention is quoted, negated, descriptive, or local-only"
+                                .to_string(),
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Unknown/project-specific owner gates retain the previous
+        // conservative substring matching. G2 only narrows the common
+        // outward/global safety gates that caused route false positives.
         let gate_lower = gate.id.to_lowercase();
         let normalized = gate_lower.replace('-', " ");
+        let task_lower = task.to_lowercase();
         let hit = task_lower.contains(&gate_lower) || task_lower.contains(&normalized);
-        if !hit {
-            continue;
+        if hit {
+            push_unique_gate(
+                &mut analysis.fired,
+                FiredGate {
+                    gate_id: gate.id.clone(),
+                    description,
+                    source: "declared_gate".to_string(),
+                },
+            );
         }
-        if fired.iter().any(|g| g.gate_id == gate.id) {
-            continue;
-        }
-        fired.push(FiredGate {
-            gate_id: gate.id.clone(),
-            description: if gate.description.is_empty() {
-                format!("owner gate '{}' declared in consult team", gate.id)
-            } else {
-                gate.description.clone()
-            },
-            source: "declared_gate".to_string(),
-        });
     }
 
-    // SWE-shape stop_gate triggers: a [[triggers]] block with
-    // `stop_gate = true` fires when (a) one of its patterns matches the
-    // task and (b) at least one of its named members is in
-    // matched_members. The second condition is what distinguishes
-    // "this trigger could in principle apply" from "this trigger
-    // actually applies right now."
     let matched_ids: std::collections::BTreeSet<&str> =
         matched_members.iter().map(|m| m.id.as_str()).collect();
     for trig in &team.stop_gate_triggers {
-        let pattern_hit = trig
-            .patterns
-            .iter()
-            .any(|p| task_matches_trigger(&task_lower, p));
-        if !pattern_hit {
-            continue;
-        }
         let member_hit = trig
             .members
             .iter()
@@ -812,19 +893,395 @@ pub fn match_gates<'a>(
         if !member_hit {
             continue;
         }
-        if fired.iter().any(|g| g.gate_id == trig.id) {
+        let pattern_hit =
+            semantic_stop_gate_decision(task, &analysis.normalized_spans, &trig.patterns);
+        if !pattern_hit {
+            if stop_gate_mentioned(task, &trig.patterns) {
+                analysis.ignored.push(IgnoredGateMention {
+                    gate_id: trig.id.clone(),
+                    mention: trig.patterns.join(","),
+                    intent: IntentKind::LocalSafetyConstraint,
+                    reason:
+                        "stop_gate trigger mention is quoted, negated, descriptive, or local-only"
+                            .to_string(),
+                });
+            }
             continue;
         }
-        fired.push(FiredGate {
-            gate_id: trig.id.clone(),
-            description: format!(
-                "stop_gate trigger '{}' fired on task keyword + matched member",
-                trig.id
-            ),
-            source: "stop_gate_trigger".to_string(),
-        });
+        push_unique_gate(
+            &mut analysis.fired,
+            FiredGate {
+                gate_id: trig.id.clone(),
+                description: format!(
+                    "stop_gate trigger '{}' fired on task keyword + matched member",
+                    trig.id
+                ),
+                source: "stop_gate_trigger".to_string(),
+            },
+        );
     }
-    fired
+
+    analysis
+}
+
+/// Identify the owner gates that fire for `task`, given the consult
+/// team. This compatibility wrapper keeps the route integration API
+/// stable while the richer semantic diagnostics live in
+/// `analyze_dispatch_gate`.
+pub fn match_gates<'a>(
+    team: &'a ConsultTeam,
+    matched_members: &[&'a Member],
+    task: &str,
+) -> Vec<FiredGate> {
+    analyze_dispatch_gate(task, matched_members, team).fired
+}
+
+fn push_unique_gate(fired: &mut Vec<FiredGate>, gate: FiredGate) {
+    if !fired.iter().any(|g| g.gate_id == gate.gate_id) {
+        fired.push(gate);
+    }
+}
+
+fn normalize_dispatch_gate_spans(task: &str) -> Vec<TextSpan> {
+    let mut spans = Vec::new();
+    let mut offset = 0usize;
+    let mut in_fence = false;
+    for line in task.split_inclusive('\n') {
+        let line_start = offset;
+        offset += line.len();
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence || trimmed.starts_with('>') {
+            continue;
+        }
+
+        let cleaned = strip_inline_code_and_quotes(line);
+        for clause in split_gate_clauses(&cleaned) {
+            let text = clause.trim();
+            if text.is_empty() {
+                continue;
+            }
+            spans.push(TextSpan {
+                start: line_start,
+                end: line_start + line.len(),
+                text: text.to_string(),
+            });
+        }
+    }
+    spans
+}
+
+fn strip_inline_code_and_quotes(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_backtick = false;
+    let mut quote: Option<char> = None;
+    for ch in line.chars() {
+        if in_backtick {
+            if ch == '`' {
+                in_backtick = false;
+            }
+            continue;
+        }
+        if let Some(q) = quote {
+            let close = match q {
+                '"' => '"',
+                '\'' => '\'',
+                '“' => '”',
+                '‘' => '’',
+                _ => q,
+            };
+            if ch == close {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '`' => in_backtick = true,
+            '"' | '\'' | '“' | '‘' => quote = Some(ch),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn split_gate_clauses(text: &str) -> Vec<&str> {
+    text.split(|ch: char| matches!(ch, '\n' | '.' | ';'))
+        .flat_map(|part| part.split(" then "))
+        .flat_map(|part| part.split(" Then "))
+        .collect()
+}
+
+fn gate_kind_for_id(id: &str) -> Option<GateKind> {
+    let id = id.to_ascii_lowercase().replace('-', "_");
+    match id.as_str() {
+        "push" | "remote_vcs" | "remote_vcs_update" => Some(GateKind::RemoteVcs),
+        "tag" | "version_tag" => Some(GateKind::VersionTag),
+        "release" => Some(GateKind::Release),
+        "artifact_upload" => Some(GateKind::ArtifactUpload),
+        "package_publish" => Some(GateKind::Publish),
+        "deploy" => Some(GateKind::Deploy),
+        "global_config_edit" | "global_config" => Some(GateKind::GlobalConfig),
+        "external_account_mutation" | "external_account" => Some(GateKind::ExternalAccount),
+        "secret_exposure" | "secret" => Some(GateKind::SecretExposure),
+        "private_data_upload" => Some(GateKind::PrivateDataUpload),
+        "telemetry" => Some(GateKind::Telemetry),
+        "send_delete_publish_or_mutate_external_content" => Some(GateKind::ExternalAccount),
+        _ => None,
+    }
+}
+
+fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> GateDecision {
+    let mut mentioned = false;
+    for span in spans {
+        let clause = span.text.to_lowercase();
+        if !mentions_gate_kind(&clause, kind) {
+            continue;
+        }
+        mentioned = true;
+        if is_safe_gate_clause(&clause) {
+            continue;
+        }
+        if is_explicit_approval_request(&clause, kind) || is_execute_gate_clause(&clause, kind) {
+            return GateDecision::Fire;
+        }
+    }
+    if mentioned || gate_mentioned(task, "", kind) {
+        GateDecision::Ignore
+    } else {
+        GateDecision::Ignore
+    }
+}
+
+fn semantic_stop_gate_decision(task: &str, spans: &[TextSpan], patterns: &[String]) -> bool {
+    for pattern in patterns {
+        if let Some(kind) = gate_kind_for_stop_pattern(pattern) {
+            if semantic_gate_decision(task, spans, kind) == GateDecision::Fire {
+                return true;
+            }
+            continue;
+        }
+        for span in spans {
+            let clause = span.text.to_lowercase();
+            if task_matches_trigger(&clause, pattern)
+                && !is_safe_gate_clause(&clause)
+                && has_outward_action_verb(&clause)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn gate_kind_for_stop_pattern(pattern: &str) -> Option<GateKind> {
+    let p = pattern.to_ascii_lowercase();
+    match p.as_str() {
+        "release" => Some(GateKind::Release),
+        "tag" => Some(GateKind::VersionTag),
+        "publish" => Some(GateKind::Publish),
+        "upload" | "artifact" => Some(GateKind::ArtifactUpload),
+        "deploy" => Some(GateKind::Deploy),
+        _ => None,
+    }
+}
+
+fn gate_mentioned(task: &str, gate_id: &str, kind: GateKind) -> bool {
+    let lower = task.to_lowercase();
+    (!gate_id.is_empty() && lower.contains(&gate_id.to_lowercase()))
+        || mentions_gate_kind(&lower, kind)
+}
+
+fn stop_gate_mentioned(task: &str, patterns: &[String]) -> bool {
+    let lower = task.to_lowercase();
+    patterns.iter().any(|p| lower.contains(&p.to_lowercase()))
+}
+
+fn mentions_gate_kind(clause: &str, kind: GateKind) -> bool {
+    match kind {
+        GateKind::Publish => {
+            has_word(clause, "publish")
+                || clause.contains("package registry")
+                || has_word(clause, "registry")
+        }
+        GateKind::Release => has_word(clause, "release") || clause.contains("release notes"),
+        GateKind::Deploy => has_word(clause, "deploy") || has_word(clause, "production"),
+        GateKind::RemoteVcs => {
+            has_word(clause, "push")
+                || clause.contains("git push")
+                || clause.contains("origin main")
+                || clause.contains("origin/main")
+                || clause.contains("remote vcs")
+                || clause.contains("remote update")
+                || clause.contains("update origin")
+        }
+        GateKind::GlobalConfig => {
+            clause.contains("global config")
+                || clause.contains("global registry")
+                || clause.contains("machine config")
+                || clause.contains("~/.config")
+                || clause.contains("installed-projects.json")
+        }
+        GateKind::ExternalAccount => {
+            clause.contains("external account")
+                || has_word(clause, "contact")
+                || has_word(clause, "email")
+                || has_word(clause, "send")
+                || has_word(clause, "mutate")
+        }
+        GateKind::SecretExposure => {
+            has_word(clause, "secret")
+                || has_word(clause, "secrets")
+                || has_word(clause, "token")
+                || clause.contains("api key")
+        }
+        GateKind::PrivateDataUpload => {
+            clause.contains("private data")
+                || clause.contains("restricted data")
+                || clause.contains("data upload")
+                || clause.contains("upload data")
+                || clause.contains("share data")
+        }
+        GateKind::Telemetry => has_word(clause, "telemetry") || clause.contains("usage data"),
+        GateKind::VersionTag => has_word(clause, "tag") || clause.contains("version bump"),
+        GateKind::ArtifactUpload => has_word(clause, "upload") || has_word(clause, "artifact"),
+    }
+}
+
+fn is_safe_gate_clause(clause: &str) -> bool {
+    let c = clause.trim();
+    let safe_markers = [
+        "do not",
+        "don't",
+        "dont",
+        "never",
+        "no ",
+        "without",
+        "avoid",
+        "out of scope",
+        "not in scope",
+        "scope:",
+        "local only",
+        "local-only",
+        "project-local",
+        "read-only",
+        "verification-only",
+        "no protected operations",
+        "owner gates remain active",
+        "preserve owner gates",
+        "owner-gated external actions are out of scope",
+        "forbid",
+        "forbidden",
+        "escalate before",
+        "requires owner approval",
+        "owner approval required",
+        "acceptance",
+        "criteria",
+        "example",
+        "proposal",
+        "draft boundary",
+        "release boundary",
+        "gate criteria",
+    ];
+    safe_markers
+        .iter()
+        .any(|marker| c.starts_with(marker) || c.contains(marker))
+}
+
+fn is_explicit_approval_request(clause: &str, kind: GateKind) -> bool {
+    mentions_gate_kind(clause, kind)
+        && (clause.contains("approve")
+            || clause.contains("approval to")
+            || clause.contains("permission to")
+            || clause.contains("authorize")
+            || clause.contains("owner-approved"))
+        && has_outward_action_verb(clause)
+}
+
+fn is_execute_gate_clause(clause: &str, kind: GateKind) -> bool {
+    match kind {
+        GateKind::Publish => {
+            has_word(clause, "publish")
+                || (has_any_word(clause, &["ship", "submit", "post"])
+                    && mentions_gate_kind(clause, kind))
+        }
+        GateKind::Release => {
+            has_word(clause, "release")
+                || (has_any_word(clause, &["prepare", "cut", "ship"])
+                    && mentions_gate_kind(clause, kind))
+        }
+        GateKind::Deploy => has_word(clause, "deploy"),
+        GateKind::RemoteVcs => {
+            clause.contains("git push")
+                || has_word(clause, "push")
+                || (has_any_word(clause, &["update", "perform", "fast-forward", "sync"])
+                    && mentions_gate_kind(clause, kind))
+        }
+        GateKind::GlobalConfig => {
+            has_any_word(
+                clause,
+                &[
+                    "edit", "modify", "change", "repair", "write", "update", "touch", "delete",
+                ],
+            ) && mentions_gate_kind(clause, kind)
+        }
+        GateKind::ExternalAccount => {
+            has_any_word(
+                clause,
+                &[
+                    "contact", "email", "send", "create", "modify", "delete", "mutate", "publish",
+                ],
+            ) && mentions_gate_kind(clause, kind)
+        }
+        GateKind::SecretExposure => {
+            has_any_word(
+                clause,
+                &[
+                    "print", "show", "expose", "read", "rotate", "push", "upload", "resolve",
+                ],
+            ) && mentions_gate_kind(clause, kind)
+        }
+        GateKind::PrivateDataUpload => {
+            has_any_word(clause, &["upload", "share", "send", "publish"])
+                && mentions_gate_kind(clause, kind)
+        }
+        GateKind::Telemetry => {
+            has_any_word(clause, &["add", "enable", "upload", "send"])
+                && mentions_gate_kind(clause, kind)
+        }
+        GateKind::VersionTag => {
+            has_word(clause, "tag")
+                || (has_any_word(clause, &["create", "push", "bump"])
+                    && mentions_gate_kind(clause, kind))
+        }
+        GateKind::ArtifactUpload => {
+            has_word(clause, "upload")
+                || (has_any_word(clause, &["publish", "attach"])
+                    && mentions_gate_kind(clause, kind))
+        }
+    }
+}
+
+fn has_outward_action_verb(clause: &str) -> bool {
+    has_any_word(
+        clause,
+        &[
+            "publish", "release", "deploy", "tag", "push", "upload", "contact", "create", "modify",
+            "delete", "rotate", "expose", "print", "show", "use", "read", "perform", "update",
+            "edit", "repair", "bump", "prepare", "add", "enable", "send", "mutate", "resolve",
+        ],
+    )
+}
+
+fn has_any_word(text: &str, words: &[&str]) -> bool {
+    words.iter().any(|word| has_word(text, word))
+}
+
+fn has_word(text: &str, word: &str) -> bool {
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
+        .any(|token| token == word)
 }
 
 /// Append gate ledger records for one consult run. Idempotency rule:
@@ -873,6 +1330,52 @@ mod tests {
     fn parse(text: &str) -> ConsultTeam {
         let value: toml::Value = text.parse().unwrap();
         parse_team(&value)
+    }
+
+    fn g2_gate_team() -> ConsultTeam {
+        parse(
+            r#"
+schema_version = "0.1"
+[[members]]
+id = "release_automation"
+name = "Release / Automation"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+triggers = ["release", "tag", "publish", "artifact", "upload", "deploy"]
+[[members]]
+id = "trust_safety"
+name = "Trust / Safety"
+default_tiers = ["LIGHT", "MEDIUM", "HEAVY"]
+triggers = ["secret", "external account", "private data", "telemetry", "global config"]
+
+[[triggers]]
+id = "release"
+patterns = ["release", "tag", "publish", "artifact", "upload", "deploy"]
+tier = "HEAVY"
+members = ["release_automation", "trust_safety"]
+stop_gate = true
+
+[owner_gates]
+push = true
+tag = true
+release = true
+artifact_upload = true
+package_publish = true
+deploy = true
+global_config_edit = true
+external_account_mutation = true
+secret_exposure = true
+private_data_upload = true
+telemetry = true
+send_delete_publish_or_mutate_external_content = true
+"#,
+        )
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct G2Fixture {
+        id: String,
+        expected_gate: bool,
+        task: String,
     }
 
     #[test]
@@ -1053,6 +1556,68 @@ stop_gate = true
             ids.contains(&"release"),
             "release stop_gate must fire on release keyword + matched member: {:?}",
             gates
+        );
+    }
+
+    #[test]
+    fn semantic_gate_fixture_matches_gt1_samples() {
+        let team = g2_gate_team();
+        let fixture = include_str!(
+            "../../../crates/aiplus-cli/tests/fixtures/g2_dispatch_gate_samples.jsonl"
+        );
+        for (line_no, line) in fixture.lines().enumerate() {
+            let sample: G2Fixture = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("fixture line {} should parse: {e}", line_no + 1));
+            let matched = match_members(&team, &sample.task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, &sample.task);
+            assert_eq!(
+                !gates.is_empty(),
+                sample.expected_gate,
+                "fixture {} expected gate={} got {:?}",
+                sample.id,
+                sample.expected_gate,
+                gates
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_gate_ignores_quoted_code_and_blockquotes() {
+        let team = g2_gate_team();
+        let task = r#"
+> Publish the package.
+
+Do not run `git push origin main`.
+
+```sh
+deploy production
+```
+
+Implementation task: local-only fixture update; no publish, release, deploy, global config, external accounts, or secrets.
+"#;
+        let matched = match_members(&team, task, Tier::Heavy);
+        let analysis = analyze_dispatch_gate(task, &matched, &team);
+        assert!(
+            analysis.fired.is_empty(),
+            "quoted/code/negated gate mentions should not fire: {:?}",
+            analysis
+        );
+        assert!(
+            !analysis.ignored.is_empty(),
+            "ignored mentions should be retained for diagnostics"
+        );
+    }
+
+    #[test]
+    fn semantic_gate_fires_on_explicit_approval_request() {
+        let team = g2_gate_team();
+        let task = "Request Owner approval to deploy the docs page to production.";
+        let matched = match_members(&team, task, Tier::Heavy);
+        let gates = match_gates(&team, &matched, task);
+        let ids: Vec<&str> = gates.iter().map(|g| g.gate_id.as_str()).collect();
+        assert!(
+            ids.contains(&"deploy"),
+            "deploy gate should fire: {gates:?}"
         );
     }
 
