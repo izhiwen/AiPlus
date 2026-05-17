@@ -1009,11 +1009,17 @@ fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> Gat
             continue;
         }
         mentioned = true;
-        if is_safe_gate_clause(&clause) {
+        if is_hard_safe_gate_clause(&clause) {
+            continue;
+        }
+        if is_approval_requirement_clause(&clause) && !has_imperative_gate_context(&clause, kind) {
             continue;
         }
         if is_explicit_approval_request(&clause, kind) || is_execute_gate_clause(&clause, kind) {
             return GateDecision::Fire;
+        }
+        if is_safe_gate_clause(&clause) {
+            continue;
         }
     }
     if mentioned || gate_mentioned(task, "", kind) {
@@ -1119,6 +1125,10 @@ fn mentions_gate_kind(clause: &str, kind: GateKind) -> bool {
 }
 
 fn is_safe_gate_clause(clause: &str) -> bool {
+    is_hard_safe_gate_clause(clause) || is_approval_requirement_clause(clause)
+}
+
+fn is_hard_safe_gate_clause(clause: &str) -> bool {
     let c = clause.trim();
     if is_descriptive_quoted_or_code_gate_clause(c) {
         return true;
@@ -1146,8 +1156,6 @@ fn is_safe_gate_clause(clause: &str) -> bool {
         "forbid",
         "forbidden",
         "escalate before",
-        "requires owner approval",
-        "owner approval required",
         "acceptance",
         "criteria",
         "example",
@@ -1159,6 +1167,106 @@ fn is_safe_gate_clause(clause: &str) -> bool {
     safe_markers
         .iter()
         .any(|marker| c.starts_with(marker) || c.contains(marker))
+}
+
+fn is_approval_requirement_clause(clause: &str) -> bool {
+    clause.contains("requires owner approval") || clause.contains("owner approval required")
+}
+
+fn has_imperative_gate_context(clause: &str, kind: GateKind) -> bool {
+    let c =
+        clause.trim_start_matches(|ch: char| ch.is_ascii_whitespace() || ch == '"' || ch == '\'');
+    let c = c.strip_prefix("please ").unwrap_or(c);
+
+    let starts_with = |verbs: &[&str]| {
+        verbs
+            .iter()
+            .any(|verb| c == *verb || c.starts_with(&format!("{verb} ")))
+    };
+
+    let executor_before_gate = |needles: &[&str]| {
+        needles.iter().any(|needle| {
+            c.find(needle).is_some_and(|idx| {
+                let prefix = &c[..idx];
+                has_any_word(prefix, &["run", "execute", "perform"])
+                    && !prefix.contains("do not")
+                    && !prefix.contains("don't")
+                    && !prefix.contains("dont")
+            })
+        })
+    };
+
+    match kind {
+        GateKind::Publish => {
+            starts_with(&["publish", "ship", "submit", "post"])
+                || executor_before_gate(&["publish", "package registry", "registry"])
+        }
+        GateKind::Release => {
+            starts_with(&["release", "prepare", "cut", "ship"])
+                || executor_before_gate(&["release"])
+        }
+        GateKind::Deploy => starts_with(&["deploy"]) || executor_before_gate(&["deploy"]),
+        GateKind::RemoteVcs => {
+            starts_with(&["push", "fast-forward", "sync"])
+                || c.starts_with("update origin")
+                || c.starts_with("update remote")
+                || c.starts_with("git push")
+                || c.starts_with("rtk git push")
+                || executor_before_gate(&[
+                    "git push",
+                    "rtk git push",
+                    "push",
+                    "origin main",
+                    "origin/main",
+                    "remote vcs",
+                    "remote update",
+                    "update origin",
+                ])
+        }
+        GateKind::GlobalConfig => {
+            starts_with(&[
+                "edit", "modify", "change", "repair", "write", "update", "touch", "delete",
+            ]) || executor_before_gate(&[
+                "global config",
+                "global registry",
+                "machine config",
+                "~/.config",
+                "installed-projects.json",
+            ])
+        }
+        GateKind::ExternalAccount => {
+            starts_with(&[
+                "contact", "email", "send", "create", "modify", "delete", "mutate", "publish",
+            ]) || executor_before_gate(&["external account"])
+        }
+        GateKind::SecretExposure => {
+            starts_with(&[
+                "print", "show", "expose", "read", "rotate", "push", "upload", "resolve",
+            ]) || executor_before_gate(&["secret", "secrets", "token", "api key"])
+        }
+        GateKind::PrivateDataUpload => {
+            starts_with(&["upload", "share", "send", "publish"])
+                || executor_before_gate(&[
+                    "private data",
+                    "restricted data",
+                    "data upload",
+                    "upload data",
+                    "share data",
+                ])
+        }
+        GateKind::Telemetry => {
+            starts_with(&["add", "enable", "upload", "send"])
+                || executor_before_gate(&["telemetry", "usage data"])
+        }
+        GateKind::VersionTag => {
+            starts_with(&["tag", "create", "push", "bump"])
+                || executor_before_gate(&["tag", "version bump"])
+        }
+        GateKind::ArtifactUpload => {
+            starts_with(&["upload", "publish", "attach"])
+                || executor_before_gate(&["upload", "artifact"])
+        }
+    }
 }
 
 fn is_descriptive_quoted_or_code_gate_clause(clause: &str) -> bool {
@@ -1631,6 +1739,46 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
             let matched = match_members(&team, task, Tier::Heavy);
             let gates = match_gates(&team, &matched, task);
             assert!(!gates.is_empty(), "{task:?} should fire a gate");
+        }
+    }
+
+    #[test]
+    fn semantic_gate_fires_on_same_clause_approval_requirement() {
+        let team = g2_gate_team();
+        for task in [
+            "Run `git push origin main` because it requires owner approval.",
+            "Run \"git push origin main\" because it requires owner approval.",
+            "Run `git push origin main` because owner approval required.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, task);
+            assert!(
+                !gates.is_empty(),
+                "{task:?} should fire despite same-clause approval wording"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_gate_ignores_negated_and_descriptive_approval_requirement() {
+        let team = g2_gate_team();
+        for task in [
+            "Do not run `git push origin main`; mention it requires owner approval.",
+            "The command `git push origin main` requires owner approval.",
+            "Add a safe example sentence saying \"git push origin main\" requires owner approval; do not execute the quoted command.",
+            "Update a fixture note saying `git push origin main` requires owner approval; do not run it.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let analysis = analyze_dispatch_gate(task, &matched, &team);
+            assert!(
+                analysis.fired.is_empty(),
+                "{task:?} should stay descriptive/negated: {:?}",
+                analysis
+            );
+            assert!(
+                !analysis.ignored.is_empty(),
+                "{task:?} should retain ignored diagnostics"
+            );
         }
     }
 
