@@ -85,6 +85,43 @@ Rationale: clean identity boundary, no role state drift mid-session.
 | codex | 4/5 (mixed hard/soft) | ≥ 4/5 (no regression) |
 | opencode | **0/5 (main agent ignores AGENTS.md)** | **≥ 3/5 (close the gap)** |
 
+**D4 v1 local verification snapshot (2026-05-17, current main worktree):**
+- Codex positives: **10/10 PASS**.
+- Claude positives: **10/10 PASS**.
+- Claude markdown blockquote false-positive is fixed by commit `8b60eb0`
+  (`fix(g1): skip markdown blockquote in role-trigger detector`). The detector
+  now skips markdown blockquote lines before floor-phrase matching, and
+  source tests preserve positive trigger behavior.
+- G1 catalog stale state is cleared. Source-built `aiplus doctor` reports
+  `nl_role_triggers=PASS` after `8b60eb0`; current doctor status can still be
+  `NEEDS_FIX` for unrelated registry JSON repair, but the G1 catalog check is
+  PASS.
+- OpenCode `opencode run` remains a known non-interactive limitation per memory
+  `mem_1778993719589_f268405566e57f36`: do **not** claim a non-interactive
+  OpenCode PASS from `opencode run`, because that path does not load the
+  instructions array the same way as the interactive TUI.
+- OpenCode interactive/TUI: Owner manually verified OpenCode TUI `1.14.48`
+  works with the G1 role-trigger instructions. Automated G1.1 TUI harness
+  coverage exists in `crates/aiplus-cli/tests/opencode_tui_role_trigger.rs`,
+  but it remains deferred because QA still sees all live cases as
+  `SKIP_UNSUPPORTED_TUI` due ready-marker capture. The latest ready-marker fix
+  at commit `17295ed` is not enough to convert the harness to non-skipped PASS
+  evidence. Treat this as a **G1.1-DEFERRED-V1.1** automation gap, not a v1
+  blocker, unless Owner reopens D4's original automated OpenCode bar.
+
+**G1.1-DEFERRED-V1.1 note:** G1 v1 has current local evidence for Codex,
+Claude, catalog freshness, and source-built doctor `nl_role_triggers=PASS`.
+The remaining OpenCode item is not the role-trigger instruction path itself:
+it is automated interactive/TUI evidence capture. The G1.1 harness is present,
+env-gated, and intentionally separate from `opencode run`; it should be
+stabilized in v1.1 by fixing ready-marker detection/transcript capture until QA
+gets non-skipped PASS counts. Until then, public-facing claims must avoid
+phrases that imply automated non-interactive OpenCode PASS.
+
+**Outward-facing docs gate:** three D-C drafts remain internal and need Owner
+review before any outward-facing docs change:
+`D-C-DRAFT-README`, `D-C-DRAFT-AIPLUS-DEV`, and `D-C-DRAFT-ZHIWEN-SITE`.
+
 **Opencode plan** (CEO + researcher + ai-integration to investigate before T3 estimate):
 - Phase 1: Root-cause why opencode main agent ignored AGENTS.md in the N=15 study. Hypotheses:
   - opencode reads `.opencode/` but not project-root AGENTS.md
