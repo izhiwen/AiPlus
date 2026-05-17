@@ -265,9 +265,11 @@ fn install_status_doctor_update_add_uninstall_codex() {
 
     let doctor = stdout(&run(target, &["doctor"], 0));
     assert!(doctor.contains("runtimeAdapters=[codex]"));
+    assert!(doctor.contains("dispatch_gate=PASS"));
     assert!(doctor.contains("DOCTOR_STATUS=PASS"));
     assert!(doctor.contains("globalConfig=untouched"));
     assert!(doctor.contains("PASS runtimeAdapter codex is supported"));
+    assert!(doctor.contains("PASS dispatch_gate=PASS"));
     assert!(doctor.contains("PASS AGENTS.md contains exactly one AiPlus managed block"));
     assert!(doctor.contains("PASS managed block points to .aiplus/AGENTS.aiplus.md"));
     assert!(doctor.contains("PASS bundled module manifests validate"));

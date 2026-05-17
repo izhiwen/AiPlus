@@ -92,6 +92,8 @@ const OPENCODE_INSTRUCTIONS_REL: &str = ".opencode/instructions/aiplus.md";
 const OPENCODE_INSTRUCTIONS_CONFIG_PATH: &str = "instructions/aiplus.md";
 const OPENCODE_AIPLUS_INSTRUCTIONS_MARKER: &str = "<!-- AIPLUS_OPENCODE_G1_ROLE_TRIGGERS_V1 -->";
 const OPENCODE_AIPLUS_PRIMARY_AGENT: &str = "aiplus";
+const G2_DISPATCH_GATE_FIXTURE: &str =
+    include_str!("../tests/fixtures/g2_dispatch_gate_samples.jsonl");
 const MANAGED_BEGIN_AEL: &str = "<!-- BEGIN AIECONLAB MANAGED BLOCK -->";
 const MANAGED_END_AEL: &str = "<!-- END AIECONLAB MANAGED BLOCK -->";
 const MANAGED_BEGIN_AT: &str = "<!-- BEGIN AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
@@ -2325,6 +2327,133 @@ fn command_doctor_fix(root: &Path) -> DoctorFixReport {
     report
 }
 
+#[derive(Debug, Deserialize)]
+struct DispatchGateFixtureSample {
+    id: String,
+    expected_decision: Option<String>,
+    expected_gate: bool,
+    task: String,
+}
+
+fn dispatch_gate_fixture_team() -> aiplus_core::consult::ConsultTeam {
+    use aiplus_core::consult::{ConsultTeam, Member, OwnerGate, StopGateTrigger, Tier};
+
+    let all_tiers = vec![Tier::Light, Tier::Medium, Tier::Heavy];
+    ConsultTeam {
+        schema_version: "0.1".to_string(),
+        members: vec![
+            Member {
+                id: "release_automation".to_string(),
+                name: "Release / Automation".to_string(),
+                triggers: vec![
+                    "release".to_string(),
+                    "tag".to_string(),
+                    "publish".to_string(),
+                    "artifact".to_string(),
+                    "upload".to_string(),
+                    "deploy".to_string(),
+                ],
+                default_tiers: all_tiers.clone(),
+                owner_gate: false,
+                output_artifact: None,
+            },
+            Member {
+                id: "trust_safety".to_string(),
+                name: "Trust / Safety".to_string(),
+                triggers: vec![
+                    "secret".to_string(),
+                    "external account".to_string(),
+                    "private data".to_string(),
+                    "telemetry".to_string(),
+                    "global config".to_string(),
+                ],
+                default_tiers: all_tiers,
+                owner_gate: false,
+                output_artifact: None,
+            },
+        ],
+        user_personas: Vec::new(),
+        owner_gates: [
+            "push",
+            "tag",
+            "release",
+            "artifact_upload",
+            "package_publish",
+            "deploy",
+            "global_config_edit",
+            "external_account_mutation",
+            "secret_exposure",
+            "private_data_upload",
+            "telemetry",
+            "send_delete_publish_or_mutate_external_content",
+        ]
+        .into_iter()
+        .map(|id| OwnerGate {
+            id: id.to_string(),
+            description: String::new(),
+        })
+        .collect(),
+        stop_gate_triggers: vec![StopGateTrigger {
+            id: "release".to_string(),
+            patterns: vec![
+                "release".to_string(),
+                "tag".to_string(),
+                "publish".to_string(),
+                "artifact".to_string(),
+                "upload".to_string(),
+                "deploy".to_string(),
+            ],
+            members: vec!["release_automation".to_string(), "trust_safety".to_string()],
+        }],
+    }
+}
+
+fn dispatch_gate_doctor_status_from_fixture(fixture: &str) -> String {
+    let team = dispatch_gate_fixture_team();
+    let mut checked = 0usize;
+    for line in fixture.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let sample: DispatchGateFixtureSample = match serde_json::from_str(line) {
+            Ok(sample) => sample,
+            Err(_) => return "FAIL_FIXTURE_PARSE".to_string(),
+        };
+        checked += 1;
+        let expected_gate = match sample.expected_decision.as_deref() {
+            Some("PASS") => false,
+            Some("FAIL") => true,
+            Some(_) => return "FAIL_FIXTURE_EXPECTATION".to_string(),
+            None => sample.expected_gate,
+        };
+        if expected_gate != sample.expected_gate {
+            let _ = sample.id;
+            return "FAIL_FIXTURE_EXPECTATION".to_string();
+        }
+        let matched = aiplus_core::consult::match_members(
+            &team,
+            &sample.task,
+            aiplus_core::consult::Tier::Heavy,
+        );
+        let gates = aiplus_core::consult::match_gates(&team, &matched, &sample.task);
+        if !gates.is_empty() != expected_gate {
+            let _ = sample.id;
+            return "FAIL_FIXTURE_MISMATCH".to_string();
+        }
+    }
+
+    if checked == 0 {
+        "FAIL_FIXTURE_EMPTY".to_string()
+    } else {
+        "PASS".to_string()
+    }
+}
+
+fn dispatch_gate_doctor_status() -> String {
+    dispatch_gate_doctor_status_from_fixture(G2_DISPATCH_GATE_FIXTURE)
+}
+
 fn command_doctor(fix: bool) -> Result<()> {
     let root = target_root()?;
     let fix_report = if fix {
@@ -2458,6 +2587,15 @@ fn command_doctor(fix: bool) -> Result<()> {
             ),
         );
     }
+    let dispatch_gate_status = dispatch_gate_doctor_status();
+    push_check(
+        &mut checks,
+        format!("dispatch_gate={dispatch_gate_status}"),
+        dispatch_gate_status == "PASS",
+        Some(
+            "semantic dispatch gate fixture/self-check failed; rerun focused G2 tests".to_string(),
+        ),
+    );
     if runtimes.iter().any(|runtime| runtime == "opencode") {
         push_info_check(
             &mut checks,
@@ -2796,6 +2934,7 @@ fn command_doctor(fix: bool) -> Result<()> {
     println!("modules=[{}]", module_text.join(","));
     print_continuity_status_lines(&continuity);
     println!("nl_role_triggers={nl_role_trigger_status}");
+    println!("dispatch_gate={dispatch_gate_status}");
     println!("refreshPrompt={REFRESH_PROMPT}");
     println!("globalConfig=untouched");
     println!("target={}", root.display());
@@ -18196,6 +18335,20 @@ fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool, scope: McpScope)
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
+
+    #[test]
+    fn dispatch_gate_doctor_self_check_passes_bundled_fixture() {
+        assert_eq!(dispatch_gate_doctor_status(), "PASS");
+    }
+
+    #[test]
+    fn dispatch_gate_doctor_self_check_fails_mismatch() {
+        let fixture = r#"{"id":"mismatch","expected_gate":false,"task":"Deploy the aiplus.dev docs page update now."}"#;
+        assert_eq!(
+            dispatch_gate_doctor_status_from_fixture(fixture),
+            "FAIL_FIXTURE_MISMATCH"
+        );
+    }
 
     // S1: push-target parser and dotenv writer tests.
     //
