@@ -362,26 +362,43 @@ mod unix_tui {
     }
 
     fn default_ready_markers() -> Vec<String> {
-        env::var(READY_ENV)
-            .ok()
-            .map(|raw| {
-                raw.split('|')
-                    .map(str::trim)
-                    .filter(|part| !part.is_empty())
-                    .map(ToOwned::to_owned)
-                    .collect()
-            })
-            .filter(|markers: &Vec<String>| !markers.is_empty())
-            .unwrap_or_else(|| {
-                vec![
-                    "opencode".to_string(),
-                    "OpenCode".to_string(),
-                    "Type a message".to_string(),
-                    "Ask".to_string(),
-                    "model".to_string(),
-                    "ctrl".to_string(),
-                ]
-            })
+        ready_markers_from_env(env::var(READY_ENV).ok())
+    }
+
+    fn ready_markers_from_env(raw: Option<String>) -> Vec<String> {
+        raw.map(|raw| {
+            raw.split('|')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .filter(|markers: &Vec<String>| !markers.is_empty())
+        .unwrap_or_else(|| vec!["ctrl+p commands".to_string(), "Kimi For Coding".to_string()])
+    }
+
+    #[test]
+    fn default_ready_markers_prioritize_stable_opencode_footer_marker() {
+        assert_eq!(
+            ready_markers_from_env(None),
+            vec!["ctrl+p commands".to_string(), "Kimi For Coding".to_string()]
+        );
+    }
+
+    #[test]
+    fn ready_markers_env_override_trims_and_skips_empty_entries() {
+        assert_eq!(
+            ready_markers_from_env(Some(" custom one | | custom two ".to_string())),
+            vec!["custom one".to_string(), "custom two".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_ready_markers_env_override_falls_back_to_defaults() {
+        assert_eq!(
+            ready_markers_from_env(Some(" |  | ".to_string())),
+            vec!["ctrl+p commands".to_string(), "Kimi For Coding".to_string()]
+        );
     }
 
     fn wait_for_ready(
