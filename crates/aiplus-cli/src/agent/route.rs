@@ -263,7 +263,10 @@ fn route_known_role(
                 worktree_status = lease.status.as_str().to_string();
                 if let Some(path) = lease.path {
                     match worktree_status.as_str() {
-                        "created" => println!("  Worktree created: {}", path.display()),
+                        "created" => {
+                            println!("  Creating worktree for {}...", role);
+                            println!("  Worktree created: {}", path.display());
+                        }
                         "reused" => println!("  Using existing worktree: {}", path.display()),
                         _ => {}
                     }
