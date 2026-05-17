@@ -796,10 +796,12 @@ pub fn build_findings(
 /// Known AiPlus safety gates use deterministic verb-object intent
 /// matching: a gate fires only when the task asks for an outward/global
 /// action, or asks for permission to take one. Markdown blockquotes,
-/// fenced code, inline code, quoted examples, and clearly negated local
-/// safety clauses are ignored. Domain-specific gates that are not in
-/// the AiPlus safety catalog keep the historical substring behavior so
-/// existing project/team owner gates remain conservative.
+/// fenced code, quoted/code examples, and clearly negated local safety
+/// clauses are ignored. Inline-code or quoted protected commands still
+/// fire when the surrounding clause is imperative. Domain-specific gates
+/// that are not in the AiPlus safety catalog keep the historical
+/// substring behavior so existing project/team owner gates remain
+/// conservative.
 pub fn analyze_dispatch_gate<'a>(
     task: &str,
     matched_members: &[&'a Member],
@@ -958,8 +960,7 @@ fn normalize_dispatch_gate_spans(task: &str) -> Vec<TextSpan> {
             continue;
         }
 
-        let cleaned = strip_inline_code_and_quotes(line);
-        for clause in split_gate_clauses(&cleaned) {
+        for clause in split_gate_clauses(line) {
             let text = clause.trim();
             if text.is_empty() {
                 continue;
@@ -972,39 +973,6 @@ fn normalize_dispatch_gate_spans(task: &str) -> Vec<TextSpan> {
         }
     }
     spans
-}
-
-fn strip_inline_code_and_quotes(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut in_backtick = false;
-    let mut quote: Option<char> = None;
-    for ch in line.chars() {
-        if in_backtick {
-            if ch == '`' {
-                in_backtick = false;
-            }
-            continue;
-        }
-        if let Some(q) = quote {
-            let close = match q {
-                '"' => '"',
-                '\'' => '\'',
-                '“' => '”',
-                '‘' => '’',
-                _ => q,
-            };
-            if ch == close {
-                quote = None;
-            }
-            continue;
-        }
-        match ch {
-            '`' => in_backtick = true,
-            '"' | '\'' | '“' | '‘' => quote = Some(ch),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 fn split_gate_clauses(text: &str) -> Vec<&str> {
@@ -1152,6 +1120,9 @@ fn mentions_gate_kind(clause: &str, kind: GateKind) -> bool {
 
 fn is_safe_gate_clause(clause: &str) -> bool {
     let c = clause.trim();
+    if is_descriptive_quoted_or_code_gate_clause(c) {
+        return true;
+    }
     let safe_markers = [
         "do not",
         "don't",
@@ -1188,6 +1159,47 @@ fn is_safe_gate_clause(clause: &str) -> bool {
     safe_markers
         .iter()
         .any(|marker| c.starts_with(marker) || c.contains(marker))
+}
+
+fn is_descriptive_quoted_or_code_gate_clause(clause: &str) -> bool {
+    let has_quoted_or_code = clause.contains('`')
+        || clause.contains('"')
+        || clause.contains('\'')
+        || clause.contains('“')
+        || clause.contains('‘');
+    if !has_quoted_or_code {
+        return false;
+    }
+
+    let descriptive_subject = [
+        "the command",
+        "command ",
+        "the phrase",
+        "phrase ",
+        "the text",
+        "text ",
+        "the sample",
+        "sample ",
+        "the example",
+        "example ",
+    ];
+    let descriptive_predicate = [
+        " is ",
+        " was ",
+        " would be ",
+        " should be ",
+        " remains ",
+        " means ",
+        " mentions ",
+        " describes ",
+    ];
+
+    descriptive_subject
+        .iter()
+        .any(|subject| clause.starts_with(subject))
+        && descriptive_predicate
+            .iter()
+            .any(|predicate| clause.contains(predicate))
 }
 
 fn is_explicit_approval_request(clause: &str, kind: GateKind) -> bool {
@@ -1605,6 +1617,37 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
         assert!(
             !analysis.ignored.is_empty(),
             "ignored mentions should be retained for diagnostics"
+        );
+    }
+
+    #[test]
+    fn semantic_gate_fires_on_inline_code_and_quoted_commands() {
+        let team = g2_gate_team();
+        for task in [
+            "Run `git push origin main`.",
+            "Run \"git push origin main\".",
+            "Please execute 'deploy production' now.",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, task);
+            assert!(!gates.is_empty(), "{task:?} should fire a gate");
+        }
+    }
+
+    #[test]
+    fn semantic_gate_ignores_descriptive_quoted_command() {
+        let team = g2_gate_team();
+        let task = "The command `git push origin main` is protected; keep it as an example only.";
+        let matched = match_members(&team, task, Tier::Heavy);
+        let analysis = analyze_dispatch_gate(task, &matched, &team);
+        assert!(
+            analysis.fired.is_empty(),
+            "descriptive quoted command should not fire: {:?}",
+            analysis
+        );
+        assert!(
+            !analysis.ignored.is_empty(),
+            "descriptive quoted command should be retained as ignored diagnostic"
         );
     }
 
