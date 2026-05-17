@@ -21,7 +21,9 @@ fn run_with_path(cwd: &Path, args: &[&str], expected: i32, path_override: Option
         .current_dir(cwd)
         .env("HOME", cwd.join("fake-home"))
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
-        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"));
+        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
+        .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
+        .env_remove("BWS_ACCESS_TOKEN");
     if let Some(path) = path_override {
         command.env("PATH", path);
     }
@@ -44,7 +46,9 @@ fn run_with_env(cwd: &Path, args: &[&str], expected: i32, envs: &[(&str, &str)])
         .current_dir(cwd)
         .env("HOME", cwd.join("fake-home"))
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
-        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"));
+        .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
+        .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
+        .env_remove("BWS_ACCESS_TOKEN");
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -74,6 +78,8 @@ fn run_with_env_and_path(
         .env("HOME", cwd.join("fake-home"))
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
         .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
+        .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
+        .env_remove("BWS_ACCESS_TOKEN")
         .env("PATH", path_override);
     for (key, value) in envs {
         command.env(key, value);

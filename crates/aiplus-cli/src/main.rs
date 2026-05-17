@@ -98,6 +98,7 @@ const MANAGED_BEGIN_AT: &str = "<!-- BEGIN AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
 const MANAGED_END_AT: &str = "<!-- END AIPLUS-AGENT-TEAM MANAGED BLOCK -->";
 const SECRET_BROKER_SERVICE: &str = "aiplus/bws-access-token";
 const SECRET_BROKER_ACCOUNT: &str = "aiplus-secret-broker";
+const SECRET_BROKER_DISABLE_KEYCHAIN_ENV: &str = "AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN";
 // No hardcoded Bitwarden project UUID in public source — the value is
 // installation-specific and shipping one in a public binary advertises
 // which workspace the maintainer uses. Users supply theirs via the
@@ -8012,6 +8013,12 @@ fn keyring_entry() -> Result<keyring::Entry> {
 }
 
 fn read_keychain_token() -> Result<Option<String>> {
+    if matches!(
+        std::env::var(SECRET_BROKER_DISABLE_KEYCHAIN_ENV).as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    ) {
+        return Ok(None);
+    }
     let entry = match keyring_entry() {
         Ok(e) => e,
         // If the platform has no keyring backend at all, treat as
