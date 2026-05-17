@@ -1009,6 +1009,9 @@ fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> Gat
             continue;
         }
         mentioned = true;
+        if has_explicit_gate_execution_context(&clause, kind) {
+            return GateDecision::Fire;
+        }
         if is_descriptive_quoted_or_code_gate_clause(&clause) {
             continue;
         }
@@ -1170,6 +1173,8 @@ fn is_hard_safe_gate_clause(clause: &str) -> bool {
         "draft boundary",
         "release boundary",
         "gate criteria",
+        "test description:",
+        "fixture description:",
     ];
     safe_markers
         .iter()
@@ -1429,6 +1434,65 @@ fn has_active_executor_before_gate(prefix: &str) -> bool {
         && !has_intervening_safety_marker(between_executor_and_gate)
 }
 
+fn has_explicit_gate_execution_context(clause: &str, kind: GateKind) -> bool {
+    protected_command_needles(kind).iter().any(|needle| {
+        clause.find(needle).is_some_and(|idx| {
+            let prefix = &clause[..idx];
+            has_actionable_executor_before_gate(prefix)
+        })
+    })
+}
+
+fn protected_command_needles(kind: GateKind) -> &'static [&'static str] {
+    match kind {
+        GateKind::Publish => &["npm publish", "cargo publish", "publish"],
+        GateKind::Release => &["gh release", "release"],
+        GateKind::Deploy => &["deploy production", "deploy"],
+        GateKind::RemoteVcs => &["rtk git push", "git push", "origin main", "origin/main"],
+        GateKind::GlobalConfig => &["~/.config", "installed-projects.json", "global config"],
+        GateKind::ExternalAccount => &["external account"],
+        GateKind::SecretExposure => &["api key", "secret", "secrets", "token"],
+        GateKind::PrivateDataUpload => &["private data", "restricted data", "upload data"],
+        GateKind::Telemetry => &["telemetry", "usage data"],
+        GateKind::VersionTag => &["git tag", "tag", "version bump"],
+        GateKind::ArtifactUpload => &["artifact", "upload"],
+    }
+}
+
+fn has_actionable_executor_before_gate(prefix: &str) -> bool {
+    let Some((start, end)) = [
+        "run",
+        "running",
+        "execute",
+        "executing",
+        "perform",
+        "performing",
+    ]
+    .iter()
+    .filter_map(|verb| last_word_span(prefix, verb))
+    .max_by_key(|(start, _)| *start) else {
+        return false;
+    };
+
+    let before_executor = &prefix[..start];
+    let between_executor_and_gate = &prefix[end..];
+    !has_negated_executor_prefix(before_executor)
+        && is_actionable_executor_connector(before_executor)
+        && !has_intervening_safety_marker(between_executor_and_gate)
+}
+
+fn is_actionable_executor_connector(before_executor: &str) -> bool {
+    let trimmed = before_executor.trim_end_matches(|ch: char| {
+        ch.is_ascii_whitespace() || matches!(ch, '`' | '"' | '\'' | ':' | '-' | '(')
+    });
+    if trimmed.is_empty() || trimmed == "please" {
+        return true;
+    }
+    ["and", "then", "by", "to", "please"]
+        .iter()
+        .any(|connector| trimmed.ends_with(&format!(" {connector}")))
+}
+
 fn last_word_span(text: &str, word: &str) -> Option<(usize, usize)> {
     text.match_indices(word)
         .filter(|(start, _)| {
@@ -1456,6 +1520,7 @@ fn has_negated_executor_prefix(prefix: &str) -> bool {
         || prefix.contains("don't")
         || prefix.contains("dont")
         || prefix.contains("never")
+        || prefix.contains("without")
 }
 
 fn has_intervening_safety_marker(text: &str) -> bool {
@@ -1823,6 +1888,23 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
     }
 
     #[test]
+    fn semantic_gate_fires_on_mixed_descriptive_and_execute_clauses() {
+        let team = g2_gate_team();
+        for task in [
+            "Write a note and run `git push origin main`.",
+            "Update a fixture by running `git push origin main`.",
+            "Add an example and execute \"git push origin main\".",
+        ] {
+            let matched = match_members(&team, task, Tier::Heavy);
+            let gates = match_gates(&team, &matched, task);
+            assert!(
+                !gates.is_empty(),
+                "{task:?} should fire even with descriptive setup text"
+            );
+        }
+    }
+
+    #[test]
     fn semantic_gate_fires_on_same_clause_approval_requirement() {
         let team = g2_gate_team();
         for task in [
@@ -1867,6 +1949,8 @@ Implementation task: local-only fixture update; no publish, release, deploy, glo
             "The command `git push origin main` requires owner approval.",
             "Add a safe example sentence saying \"git push origin main\" requires owner approval; do not execute the quoted command.",
             "Update a fixture note saying `git push origin main` requires owner approval; do not run it.",
+            "Document that the phrase `git push origin main` is an example; do not run it.",
+            "Test description: running `git push origin main` should block when requested, but this fixture does not execute it.",
         ] {
             let matched = match_members(&team, task, Tier::Heavy);
             let analysis = analyze_dispatch_gate(task, &matched, &team);
