@@ -232,8 +232,8 @@ fn route_known_role(
     kind: DispatchKind,
     pool: Option<Arc<Mutex<WorktreePool>>>,
 ) -> Result<()> {
-    maybe_delay_for_perf_fixture(role);
     let started = Instant::now();
+    maybe_delay_for_perf_fixture(role);
     println!("Routing task to {}: {}", role, task);
     let mut cache_invalidated = false;
     if kind == DispatchKind::Primary {
