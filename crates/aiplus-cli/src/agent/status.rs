@@ -2,11 +2,39 @@ use crate::agent::core::load_team_config;
 use anyhow::Result;
 use serde_json;
 
-pub fn handle_status(json_output: bool) -> Result<()> {
+pub fn handle_status(verbose: bool, json_output: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
     let state = load_team_config(&project_root)?;
+    let cache_status = crate::agent::cache::disk_cache_status(&project_root).ok();
 
     if json_output {
+        let cache_json = cache_status.as_ref().map(|status| {
+            let roles = status
+                .meta
+                .as_ref()
+                .map(|meta| {
+                    meta.roles
+                        .iter()
+                        .map(|(role, entry)| {
+                            serde_json::json!({
+                                "role": role,
+                                "cache_source": entry.cache_source,
+                                "ttl_seconds": entry.ttl_seconds,
+                                "bytes": entry.bytes,
+                                "last_used_at_ms": entry.last_used_at_ms,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            serde_json::json!({
+                "enabled": status.enabled,
+                "project": status.project,
+                "cache_dir": status.project_dir.display().to_string(),
+                "roles": roles,
+                "sync_warning": status.sync_warning,
+            })
+        });
         let output = serde_json::json!({
             "version": "0.1",
             "project_root": project_root.display().to_string(),
@@ -30,6 +58,7 @@ pub fn handle_status(json_output: bool) -> Result<()> {
                     "exists": v.exists(),
                 })
             }).collect::<Vec<_>>(),
+            "disk_cache": cache_json,
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
@@ -103,6 +132,38 @@ pub fn handle_status(json_output: bool) -> Result<()> {
             }
         } else {
             println!("\nNo worktrees configured.");
+        }
+
+        if verbose {
+            println!("\nDisk warm cache:");
+            if let Some(status) = cache_status {
+                println!(
+                    "  disk_cache={}",
+                    if status.enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                );
+                println!("  cache_dir={}", status.project_dir.display());
+                if let Some(meta) = status.meta {
+                    if meta.roles.is_empty() {
+                        println!("  roles=[]");
+                    } else {
+                        for (role, entry) in meta.roles {
+                            println!(
+                                "  role={} cache_source={} ttl_seconds={} bytes={}",
+                                role, entry.cache_source, entry.ttl_seconds, entry.bytes
+                            );
+                        }
+                    }
+                }
+                if let Some(warning) = status.sync_warning {
+                    println!("  WARNING: {warning}");
+                }
+            } else {
+                println!("  disk_cache=unavailable");
+            }
         }
     }
 

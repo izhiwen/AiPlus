@@ -3,13 +3,23 @@
 // fast-path. Currently unused — keep as scaffolding rather than rewrite.
 #![allow(dead_code)]
 
+use crate::agent::core::AgentConfig;
 use aiplus_core::agent_team::RoleId;
-use std::collections::HashMap;
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const DISK_CACHE_SCHEMA_VERSION: &str = "0.2.0";
+const DISK_CACHE_CONFIG_PATH: &str = ".aiplus/agent-team.toml";
+const DISK_CACHE_WARNING_PATH: &str = ".aiplus/agent-team/cache-warnings.jsonl";
+const MAX_ROLE_CACHE_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_PROJECT_CACHE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Cached state payload for a role.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +55,689 @@ impl InvalidationReason {
             InvalidationReason::TtlExpired => "ttl_expired",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheSource {
+    Disabled,
+    BypassedOwnerFacing,
+    ColdStart,
+    DiskWarm,
+}
+
+impl CacheSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CacheSource::Disabled => "disabled",
+            CacheSource::BypassedOwnerFacing => "bypassed_owner_facing",
+            CacheSource::ColdStart => "cold_start",
+            CacheSource::DiskWarm => "disk_warm",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskCacheWarningKind {
+    Corrupt,
+    ChecksumMismatch,
+    Stale,
+    RedactionBlocked,
+    WriteFailed,
+}
+
+impl DiskCacheWarningKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiskCacheWarningKind::Corrupt => "corrupt",
+            DiskCacheWarningKind::ChecksumMismatch => "checksum_mismatch",
+            DiskCacheWarningKind::Stale => "stale",
+            DiskCacheWarningKind::RedactionBlocked => "redaction_blocked",
+            DiskCacheWarningKind::WriteFailed => "write_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiskCacheConfig {
+    pub cache: DiskCacheConfigSection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DiskCacheConfigSection {
+    pub enable_disk: bool,
+}
+
+impl Default for DiskCacheConfigSection {
+    fn default() -> Self {
+        Self { enable_disk: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskCacheSnapshot {
+    pub schema_version: String,
+    pub project: String,
+    pub role: String,
+    pub written_at_ms: u128,
+    pub ttl_seconds: u64,
+    pub persona: String,
+    pub memory_bundle: String,
+    pub workspace_head: String,
+    pub workspace_dirty: bool,
+    pub adapter_session_mapping_ref: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DiskCacheMeta {
+    pub schema_version: String,
+    pub project: String,
+    pub roles: BTreeMap<String, DiskCacheRoleMeta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskCacheRoleMeta {
+    pub ttl_seconds: u64,
+    pub written_at_ms: u128,
+    pub last_used_at_ms: u128,
+    pub cache_source: String,
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiskCacheStatus {
+    pub enabled: bool,
+    pub project: String,
+    pub project_dir: PathBuf,
+    pub meta: Option<DiskCacheMeta>,
+    pub sync_warning: Option<String>,
+}
+
+pub fn handle_cache_command(
+    enable_disk: bool,
+    disable_disk: bool,
+    clear: bool,
+    status: bool,
+) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+    let selected = [enable_disk, disable_disk, clear, status]
+        .into_iter()
+        .filter(|v| *v)
+        .count();
+    if selected == 0 {
+        print_cache_status(&project_root)?;
+        return Ok(());
+    }
+    if selected > 1 {
+        return Err(anyhow!(
+            "choose one cache action: --enable-disk, --disable-disk, --clear, or --status"
+        ));
+    }
+
+    if enable_disk {
+        write_disk_cache_enabled(&project_root, true)?;
+        println!("disk_cache=enabled");
+        println!("cache_dir={}", project_cache_dir(&project_root)?.display());
+    } else if disable_disk {
+        write_disk_cache_enabled(&project_root, false)?;
+        println!("disk_cache=disabled");
+        println!("existing_cache_retained=true");
+    } else if clear {
+        let dir = project_cache_dir(&project_root)?;
+        if dir.exists() {
+            fs::remove_dir_all(&dir).with_context(|| format!("remove {}", dir.display()))?;
+        }
+        println!("disk_cache_cleared=true");
+        println!("cache_dir={}", dir.display());
+    } else if status {
+        print_cache_status(&project_root)?;
+    }
+    Ok(())
+}
+
+pub fn print_cache_status(project_root: &Path) -> Result<()> {
+    let status = disk_cache_status(project_root)?;
+    println!(
+        "disk_cache={}",
+        if status.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    println!("project={}", status.project);
+    println!("cache_dir={}", status.project_dir.display());
+    if let Some(meta) = status.meta {
+        for (role, entry) in meta.roles {
+            println!(
+                "role={} cache_source={} ttl_seconds={} bytes={} last_used_at_ms={}",
+                role, entry.cache_source, entry.ttl_seconds, entry.bytes, entry.last_used_at_ms
+            );
+        }
+    }
+    if let Some(warning) = status.sync_warning {
+        println!("WARNING: {warning}");
+    }
+    Ok(())
+}
+
+pub fn disk_cache_status(project_root: &Path) -> Result<DiskCacheStatus> {
+    let enabled = disk_cache_enabled(project_root)?;
+    let project_dir = project_cache_dir(project_root)?;
+    let project = project_basename(project_root);
+    let meta = read_meta_if_exists(&project_dir)?;
+    let sync_warning = cache_sync_warning(&cache_root_dir()?);
+    Ok(DiskCacheStatus {
+        enabled,
+        project,
+        project_dir,
+        meta,
+        sync_warning,
+    })
+}
+
+pub fn disk_cache_enabled(project_root: &Path) -> Result<bool> {
+    let path = project_root.join(DISK_CACHE_CONFIG_PATH);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let config: DiskCacheConfig =
+        toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+    Ok(config.cache.enable_disk)
+}
+
+pub fn write_disk_cache_enabled(project_root: &Path, enabled: bool) -> Result<()> {
+    let path = project_root.join(DISK_CACHE_CONFIG_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let text = format!("[cache]\nenable_disk = {enabled}\n");
+    aiplus_core::write_file_atomic(&path, text.as_bytes())?;
+    Ok(())
+}
+
+pub fn lookup_disk_snapshot(
+    project_root: &Path,
+    role: &str,
+    ttl_seconds: u64,
+) -> Result<CacheSource> {
+    if !disk_cache_enabled(project_root)? {
+        return Ok(CacheSource::Disabled);
+    }
+    if is_owner_facing_role(role) {
+        remember_cache_source(
+            project_root,
+            role,
+            ttl_seconds,
+            CacheSource::BypassedOwnerFacing,
+        )?;
+        return Ok(CacheSource::BypassedOwnerFacing);
+    }
+
+    let project_dir = project_cache_dir(project_root)?;
+    let snapshot_path = role_snapshot_path(&project_dir, role);
+    let checksum_path = role_checksum_path(&project_dir, role);
+    if !snapshot_path.exists() || !checksum_path.exists() {
+        remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
+        return Ok(CacheSource::ColdStart);
+    }
+
+    let bytes =
+        fs::read(&snapshot_path).with_context(|| format!("read {}", snapshot_path.display()))?;
+    let actual = sha256_hex(&bytes);
+    let expected = fs::read_to_string(&checksum_path)
+        .with_context(|| format!("read {}", checksum_path.display()))?
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if expected != actual {
+        record_cache_warning(
+            project_root,
+            role,
+            DiskCacheWarningKind::ChecksumMismatch,
+            "sha256 mismatch; cold-starting and replacing cache",
+        );
+        remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
+        return Ok(CacheSource::ColdStart);
+    }
+
+    let snapshot: DiskCacheSnapshot = match serde_cbor::from_slice(&bytes) {
+        Ok(snapshot) => snapshot,
+        Err(e) => {
+            record_cache_warning(
+                project_root,
+                role,
+                DiskCacheWarningKind::Corrupt,
+                &format!("snapshot decode failed: {e}; cold-starting and replacing cache"),
+            );
+            remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
+            return Ok(CacheSource::ColdStart);
+        }
+    };
+
+    let now = epoch_millis();
+    if now.saturating_sub(snapshot.written_at_ms) > (ttl_seconds as u128 * 1000) {
+        remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
+        return Ok(CacheSource::ColdStart);
+    }
+    if role_config_newer_than(project_root, role, snapshot.written_at_ms)? {
+        record_cache_warning(
+            project_root,
+            role,
+            DiskCacheWarningKind::Stale,
+            "role config/persona changed after cache write; cold-starting",
+        );
+        remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
+        return Ok(CacheSource::ColdStart);
+    }
+
+    update_role_meta(
+        &project_dir,
+        role,
+        ttl_seconds,
+        CacheSource::DiskWarm,
+        actual,
+        bytes.len() as u64,
+        snapshot.written_at_ms,
+    )?;
+    Ok(CacheSource::DiskWarm)
+}
+
+pub fn write_disk_snapshot(
+    project_root: &Path,
+    role: &str,
+    config: &AgentConfig,
+    cache_source: CacheSource,
+) -> Result<()> {
+    if !disk_cache_enabled(project_root)? || is_owner_facing_role(role) {
+        return Ok(());
+    }
+
+    let ttl_seconds = config.warm_bench_ttl_seconds;
+    let project = project_basename(project_root);
+    let project_dir = project_cache_dir(project_root)?;
+    fs::create_dir_all(&project_dir)?;
+
+    let mut snapshot = DiskCacheSnapshot {
+        schema_version: DISK_CACHE_SCHEMA_VERSION.to_string(),
+        project,
+        role: role.to_string(),
+        written_at_ms: epoch_millis(),
+        ttl_seconds,
+        persona: redact_for_cache(&persona_bundle(project_root, role, config)?),
+        memory_bundle: redact_for_cache(&memory_bundle(project_root, role)?),
+        workspace_head: workspace_head(project_root),
+        workspace_dirty: workspace_dirty(project_root),
+        adapter_session_mapping_ref: ".aiplus/agent-team/sessions".to_string(),
+    };
+
+    let redaction_probe = serde_json::to_string(&snapshot)?;
+    if let Err(e) = aiplus_core::reject_sensitive_memory_text(&redaction_probe) {
+        record_cache_warning(
+            project_root,
+            role,
+            DiskCacheWarningKind::RedactionBlocked,
+            &format!("redaction pipeline blocked snapshot: {e}"),
+        );
+        snapshot.persona = "[REDACTED_BY_AIPLUS_CACHE]".to_string();
+        snapshot.memory_bundle = "[REDACTED_BY_AIPLUS_CACHE]".to_string();
+    }
+
+    let bytes = serde_cbor::to_vec(&snapshot)?;
+    if bytes.len() as u64 > MAX_ROLE_CACHE_BYTES {
+        record_cache_warning(
+            project_root,
+            role,
+            DiskCacheWarningKind::WriteFailed,
+            "snapshot exceeds 5MB role cache cap",
+        );
+        return Ok(());
+    }
+    let sha = sha256_hex(&bytes);
+    let snapshot_path = role_snapshot_path(&project_dir, role);
+    let checksum_path = role_checksum_path(&project_dir, role);
+    aiplus_core::write_file_atomic(&snapshot_path, &bytes)?;
+    aiplus_core::write_file_atomic(&checksum_path, sha.as_bytes())?;
+    update_role_meta(
+        &project_dir,
+        role,
+        ttl_seconds,
+        cache_source,
+        sha,
+        bytes.len() as u64,
+        snapshot.written_at_ms,
+    )?;
+    enforce_project_size_cap(&project_dir)?;
+    Ok(())
+}
+
+pub fn cache_warnings(project_root: &Path) -> Vec<String> {
+    let path = project_root.join(DISK_CACHE_WARNING_PATH);
+    let mut warnings = Vec::new();
+    if path.exists() {
+        if let Ok(text) = fs::read_to_string(&path) {
+            for line in text.lines().rev().take(10) {
+                if !line.trim().is_empty() {
+                    warnings.push(line.to_string());
+                }
+            }
+        }
+    }
+    if let Ok(root) = cache_root_dir() {
+        if let Some(warning) = cache_sync_warning(&root) {
+            warnings.push(warning);
+        }
+    }
+    warnings
+}
+
+fn read_meta_if_exists(project_dir: &Path) -> Result<Option<DiskCacheMeta>> {
+    let path = project_dir.join("_cache_meta.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    Ok(Some(serde_json::from_str(&text).unwrap_or_default()))
+}
+
+fn remember_cache_source(
+    project_root: &Path,
+    role: &str,
+    ttl_seconds: u64,
+    source: CacheSource,
+) -> Result<()> {
+    let project_dir = project_cache_dir(project_root)?;
+    let mut meta = read_meta_if_exists(&project_dir)?.unwrap_or_else(|| DiskCacheMeta {
+        schema_version: DISK_CACHE_SCHEMA_VERSION.to_string(),
+        project: project_basename(project_root),
+        roles: BTreeMap::new(),
+    });
+    let now = epoch_millis();
+    let entry = meta
+        .roles
+        .entry(role.to_string())
+        .or_insert(DiskCacheRoleMeta {
+            ttl_seconds,
+            written_at_ms: now,
+            last_used_at_ms: now,
+            cache_source: source.as_str().to_string(),
+            sha256: String::new(),
+            bytes: 0,
+        });
+    entry.ttl_seconds = ttl_seconds;
+    entry.last_used_at_ms = now;
+    entry.cache_source = source.as_str().to_string();
+    write_meta(&project_dir, &meta)
+}
+
+fn update_role_meta(
+    project_dir: &Path,
+    role: &str,
+    ttl_seconds: u64,
+    source: CacheSource,
+    sha256: String,
+    bytes: u64,
+    written_at_ms: u128,
+) -> Result<()> {
+    let mut meta = read_meta_if_exists(project_dir)?.unwrap_or_else(|| DiskCacheMeta {
+        schema_version: DISK_CACHE_SCHEMA_VERSION.to_string(),
+        project: project_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        roles: BTreeMap::new(),
+    });
+    meta.schema_version = DISK_CACHE_SCHEMA_VERSION.to_string();
+    meta.roles.insert(
+        role.to_string(),
+        DiskCacheRoleMeta {
+            ttl_seconds,
+            written_at_ms,
+            last_used_at_ms: epoch_millis(),
+            cache_source: source.as_str().to_string(),
+            sha256,
+            bytes,
+        },
+    );
+    write_meta(project_dir, &meta)
+}
+
+fn write_meta(project_dir: &Path, meta: &DiskCacheMeta) -> Result<()> {
+    fs::create_dir_all(project_dir)?;
+    let path = project_dir.join("_cache_meta.json");
+    let text = serde_json::to_string_pretty(meta)?;
+    aiplus_core::write_file_atomic(&path, text.as_bytes())?;
+    Ok(())
+}
+
+fn project_cache_dir(project_root: &Path) -> Result<PathBuf> {
+    Ok(cache_root_dir()?.join(project_basename(project_root)))
+}
+
+fn cache_root_dir() -> Result<PathBuf> {
+    if let Ok(root) = std::env::var("AIPLUS_AGENT_CACHE_ROOT") {
+        return Ok(PathBuf::from(root));
+    }
+    Ok(home_dir()?.join(".cache").join("aiplus-agent-team"))
+}
+
+fn home_dir() -> Result<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("HOME is not set"))
+}
+
+fn project_basename(project_root: &Path) -> String {
+    project_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("project")
+        .to_string()
+}
+
+fn role_snapshot_path(project_dir: &Path, role: &str) -> PathBuf {
+    project_dir.join(format!("{role}.cbor"))
+}
+
+fn role_checksum_path(project_dir: &Path, role: &str) -> PathBuf {
+    project_dir.join(format!("{role}.cbor.sha256"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+fn epoch_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn is_owner_facing_role(role: &str) -> bool {
+    matches!(role, "advisor" | "ceo")
+}
+
+fn persona_bundle(project_root: &Path, role: &str, config: &AgentConfig) -> Result<String> {
+    let config_path = project_root
+        .join(".aiplus")
+        .join("agents")
+        .join(format!("{role}.toml"));
+    let config_text = fs::read_to_string(&config_path).unwrap_or_default();
+    let persona_text = config
+        .persona
+        .as_ref()
+        .map(|persona| persona.system_prompt_file.trim())
+        .filter(|path| !path.is_empty())
+        .and_then(|rel| {
+            fs::read_to_string(project_root.join(".aiplus").join("agents").join(rel)).ok()
+        })
+        .unwrap_or_default();
+    Ok(format!(
+        "role={role}\nconfig_toml:\n{config_text}\npersona:\n{persona_text}"
+    ))
+}
+
+fn memory_bundle(project_root: &Path, role: &str) -> Result<String> {
+    let dir = project_root.join(".aiplus").join("agent-memory").join(role);
+    if !dir.exists() {
+        return Ok("memory_source=missing".to_string());
+    }
+    let mut chunks = Vec::new();
+    for entry in fs::read_dir(&dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Ok(text) = fs::read_to_string(&path) {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("memory");
+                chunks.push(format!("file={name}\n{}", redact_for_cache(&text)));
+            }
+        }
+    }
+    if chunks.is_empty() {
+        Ok("memory_source=empty".to_string())
+    } else {
+        Ok(chunks.join("\n---\n"))
+    }
+}
+
+fn redact_for_cache(text: &str) -> String {
+    text.lines()
+        .map(|line| {
+            if aiplus_core::reject_sensitive_memory_text(line).is_err() {
+                "[REDACTED_BY_AIPLUS_CACHE]"
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn workspace_head(project_root: &Path) -> String {
+    std::process::Command::new("git")
+        .args(["-C"])
+        .arg(project_root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn workspace_dirty(project_root: &Path) -> bool {
+    std::process::Command::new("git")
+        .args(["-C"])
+        .arg(project_root)
+        .args(["status", "--porcelain"])
+        .output()
+        .ok()
+        .map(|output| !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn role_config_newer_than(project_root: &Path, role: &str, written_at_ms: u128) -> Result<bool> {
+    let mut paths = vec![
+        project_root
+            .join(".aiplus")
+            .join("agents")
+            .join(format!("{role}.toml")),
+        project_root
+            .join(".aiplus")
+            .join("agents")
+            .join("personas")
+            .join(format!("{role}.md")),
+    ];
+    paths.retain(|path| path.exists());
+    for path in paths {
+        let modified = fs::metadata(&path)?
+            .modified()?
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        if modified > written_at_ms {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn record_cache_warning(project_root: &Path, role: &str, kind: DiskCacheWarningKind, detail: &str) {
+    let path = project_root.join(DISK_CACHE_WARNING_PATH);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let line = serde_json::json!({
+        "schemaVersion": DISK_CACHE_SCHEMA_VERSION,
+        "event": "disk_cache_warning",
+        "kind": kind.as_str(),
+        "role": role,
+        "detail": detail,
+        "timestamp": aiplus_core::timestamp(),
+        "secretValues": "none"
+    });
+    let _ = aiplus_core::append_jsonl_atomic(&path, &line.to_string());
+}
+
+fn cache_sync_warning(cache_root: &Path) -> Option<String> {
+    let lower = cache_root.to_string_lossy().to_ascii_lowercase();
+    ["icloud", "dropbox", "onedrive"]
+        .iter()
+        .any(|needle| lower.contains(needle))
+        .then(|| {
+            format!(
+                "disk cache root appears to live under a sync folder: {}; recommend `aiplus agent cache --clear` and a non-synced HOME/cache root",
+                cache_root.display()
+            )
+        })
+}
+
+fn enforce_project_size_cap(project_dir: &Path) -> Result<()> {
+    let mut files = Vec::new();
+    let mut total = 0_u64;
+    if !project_dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(project_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("cbor") {
+            let meta = fs::metadata(&path)?;
+            let modified = meta.modified().unwrap_or(UNIX_EPOCH);
+            let size = meta.len();
+            total += size;
+            files.push((path, modified, size));
+        }
+    }
+    if total <= MAX_PROJECT_CACHE_BYTES {
+        return Ok(());
+    }
+    files.sort_by_key(|(_, modified, _)| *modified);
+    for (path, _, size) in files {
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("cbor.sha256"));
+        total = total.saturating_sub(size);
+        if total <= MAX_PROJECT_CACHE_BYTES {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// In-process warm-bench cache for AiPlus Agent Team v0.1.

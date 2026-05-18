@@ -1,3 +1,4 @@
+use crate::agent::coordinator;
 use crate::agent::core::load_team_config;
 use anyhow::Result;
 
@@ -15,6 +16,26 @@ pub fn handle_doctor() -> Result<()> {
 
     let state = load_team_config(&project_root)?;
     println!("  Found {} agent config(s)", state.agents.len());
+    match crate::agent::cache::disk_cache_status(&project_root) {
+        Ok(status) => {
+            println!(
+                "  Disk cache: {} ({})",
+                if status.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                },
+                status.project_dir.display()
+            );
+            if let Some(warning) = status.sync_warning {
+                println!("    WARNING: {warning}");
+            }
+        }
+        Err(e) => println!("  WARNING: disk cache status unavailable: {e}"),
+    }
+    for warning in crate::agent::cache::cache_warnings(&project_root) {
+        println!("  WARNING: disk cache {warning}");
+    }
 
     for (role, config) in &state.agents {
         print!("  {} ({})", role, config.display_name);
@@ -42,6 +63,13 @@ pub fn handle_doctor() -> Result<()> {
                 );
             }
         }
+    }
+
+    if coordinator::thresholds_match_design() {
+        println!("  PASS coordinator scoring config valid");
+        println!("  PASS coordinator tier thresholds match DESIGN.md §9.2");
+    } else {
+        println!("  WARNING: coordinator tier thresholds drift from DESIGN.md §9.2");
     }
 
     println!("Doctor check complete.");

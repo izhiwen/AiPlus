@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod cache;
 pub mod commands;
+pub mod coordinator;
 pub mod core;
 pub mod disable;
 pub mod dismiss;
@@ -31,8 +32,14 @@ use anyhow::Result;
 
 pub fn dispatch(args: AgentArgs) -> Result<()> {
     match args.subcommand {
-        AgentSub::Status { verbose: _, json } => status::handle_status(json),
+        AgentSub::Status { verbose, json } => status::handle_status(verbose, json),
         AgentSub::Doctor => doctor::handle_doctor(),
+        AgentSub::Cache {
+            enable_disk,
+            disable_disk,
+            clear,
+            status,
+        } => cache::handle_cache_command(enable_disk, disable_disk, clear, status),
         AgentSub::List { functional } => list::handle_list(functional),
         AgentSub::Talk { role, runtime } => talk::handle_talk(&role, runtime.as_deref()),
         AgentSub::Route {

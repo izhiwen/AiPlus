@@ -1,4 +1,5 @@
 use crate::agent::cache;
+use crate::agent::coordinator::{self, CoordinatorTier};
 use crate::agent::core::AgentConfig;
 use crate::agent::core::{
     aieconlab_alias_help, get_role_config, get_role_config_for_project,
@@ -97,6 +98,7 @@ pub fn handle_route(
                         None,
                         DispatchKind::Primary,
                         None,
+                        true,
                     )?;
                 } else {
                     route_batch(
@@ -124,15 +126,7 @@ pub fn handle_route(
                     format!("{candidate} {task}")
                 };
                 let project_root = std::env::current_dir()?;
-                let gate_state = enforce_gates(&project_root, "pi", &full_task, &approved)?;
-                if gate_state == GateOutcome::PendingBlocked {
-                    return Err(anyhow!(
-                        "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
-                    ));
-                }
-                println!("Routing task to PI/CEO for scoring and dispatch: {full_task}");
-                run_consult(&project_root, "pi", &full_task)?;
-                return Ok(());
+                return run_adaptive_route(&project_root, &full_task, &approved);
             }
         }
     }
@@ -142,15 +136,102 @@ pub fn handle_route(
         ));
     }
     let project_root = std::env::current_dir()?;
-    let gate_state = enforce_gates(&project_root, "pi", task, &approved)?;
+    run_adaptive_route(&project_root, task, &approved)
+}
+
+fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<String>) -> Result<()> {
+    let task = task.trim();
+    if task.is_empty() {
+        return Err(anyhow!("agent route requires a task when ROLE is omitted"));
+    }
+
+    let plan = coordinator::plan_task(task);
+    let staffing = if plan.staffing_roles.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", plan.staffing_roles.join(","))
+    };
+    println!(
+        "Adaptive coordinator: complexity={} risk={:.2} tier={} code_change={} design_impact={} consultant={}",
+        plan.score.complexity,
+        plan.score.risk,
+        plan.tier.as_str(),
+        plan.score.requires_code_change,
+        plan.score.design_impact,
+        if plan.fire_consultant { "fire" } else { "skip" },
+    );
+    println!("Staffing roles: {staffing}");
+
+    let gate_state = enforce_gates(project_root, "ceo", task, approved)?;
     if gate_state == GateOutcome::PendingBlocked {
         return Err(anyhow!(
             "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
         ));
     }
-    println!("Routing task to PI/CEO for scoring and dispatch: {task}");
-    run_consult(&project_root, "pi", task)?;
+
+    if plan.fire_consultant {
+        println!(
+            "Plan step: firing consultant for {} task",
+            plan.tier.as_str()
+        );
+        run_consult(project_root, "ceo", task)?;
+    } else {
+        println!("Plan step: consultant skipped for {}", plan.tier.as_str());
+    }
+
+    if plan.tier == CoordinatorTier::LightNoCode {
+        println!("Execute step: CEO handles directly; no worktree staffing required.");
+        let _ = state::record_dispatch(
+            project_root,
+            "ceo",
+            task,
+            "aiplus agent route adaptive-coordinator",
+        );
+        return Ok(());
+    }
+
+    let batch_id = format!(
+        "coord-{}-{}",
+        aiplus_core::epoch_millis(),
+        plan.tier.as_str().to_ascii_lowercase()
+    );
+    println!(
+        "Execute step: dispatching {} staffed role(s) with batch {batch_id}",
+        plan.staffing_roles.len()
+    );
+    let pool = Arc::new(Mutex::new(WorktreePool::default()));
+    for (idx, role) in plan.staffing_roles.iter().enumerate() {
+        let config = get_role_config_for_project(project_root, role)?;
+        let role_task = coordinator_role_task(role, idx + 1, plan.staffing_roles.len(), task);
+        route_known_role(
+            project_root,
+            role,
+            None,
+            &role_task,
+            config,
+            Some(&batch_id),
+            if idx == 0 {
+                DispatchKind::Primary
+            } else {
+                DispatchKind::Sidecar
+            },
+            Some(Arc::clone(&pool)),
+            false,
+        )?;
+    }
+    println!(
+        "Adaptive coordinator dispatch complete: tier={}",
+        plan.tier.as_str()
+    );
     Ok(())
+}
+
+fn coordinator_role_task(role: &str, position: usize, total: usize, task: &str) -> String {
+    format!(
+        "ADAPTIVE COORDINATOR P0 staffed role {position}/{total}: `{role}`.\n\
+         Work only within your role responsibilities. Coordinate through CEO; do not perform Owner-gated actions.\n\n\
+         Original task:\n{task}"
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +295,7 @@ fn run_author_critic_fixer(
         Some(&workflow_run_id),
         DispatchKind::Primary,
         None,
+        true,
     )?;
     record_workflow_phase(
         project_root,
@@ -242,6 +324,7 @@ fn run_author_critic_fixer(
         Some(&workflow_run_id),
         DispatchKind::Sidecar,
         None,
+        true,
     )?;
     record_workflow_phase(
         project_root,
@@ -271,6 +354,7 @@ fn run_author_critic_fixer(
         Some(&workflow_run_id),
         DispatchKind::Primary,
         None,
+        true,
     )?;
     record_workflow_phase(
         project_root,
@@ -387,6 +471,7 @@ fn route_batch(
                 Some(&batch_id),
                 DispatchKind::Primary,
                 Some(pool),
+                true,
             )
         }));
     }
@@ -407,6 +492,7 @@ fn route_batch(
                 Some(&batch_id),
                 DispatchKind::Sidecar,
                 Some(pool),
+                true,
             )
         }));
     }
@@ -441,10 +527,25 @@ fn route_known_role(
     batch_id: Option<&str>,
     kind: DispatchKind,
     pool: Option<Arc<Mutex<WorktreePool>>>,
+    consult_after_dispatch: bool,
 ) -> Result<()> {
     let started = Instant::now();
     maybe_delay_for_perf_fixture(role);
     println!("Routing task to {}: {}", role, task);
+    let cache_source =
+        match cache::lookup_disk_snapshot(project_root, role, config.warm_bench_ttl_seconds) {
+            Ok(source) => source,
+            Err(e) => {
+                eprintln!("  WARN: disk cache lookup failed; cold-starting: {e}");
+                cache::CacheSource::ColdStart
+            }
+        };
+    if matches!(
+        cache_source,
+        cache::CacheSource::DiskWarm | cache::CacheSource::ColdStart
+    ) {
+        println!("  cache_source={}", cache_source.as_str());
+    }
     let mut cache_invalidated = false;
     if kind == DispatchKind::Primary {
         if let Ok(cache) = cache::global_cache().lock() {
@@ -549,8 +650,11 @@ fn route_known_role(
             );
         }
     }
-    if !task.is_empty() {
+    if consult_after_dispatch && !task.is_empty() {
         run_consult(project_root, role, task)?;
+    }
+    if let Err(e) = cache::write_disk_snapshot(project_root, role, &config, cache_source) {
+        eprintln!("  WARN: failed to write disk cache snapshot: {e}");
     }
     record_dispatch_metric(
         project_root,

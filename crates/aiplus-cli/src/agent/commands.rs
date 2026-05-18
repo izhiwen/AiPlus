@@ -20,6 +20,18 @@ pub enum AgentSub {
     #[command(visible_aliases = ["健康", "诊断"])]
     Doctor,
 
+    #[command(visible_aliases = ["缓存", "暖"])]
+    Cache {
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        enable_disk: bool,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        disable_disk: bool,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        clear: bool,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        status: bool,
+    },
+
     #[command(visible_aliases = ["列表", "清单"])]
     List {
         #[arg(long, action = clap::ArgAction::SetTrue)]
