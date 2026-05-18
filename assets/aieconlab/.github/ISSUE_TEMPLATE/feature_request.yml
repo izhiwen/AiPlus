@@ -1,0 +1,50 @@
+name: Feature request / Design discussion
+description: Propose a new feature, a new expert, or a design change
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AEL is tightly scoped (applied-economics research role
+        separation and execution). Before proposing, please skim
+        [DESIGN.md §21 Out of Scope](DESIGN.md) and
+        [CONTRIBUTING.md](CONTRIBUTING.md) to see whether the idea
+        fits AEL or belongs in a sibling AiPlus module.
+  - type: textarea
+    id: pain
+    attributes:
+      label: What pain does this solve
+      description: One paragraph. Start with "Today, when I try to ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+      description: What would change in AEL. New expert? New consultant seat? Persona refinement? New trigger? Be concrete.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope class
+      options:
+        - "Persona refinement (existing role)"
+        - "New expert in the 12-expert directory"
+        - "Consultant team change (seat / trigger / output_artifact)"
+        - "STOP-gate addition or change"
+        - "New runtime adapter implementation"
+        - "Documentation / example"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about? Why this one?
+  - type: textarea
+    id: existing-role
+    attributes:
+      label: Could this be handled by an existing role?
+      description: AEL has 8 core roles + 12 experts. If you're proposing a new role/expert, briefly explain why none of the existing ones cover this.

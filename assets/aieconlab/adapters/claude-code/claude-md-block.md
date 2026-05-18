@@ -1,7 +1,7 @@
 ## AiEconLab (AEL) is installed in this project
 
 AiEconLab replaces single-agent drift with a permanent virtual research
-team. 8 core roles + 12 expert specialists, all routable as Claude Code
+team. 8 core roles + 14 expert specialists, all routable as Claude Code
 subagents after `aiplus add aieconlab`. Full operating manual:
 `.aiplus/agents/personas/` and `.aiplus/modules/aieconlab/`.
 
@@ -16,12 +16,13 @@ subagents after `aiplus add aieconlab`. Full operating manual:
 - `aieconlab-referee` — internal pre-submission devil's-advocate review.
 - `aieconlab-replicator` — clean-room rerun for replication packages.
 
-### 12 expert specialists (consulted by PI when a core role is not enough)
+### 14 expert specialists (consulted by PI when a core role is not enough)
 
 - `aieconlab-coauthor-liaison` · `aieconlab-computation` · `aieconlab-econometrician` (deep ID, weak-IV, SE theory)
+- `aieconlab-dof-auditor` (degrees of freedom, small N, multiple testing)
 - `aieconlab-ethics-irb` · `aieconlab-historical-sources` · `aieconlab-job-talk-coach`
 - `aieconlab-lit-reviewer` · **`aieconlab-llm-measurement`** (the AEL headline expert) · `aieconlab-reproducibility`
-- `aieconlab-survey-experiment` · `aieconlab-viz-specialist` · `aieconlab-writer`
+- `aieconlab-rr-strategist` (R&R / rebuttal strategy) · `aieconlab-survey-experiment` · `aieconlab-viz-specialist` · `aieconlab-writer`
 
 ### Natural-language → routing map
 
@@ -33,6 +34,8 @@ subagents after `aiplus add aieconlab`. Full operating manual:
 | "投稿前挑刺" / "pre-review this rebuttal" | aieconlab-referee |
 | "为复现打包" / "ship replication package" | aieconlab-replicator (run) + aieconlab-reproducibility (build apparatus) |
 | "用 LLM 给文本打分" / "LLM-as-measurement" | aieconlab-llm-measurement |
+| "small N / multiple testing / 自由度" | aieconlab-dof-auditor |
+| "R&R / response to referees / 答辩" | aieconlab-rr-strategist |
 | "RCT 设计" / "power analysis" / "pre-registration" | aieconlab-survey-experiment |
 | "这图讲不清楚" / "figure isn't working" | aieconlab-viz-specialist |
 | "改写引言" / "rewrite intro" | aieconlab-writer |

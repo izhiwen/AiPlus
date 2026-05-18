@@ -180,7 +180,7 @@ AiPlus serves two audiences with the same underlying agent substrate:
   packages, and LLM-as-measurement workflows.
   Run `aiplus add aieconlab` to install [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab) —
   8 research roles (Advisor, PI, Theorist, PM, RA-Stata, RA-Python,
-  Referee, Replicator) + 12 experts including LLM-as-Measurement
+  Referee, Replicator) + 14 experts including LLM-as-Measurement
   Specialist. Replaces the SWE consultant team with one designed from
   first principles for plan-time econ review.
 
@@ -191,7 +191,7 @@ and `aiplus-agent-velocity`.
 
 ## Install
 
-### Option A — pre-built binary (recommended, v0.5.10+)
+### Option A — pre-built binary (recommended, v0.5.26+)
 
 Pre-built binaries for macOS (Intel + Apple Silicon), Linux (x86_64 +
 aarch64), and Windows ship with every release.
@@ -321,7 +321,7 @@ in every AiPlus project:
 ## Optional opt-in module
 
 - [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab) — applied-
-  economics research team (8 core roles + 12 experts including LLM-as-
+  economics research team (8 core roles + 14 experts including LLM-as-
   Measurement Specialist; default Python + Stata + LaTeX toolchain).
   Installed via `aiplus add aieconlab`; not bundled by default into
   `aiplus install`. See AEL's README for the install flow and the
@@ -373,7 +373,7 @@ placeholders (USER.md / sync/projects.toml / secret-aliases.tsv), then run
 ## Status
 
 Latest release: see [Releases](https://github.com/izhiwen/AiPlus/releases/latest)
-(currently `v0.5.10`, pre-built binaries for macOS / Linux / Windows).
+(currently `v0.5.26`, pre-built binaries for macOS / Linux / Windows).
 Active development on `main`; pre-release notes for the next cut live
 under [`docs/roadmap/`](docs/roadmap/).
 

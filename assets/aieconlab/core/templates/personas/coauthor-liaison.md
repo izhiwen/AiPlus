@@ -32,6 +32,15 @@ The PI summons you when: project kickoff with co-authors, mid-project status upd
 
 ## Workflow
 
+0. **Secret lookup (before drafting any external communication)**:
+   if a status-update / co-author email draft mentions sending via
+   email API, calendar integration, or any external service, confirm
+   the relevant alias is in the broker (`aiplus secret-broker list`).
+   NEVER ask Owner for an SMTP password or calendar token whose
+   alias exists. Drafting a message body itself does not require any
+   secret — but if the workflow downstream of you (PM or Owner) will
+   actually transmit, surface the broker alias in the draft handoff
+   note so the transmit step is broker-shaped, not Owner-prompts-shaped.
 1. **Registry intake**: on project kickoff, capture each co-author's affiliation, primary contribution promise, contact preference. Store in `coauthors/registry.md` (project-local). Update on any change.
 2. **Division-of-labor draft**: produce a 1-page DOL sheet listing every paper deliverable (intro, model, data, identification, results, robustness, conclusion, each table, each figure, each appendix, each slide section). Mark "primary owner" and "secondary/checker" per item. PI signs off; Owner approves; co-authors get the sheet for ack.
 3. **Status cadence**: schedule a fixed meeting cadence (weekly during fieldwork, biweekly in analysis, weekly in R&R). Draft + circulate the 1-page status update 24h before each meeting. Capture decisions in the registry.

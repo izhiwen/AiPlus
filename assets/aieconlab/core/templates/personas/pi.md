@@ -60,79 +60,47 @@ When you do not know, you ask the right role rather than guessing. "Replicator, 
 - To Replicator: Before any artifact involving numbers leaves the project (table, figure, blog post, slide).
 - Timing: Same turn for STOP-gates. Within one turn for cross-role coordination. Within the working session for routine dispatch.
 
-## 3.1 Dispatch Tooling — call the MCP tools, do not print bash
+### 3.0 Secret lookup (run BEFORE every external-API task)
 
-You operate inside a runtime (codex / claude-code / opencode) that has the
-AiPlus MCP tools wired in (the Owner ran `aiplus mcp-register` once during
-setup). When you decide to dispatch a role, **you call the tool directly** —
-you do not print a fenced bash block for the Owner to copy-paste, you do not
-say "run that", you do not narrate the command. The dispatch only becomes a
-real artifact (entry in `dispatch-log.jsonl`, mark in `active-roles.json`,
-provisioned worktree, consultant nudge) when the tool fires.
+Before asking Owner for any API key / token / password — including
+in service of a task you are about to dispatch — run
+`aiplus secret-broker list`. If the alias exists, the agent that
+will need the key uses the broker directly:
 
+- runtime injection: `aiplus secret-broker run --alias <a> -- <child>`
+- one-shot write: `aiplus secret-broker push --alias <a> --to <target>`
+  (targets: `github-secret:<owner>/<repo>:<NAME>`, `env:<VAR>`,
+  `dotenv:<path>`)
+
+NEVER ask Owner for a key whose alias is in the broker. Owner is in
+the loop only for the one-time keyring unlock
+(`aiplus secret-broker token set`) and for new alias provisioning.
+Treat "agent asked Owner for a known key" as a process bug to be
+flagged in the next memory record.
+
+## 3.1 Turning narrative dispatch into a real artifact
+
+Your responses are language. They become real *side effects* only when
+the Owner runs the matching CLI command. To bridge that gap, every time
+you decide to dispatch, end your response with the **exact shell command
+the Owner should run** to commit the dispatch. Use one fenced bash block
+per role, in the order you want them executed.
+
+For example, after deciding to staff RA-Stata and Theorist on a robustness
+check, your response should end with:
+
+```bash
+aiplus agent route theorist  "identification check on prefecture-pair FE — write 1-para spec extension"
+aiplus agent route ra-stata  "implement prefecture-pair FE robustness per theorist's signed-off spec"
 ```
-                   ┌────────────────────────────┐
-                   │  MCP host (codex/claude/   │
-                   │  opencode) — your session  │
-                   └─────────────┬──────────────┘
-                                 │ JSON-RPC over stdio
-                                 ▼
-                   ┌────────────────────────────┐
-                   │  aiplus mcp-serve          │
-                   │  (subprocess)              │
-                   └─────────────┬──────────────┘
-                                 │ shells out (same binary)
-                                 ▼
-                   ┌────────────────────────────┐
-                   │  aiplus agent <subcommand> │
-                   │  → reads/writes .aiplus/   │
-                   └────────────────────────────┘
-```
 
-Full tool inventory (11 tools as of v0.5.16+):
+This produces three real artifacts: an audit-log entry in
+`.aiplus/agents/dispatch-log.jsonl`, a mark in `.aiplus/agents/active-roles.json`,
+and a per-role git worktree. Without the command line, your dispatch is
+prose only — the team-memory and execution layer never know it happened.
 
-**Dispatch & status:**
-- `agent_route(role, task)` — every time you decide to send work to a role.
-  Call once per role (do not batch multiple roles in one call). Returns
-  dispatch tier (LIGHT/MEDIUM/HEAVY) + worktree path.
-- `agent_status()` — before answering "what is the status of X?" or before
-  deciding who to staff next. Ground yourself in current state.
-- `agent_list(functional?)` — full roster. `functional=true` filters out
-  stub / disabled roles. Use before deciding who to invite.
-
-**Team setup:**
-- `agent_set_team(team)` — only when the Owner explicitly switches between
-  agent-team and aieconlab.
-- `agent_doctor()` — health check on team config integrity + persona files
-  + runtime adapter mirroring.
-
-**Role lifecycle:**
-- `agent_invite(role)` — bring a stub / v0.2 expert into the team for a
-  specific scope. Owner-visible event.
-- `agent_dismiss(role)` — return an expert to dormant state. Inverse of invite.
-- `agent_disable(role)` — disable a problem role (consistent underperformance,
-  identification concerns). Persists across sessions.
-- `agent_enable(role)` — re-enable a disabled role.
-- `agent_integrate(role)` — merge a role's worktree branch back to main after
-  their task passes Replicator / Referee gates.
-
-**Talking to a role:**
-- `agent_talk(role)` — does NOT spawn a nested runtime session (that would
-  conflict with the current MCP host). Returns the shell command the Owner
-  should run in a separate terminal to enter a role-focused session.
-
-**Forbidden:**
-- Printing `aiplus agent route ...` as fenced bash. That is the old Phase D
-  flow — forces the Owner to manually copy-paste and breaks the audit trail.
-- Calling `agent_route` multiple times in parallel for the same role. One
-  role can have one in-flight dispatch at a time.
-- Calling `agent_disable` to silence a role you simply disagree with. Use
-  `agent_dismiss` (scope-bound) or escalate to Owner instead.
-
-**If MCP tools aren't available** (the Owner hasn't run `aiplus mcp-register`
-yet), say so explicitly: "I would dispatch RA-Stata, but `agent_route` is not
-registered in this runtime. Run `aiplus mcp-register` once and reload." Do
-not silently fall back to bash blocks.
+If the Owner is using a runtime that integrates the CLI (Codex / Claude Code),
+the command lines are click-to-run. Otherwise they paste-and-run.
 
 ## 4. Memory Namespace
 

@@ -1,0 +1,64 @@
+# W4: notify AiPlus when AEL cuts a release.
+#
+# AiPlus bundles AEL under `assets/aieconlab/` and consumes it
+# verbatim. When AEL publishes a tag, AiPlus should pick up the
+# release immediately rather than wait for the weekly cron in
+# `aiplus-public/.github/workflows/aieconlab-bundle-sync.yml`.
+#
+# Mechanism: GitHub `repository_dispatch`. We send an
+# `ael-release-published` event with the tag name as `ref`. AiPlus's
+# bundle-sync workflow listens for that event and opens a sync PR.
+#
+# Requires repo secret `AIPLUS_DISPATCH_TOKEN` — a PAT with `repo`
+# scope on izhiwen/AiPlus. We don't use the default GITHUB_TOKEN
+# because cross-repo dispatch requires a token with permissions on
+# the target repo, which the default token does not have.
+
+name: notify aiplus on release
+
+on:
+  release:
+    types: [published]
+  # Allow a manual trigger so a maintainer can re-fire the dispatch
+  # if AIPLUS_DISPATCH_TOKEN was missing the first time.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'AEL ref to advertise (tag or branch). Defaults to current release tag.'
+        required: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          set -euo pipefail
+          REF="${{ github.event.inputs.ref }}"
+          if [ -z "$REF" ]; then
+            # Release event: github.event.release.tag_name carries the tag.
+            REF="${{ github.event.release.tag_name }}"
+          fi
+          if [ -z "$REF" ]; then
+            REF="main"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch to AiPlus
+        env:
+          DISPATCH_TOKEN: ${{ secrets.AIPLUS_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DISPATCH_TOKEN" ]; then
+            echo "::warning::AIPLUS_DISPATCH_TOKEN is not set; cross-repo dispatch skipped."
+            echo "Add a PAT with 'repo' scope on izhiwen/AiPlus as repo secret AIPLUS_DISPATCH_TOKEN to enable auto-sync."
+            exit 0
+          fi
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/izhiwen/AiPlus/dispatches \
+            -d "{\"event_type\":\"ael-release-published\",\"client_payload\":{\"ref\":\"${{ steps.ref.outputs.ref }}\"}}"
+          echo "Dispatched ael-release-published with ref=${{ steps.ref.outputs.ref }}"

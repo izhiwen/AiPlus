@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+answer_file=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output-last-message)
+      answer_file="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+[ -n "$answer_file" ] || exit 2
+cat > "$answer_file" <<'TEXT'
+I am the AiEconLab advisor, responsible for strategic second opinions on research framing, identification credibility, and publication risk.
+TEXT

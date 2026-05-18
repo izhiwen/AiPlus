@@ -128,9 +128,9 @@ Created worktree for pi at /tmp/my-paper.pi (Branch: agent/pi)
 ## After recording
 
 - Compress GIF to <2MB. GitHub README embeds slowly above 2MB.
-- Filename: `docs/demo.gif` (AiPlus convention)
-- Same path: `docs/demo.gif` in AEL repo
-- README hero: `![AiPlus 30-second tour](docs/demo.gif)`
+- Filename: `demo.gif`
+- Same path: `demo.gif` in AEL repo
+- README Demo section: `![AiEconLab demo](demo.gif)`
 
 ## Caption ideas
 
@@ -161,10 +161,10 @@ asciinema cat demo.cast > demo.txt   # inspect timing
 # manually edit demo.cast JSONL to trim
 
 # Convert to GIF
-agg --speed 1.2 --font-size 18 demo.cast docs/demo.gif
+agg --speed 1.2 --font-size 18 demo.cast demo.gif
 
 # Verify size
-ls -lh docs/demo.gif   # target <2MB
+ls -lh demo.gif   # target <2MB
 ```
 
 Speed 1.2x is the sweet spot — feels natural, fits more content.

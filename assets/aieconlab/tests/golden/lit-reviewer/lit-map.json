@@ -1,0 +1,37 @@
+{
+  "id": "lit-map-close-comparables",
+  "persona": "lit-reviewer",
+  "kind": "in_scope",
+  "prompt": {
+    "input": "Build the initial literature map for a treaty-port persistence paper and identify the closest comparables a referee will expect."
+  },
+  "runtime": {
+    "type": "fixture-matrix",
+    "adapters": ["codex", "claude-code", "opencode"],
+    "deterministic": true
+  },
+  "fixture_outputs": {
+    "codex": "AiEconLab Lit Reviewer response: I would build a curated literature map rather than a keyword bibliography. Closest comparables come first, followed by methodological precedents, substantive context, and contrary findings. The output should flag each missing citation against references.bib and route placement language to the PI and Writer.",
+    "claude-code": "AEL lit-reviewer: build the literature map from closest comparables, then methodological precedents and contrary findings. Check every missing citation against references.bib and route contribution wording to PI and Writer.",
+    "opencode": "AiEconLab literature reviewer result: organize the lit map around closest comparables, citation gaps, methodological precedents, and substantive context. PI owns placement decisions; Writer owns final prose."
+  },
+  "assertions": [
+    {
+      "name": "team-marker",
+      "any": ["AiEconLab", "AEL"]
+    },
+    {
+      "name": "role-marker",
+      "any": ["lit-reviewer", "lit reviewer", "literature map", "literature"]
+    },
+    {
+      "name": "domain-marker",
+      "any": ["closest comparables", "methodological precedents", "references.bib", "citation"]
+    },
+    {
+      "name": "routing-marker",
+      "any": ["PI", "Writer", "Referee"]
+    }
+  ],
+  "forbidden_any": ["invent a citation", "pad the bibliography"]
+}

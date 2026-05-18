@@ -62,7 +62,7 @@ description = "Clean-room replicator — reruns the analysis from scratch using 
 persona_file = "core/templates/personas/replicator.md"
 
 # ============================================================
-# 12 EXPERTS (consulted by PI when a core role isn't enough)
+# 14 EXPERTS (consulted by PI when a core role isn't enough)
 # ============================================================
 
 [[subagent]]
@@ -79,6 +79,11 @@ persona_file = "core/templates/personas/computation.md"
 name = "aieconlab-econometrician"
 description = "Deep econometrics specialist — DID frontier, weak-IV diagnostics, inference, SE theory, novel estimators. Use for '计量', 'Econometrician', 'DID frontier', '弱工具变量', 'weak-IV', 'inference', 'SE theory', or when the estimator/inference choice is non-obvious and goes beyond what ra-stata covers."
 persona_file = "core/templates/personas/econometrician.md"
+
+[[subagent]]
+name = "aieconlab-dof-auditor"
+description = "DOF-Auditor — degrees of freedom, small N, multiple testing, specification maximality, kitchen-sink specs, borderline t-tests. Use for 'DOF', 'degree of freedom', 'small N', 'multiple testing', '自由度', or '多重检验' when a result may spend more empirical flexibility than the design can defend."
+persona_file = "core/templates/personas/dof-auditor.md"
 
 [[subagent]]
 name = "aieconlab-ethics-irb"
@@ -109,6 +114,11 @@ persona_file = "core/templates/personas/llm-measurement.md"
 name = "aieconlab-reproducibility"
 description = "Reproducibility engineering — Docker, Makefiles, DVC, environment pinning, seed control, CI. Use for '复现工程', 'docker', 'Makefile', 'DVC', 'seed', 'pin', 'env', or when packaging code/data for journal submission, archive, or year-later rerun. Different from replicator: this expert builds the apparatus; replicator runs against it."
 persona_file = "core/templates/personas/reproducibility.md"
+
+[[subagent]]
+name = "aieconlab-rr-strategist"
+description = "RR-Strategist — R&R strategy, rebuttal architecture, response to referees, revise and resubmit, Reviewer 2, diplomatic concessions. Use for 'R&R', 'rebuttal', 'response to referees', 'reviewer 2', '答辩', or '修改稿' before drafting or executing revision work."
+persona_file = "core/templates/personas/rr-strategist.md"
 
 [[subagent]]
 name = "aieconlab-survey-experiment"

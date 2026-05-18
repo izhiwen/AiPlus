@@ -36,8 +36,8 @@ using prefecture-pair fixed effects before next Monday's seminar."
 - Writer is gated behind Referee pre-review for the new paragraph.
 - The Owner receives one status report, not five role-specific updates.
 
-## v0.1 status
+## Status
 
-The codex runtime adapter is a placeholder in v0.1. This README documents
-the *intended* routing; the actual `aiplus agent route` integration with
-codex lands in v0.2.
+The codex runtime adapter is shipped (v0.3+). This README documents the
+intended routing; see [`adapters/codex/README.md`](../../adapters/codex/README.md)
+for current adapter details.

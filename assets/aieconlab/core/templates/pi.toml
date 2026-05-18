@@ -26,3 +26,9 @@ write_team_memory = true
 [invocation]
 chinese_aliases = ["PI", "主作者", "课题负责人", "lead author"]
 english_aliases = ["pi", "principal-investigator", "lead", "lead-author", "orchestrator"]
+
+# S5: PI orchestrates dispatches that often touch github (issue/PR
+# creation, status updates). Declaring the github alias lets `route`
+# auto-inject GITHUB_TOKEN into child processes for those flows.
+[secret_needs]
+aliases = ["github"]

@@ -34,8 +34,9 @@ Owner says: "Pre-review the AER R&R rebuttal letter before I send it."
   change — because the rebuttal *cites* them.
 - Submission is a STOP-gate that always escalates to the Owner.
 
-## v0.1 status
+## Status
 
-The claude-code runtime adapter is a placeholder in v0.1. This README
-documents the *intended* routing; the actual integration with Claude Code
-subagents and slash commands lands in v0.2.
+The claude-code runtime adapter is shipped (v0.3+). This README documents
+the intended routing; see
+[`adapters/claude-code/README.md`](../../adapters/claude-code/README.md)
+for current adapter details.

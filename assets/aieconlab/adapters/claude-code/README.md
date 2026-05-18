@@ -10,7 +10,7 @@ each session.**
 
 What lands in the user's project:
 
-- `.claude/agents/aieconlab-*.md` — 20 subagents (8 core roles + 12
+- `.claude/agents/aieconlab-*.md` — 22 subagents (8 core roles + 14
   expert specialists) with YAML frontmatter tuned for Claude Code's
   auto-routing. Persona bodies are loaded from
   `core/templates/personas/*.md`.
@@ -30,7 +30,7 @@ the research-team layer on top.
 
 | File | Purpose |
 |---|---|
-| `subagents.toml` | Manifest of 20 Claude Code subagents — name, description (drives auto-routing), and `persona_file` (system prompt source). |
+| `subagents.toml` | Manifest of 22 Claude Code subagents — name, description (drives auto-routing), and `persona_file` (system prompt source). |
 | `claude-md-block.md` | Body of the `<!-- BEGIN AIECONLAB MANAGED BLOCK -->` … `<!-- END AIECONLAB MANAGED BLOCK -->` section that AiPlus inserts into the user's project `CLAUDE.md`. |
 | `commands/aiel-route.md` | Slash command — explicit PI-style task routing. |
 | `commands/aiel-talk.md` | Slash command — load a specific role's persona as active context. |
@@ -55,8 +55,17 @@ the research-team layer on top.
      outside the block).
 3. Optionally: re-run `aiplus install claude-code` later to refresh
    AiPlus content; AEL content survives because markers differ.
-4. `aiplus doctor` verifies all 20 subagents, slash commands, and the
+4. `aiplus doctor` verifies all 22 subagents, slash commands, and the
    AEL managed block are present.
+
+## Role switching from natural language
+
+Claude Code recognizes role switches like "you are PI" or "take the
+referee role" without explicit slash-command invocation. The
+`subagents.toml` description and YAML frontmatter on each
+`.claude/agents/aieconlab-*.md` give Claude Code's auto-router enough
+signal to re-bind the active persona when you name a role mid-session.
+Verified at 10/10 on the AiPlus G1 test matrix.
 
 ## Uninstall
 

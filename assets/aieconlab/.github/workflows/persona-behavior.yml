@@ -1,0 +1,75 @@
+# W8: persona behavior acceptance tests.
+#
+# Previous AEL CI only checked persona file structure (presence of
+# sections, AEL framing line). W8 adds LLM-level acceptance: for each
+# persona, we send 3 scripted prompts (in-scope / boundary /
+# STOP-gate) to the model running the persona as its system prompt
+# and assert that the response matches the persona's contracted
+# behavior.
+#
+# Cost / safety:
+#   * Skips on PRs from forks (no API key access; would fail silently
+#     in a confusing way otherwise).
+#   * Manual trigger only by default, plus PR runs that touch any of
+#     the personas. Cron is intentionally OFF to avoid burning API
+#     credits on no-op weeks.
+#   * Uses claude-haiku-4-5 by default for cost; PERSONA_MODEL env
+#     overrides.
+
+name: persona behavior
+
+on:
+  pull_request:
+    paths:
+      - 'core/templates/personas/**'
+      - 'tests/persona_behavior/**'
+      - '.github/workflows/persona-behavior.yml'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Anthropic model id (default claude-haiku-4-5-20251001)'
+        required: false
+        default: 'claude-haiku-4-5-20251001'
+      threshold:
+        description: 'Minimum per-persona pass rate (0.0-1.0, default 0.80)'
+        required: false
+        default: '0.80'
+
+permissions:
+  contents: read
+
+jobs:
+  behavior:
+    runs-on: ubuntu-latest
+    # The fork-skip pattern below: PRs from forks don't have access
+    # to the `ANTHROPIC_API_KEY` secret, so the job would either fail
+    # opaquely or succeed-by-skip. We make the skip explicit and
+    # report it in the job status.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/persona_behavior/requirements.txt
+
+      - name: Run persona behavior tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PERSONA_MODEL: ${{ github.event.inputs.model || 'claude-haiku-4-5-20251001' }}
+          PERSONA_THRESHOLD: ${{ github.event.inputs.threshold || '0.80' }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::ANTHROPIC_API_KEY secret not set; skipping behavior tests."
+            echo "Add the secret under Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+          python tests/persona_behavior/test_persona_behavior.py

@@ -25,9 +25,16 @@
     "core/templates/replicator.toml",
     "core/templates/econ-team.toml",
     "core/templates/consultant-team.aieconlab.toml",
+    "core/templates/experts/dof-auditor.toml",
+    "core/templates/experts/dof-auditor.md",
     "core/templates/experts/llm-measurement.toml",
+    "core/templates/experts/rr-strategist.toml",
+    "core/templates/experts/rr-strategist.md",
     "core/templates/personas/advisor.md",
+    "core/templates/personas/dof-auditor.md",
     "core/templates/personas/llm-measurement.md",
+    "core/templates/personas/rr-strategist.md",
+    "adapters/codex/subagents.toml",
     "adapters/claude-code/subagents.toml",
     "adapters/claude-code/claude-md-block.md",
     "adapters/claude-code/commands/aiel-route.md",
@@ -48,12 +55,12 @@
   ],
   "runtimeAdapters": ["codex", "claude-code", "opencode"],
   "installHints": [
-    "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles, 12-specialist expert directory, and a research-tuned consultant team.",
+    "Install permanent virtual applied-economics research team (AiEconLab / AEL) with 8 core roles, 14-specialist expert directory, and a research-tuned consultant team.",
     "Default toolchain: Python + Stata + LaTeX. Requires git for worktree provisioning.",
     "Depends on aiplus >= 0.5.13 (which ships the AEL claude-code adapter install path) and the three substrate modules listed in `requires.substrate_modules`.",
     "Install replaces the default SWE consultant team (`.aiplus/consultant-team.toml`) with the research-tuned `consultant-team.aieconlab.toml` (5 expert seats + 3 personas + 5 owner gates, LIGHT tier skips consult).",
-    "Claude Code adapter (v0.2+): when `claude-code` is among the project's runtime adapters, install writes 20 subagents (8 core + 12 experts) to `.claude/agents/aieconlab-*.md`, 4 slash commands to `.claude/commands/aiel-*.md`, and an AEL managed block in `CLAUDE.md` (separate markers from AiPlus's block).",
-    "OpenCode adapter (v0.3+): when `opencode` is among the project's runtime adapters, install writes the same 20 subagents to `.opencode/agents/aieconlab-*.md` and the same 4 slash commands to `.opencode/commands/aiel-*.md`. The roster is advertised via the existing `AIECONLAB_TEAM` section in `.aiplus/AGENTS.aiplus.md` (no separate managed block).",
+    "Claude Code adapter (v0.2+): when `claude-code` is among the project's runtime adapters, install writes 22 subagents (8 core + 14 experts) to `.claude/agents/aieconlab-*.md`, 4 slash commands to `.claude/commands/aiel-*.md`, and an AEL managed block in `CLAUDE.md` (separate markers from AiPlus's block).",
+    "OpenCode adapter (v0.3+): when `opencode` is among the project's runtime adapters, install writes the same 22 AEL subagents to `.opencode/agents/aieconlab-*.md` and 4 slash commands to `.opencode/commands/aiel-*.md`.",
     "Sibling to aiplus-agent-team; the two can be installed in the same project (consultant-team coexistence deferred to v0.3)."
   ],
   "doctorChecks": [
@@ -83,14 +90,29 @@
       "description": "AEL research-tuned consultant team config is present."
     },
     {
+      "id": "dof-auditor-expert",
+      "path": "core/templates/experts/dof-auditor.toml",
+      "description": "DOF-Auditor expert is present."
+    },
+    {
       "id": "llm-measurement-expert",
       "path": "core/templates/experts/llm-measurement.toml",
       "description": "LLM-as-Measurement Specialist expert is present (paired with consultant seat 5)."
     },
     {
+      "id": "rr-strategist-expert",
+      "path": "core/templates/experts/rr-strategist.toml",
+      "description": "RR-Strategist expert is present."
+    },
+    {
+      "id": "codex-subagents-manifest",
+      "path": "adapters/codex/subagents.toml",
+      "description": "Codex routing mirror for v0.2.1 beta experts is present."
+    },
+    {
       "id": "claude-code-subagents-manifest",
       "path": "adapters/claude-code/subagents.toml",
-      "description": "Claude Code subagent manifest is present (v0.2 adapter; 20 entries)."
+      "description": "Claude Code subagent manifest is present (v0.2 adapter; 22 entries)."
     },
     {
       "id": "claude-code-claude-md-block",
@@ -100,7 +122,7 @@
     {
       "id": "opencode-subagents-manifest",
       "path": "adapters/opencode/subagents.toml",
-      "description": "OpenCode subagent manifest is present (v0.3 adapter; 20 entries)."
+      "description": "OpenCode subagent manifest is present (v0.3 adapter; 22 entries)."
     }
   ],
   "publicPrivateBoundary": {
@@ -123,7 +145,7 @@
       "Core 8 roles mirror agent-team's tier structure but are renamed for academic research.",
       "Brand-decoupled from AiPlus but functionally depends on the AiPlus substrate.",
       "v0.2.0 ships the Claude Code adapter (`adapters/claude-code/`) so AEL agents auto-route in Claude Code sessions after install. Requires aiplus >= 0.5.13.",
-      "v0.3.0 adds the OpenCode adapter (`adapters/opencode/`) with the same 20-role roster and 4-command set; OpenCode reads `.opencode/agents/aieconlab-*.md` after install. Requires aiplus >= 0.5.18."
+      "v0.3.0 ships the OpenCode adapter (`adapters/opencode/`) so AEL agents and slash commands install into OpenCode projects."
     ]
   }
 }

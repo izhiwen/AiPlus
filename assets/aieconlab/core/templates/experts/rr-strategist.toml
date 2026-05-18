@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "rr-strategist"
+display_name = "RR-Strategist"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/rr-strategist.md"
+voice = "rr-strategist"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/rr-strategist"
+worktree_path = "../{project_name}.rr-strategist"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/rr-strategist"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["答辩", "修改稿"]
+english_aliases = ["rr-strategist", "r-and-r", "response-to-referees", "revise-and-resubmit", "reviewer-2", "rebuttal-letter"]

@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+[agent]
+role = "dof-auditor"
+display_name = "DOF-Auditor"
+tier = "expert"
+default_specialty = ""
+warm_bench_ttl_seconds = 300
+
+[persona]
+system_prompt_file = "personas/dof-auditor.md"
+voice = "dof-auditor"
+escalation_target = "pi"
+
+[workspace]
+needs_worktree = true
+worktree_branch = "agent/dof-auditor"
+worktree_path = "../{project_name}.dof-auditor"
+
+[memory]
+personal_dir = ".aiplus/agent-memory/dof-auditor"
+read_team_memory = true
+read_project_memory = true
+write_team_memory = false
+
+[invocation]
+chinese_aliases = ["自由度", "多重检验"]
+english_aliases = ["dof-auditor", "dof", "degree-of-freedom", "small-n", "multiple-testing", "specification-maximality", "kitchen-sink", "borderline-t"]

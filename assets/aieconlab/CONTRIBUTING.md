@@ -17,7 +17,7 @@ We welcome contributions that stay within that scope.
    ```
    All 15 invariants should pass. If you change one of the structural
    contracts (number of core roles, number of experts, consultant team
-   layout, etc.), update `.aiplus/aieconlab/acceptance/v0.1.0/schema.yaml`
+   layout, etc.), update `acceptance/v0.1.0/schema.yaml`
    and `tests/acceptance.test.sh` together.
 
 ## What kind of contributions fit

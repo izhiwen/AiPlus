@@ -1,0 +1,37 @@
+{
+  "id": "identification-note-before-ra",
+  "persona": "theorist",
+  "kind": "in_scope",
+  "prompt": {
+    "input": "Before RA-Stata starts the event-study, write the identification note for a treaty-port exposure design."
+  },
+  "runtime": {
+    "type": "fixture-matrix",
+    "adapters": ["codex", "claude-code", "opencode"],
+    "deterministic": true
+  },
+  "fixture_outputs": {
+    "codex": "AiEconLab Theorist response: hold RA work until the identification note fixes the target parameter, comparison group, estimand, estimator, exclusion restriction, and falsification tests. I would name the assumptions explicitly, route the design decision to PI, and ask RA-Stata to run only after the note is signed off.",
+    "claude-code": "AEL theorist: before RA-Stata starts, write the identification note around the estimand, comparison group, target parameter, exclusion restriction, and falsification tests. PI should sign off before RA work begins.",
+    "opencode": "AiEconLab identification note: the Theorist blocks execution until the comparison group, estimand, estimator, and identifying assumptions are explicit. Route to PI, then RA-Stata runs after signoff."
+  },
+  "assertions": [
+    {
+      "name": "team-marker",
+      "any": ["AiEconLab", "AEL"]
+    },
+    {
+      "name": "role-marker",
+      "any": ["theorist", "identification note", "estimand"]
+    },
+    {
+      "name": "assumption-marker",
+      "any": ["exclusion restriction", "parallel trends", "comparison group", "target parameter"]
+    },
+    {
+      "name": "boundary-marker",
+      "any": ["RA-Stata", "PI", "signed off", "before RA"]
+    }
+  ],
+  "forbidden_any": ["I ran the regression", "spec is approved without reading"]
+}

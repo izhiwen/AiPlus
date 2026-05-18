@@ -1,0 +1,141 @@
+name: Headless /aiel-talk Execution
+
+# TEST-3 behavioral E2E. This workflow exercises live slash-command/runtime
+# execution for the four high-priority AEL roles. It intentionally checks
+# transcript markers from the runtime output rather than installed files.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/headless-aiel-talk.yml"
+      - "tests/headless_aiel_talk.py"
+      - "docs/dev/test-3-headless-aiel-talk.md"
+      - "adapters/**"
+      - "core/templates/**"
+      - "aiplus-module.json"
+
+jobs:
+  headless-aiel-talk:
+    name: TEST-3 (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'test-infra')
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [claude-code, codex, opencode]
+
+    steps:
+      - name: Checkout AiEconLab
+        uses: actions/checkout@v4
+        with:
+          path: aieconlab
+
+      - name: Checkout AiPlus CLI source
+        uses: actions/checkout@v4
+        with:
+          repository: izhiwen/AiPlus
+          ref: main
+          path: aiplus
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Linux build deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aiplus/target
+          key: ${{ runner.os }}-cargo-aiplus-${{ hashFiles('aiplus/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-aiplus-
+
+      - name: Vendor live AiEconLab into AiPlus bundle
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.gif' \
+            --exclude='*.png' \
+            --exclude='*.jpg' \
+            --exclude='*.mp4' \
+            --exclude='*.mov' \
+            aieconlab/ aiplus/assets/aieconlab/
+          echo "Vendored AEL HEAD into aiplus/assets/aieconlab/"
+
+      - name: Build aiplus CLI (release)
+        working-directory: aiplus
+        run: |
+          set -euo pipefail
+          cargo build --release --bin aiplus
+          ./target/release/aiplus --version
+
+      - name: Install runtime CLI
+        run: |
+          set -euo pipefail
+          case "${{ matrix.runtime }}" in
+            claude-code)
+              npm install -g @anthropic-ai/claude-code
+              claude --version
+              ;;
+            codex)
+              npm install -g @openai/codex
+              codex --version
+              ;;
+            opencode)
+              npm install -g opencode-ai
+              opencode --version
+              ;;
+            *)
+              echo "::error::unknown runtime ${{ matrix.runtime }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Run TEST-3 harness
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AEL_CLAUDE_MODEL: sonnet
+          AEL_CLAUDE_MAX_BUDGET_USD: "0.25"
+          AEL_OPENCODE_MODEL: openai/gpt-4o-mini
+        run: |
+          set -euo pipefail
+          python3 aieconlab/tests/headless_aiel_talk.py \
+            --runtime "${{ matrix.runtime }}" \
+            --aiplus-bin "$GITHUB_WORKSPACE/aiplus/target/release/aiplus" \
+            --aiplus-source "$GITHUB_WORKSPACE/aiplus" \
+            --roles advisor pi ra-stata referee
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## TEST-3 /aiel-talk execution"
+            echo ""
+            echo "- Runtime: ${{ matrix.runtime }}"
+            echo "- Roles: advisor, pi, ra-stata, referee"
+            if [ "${{ matrix.runtime }}" = "codex" ]; then
+              echo "- Result: explicit SKIP; AiPlus currently launches interactive codex for agent talk."
+            else
+              echo "- Result: see harness TEST3_RESULT lines above for live persona-output assertions."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

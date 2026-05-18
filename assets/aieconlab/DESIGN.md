@@ -1,7 +1,7 @@
 # AiEconLab Design
 
 Status: draft v0.1.0
-Acceptance schema (binding): `.aiplus/aieconlab/acceptance/v0.1.0/schema.yaml`
+Acceptance schema (binding): `acceptance/v0.1.0/schema.yaml`
 Scope: local-first permanent applied-economics research team, with adaptive
 coordinator and on-demand expert directory, designed to compose with the
 existing AiPlus plugin stack.
@@ -645,7 +645,7 @@ The PI prepares; the Owner approves.
 
 ## 22. Acceptance Criteria & Auditor
 
-The acceptance schema at `.aiplus/aieconlab/acceptance/v0.1.0/schema.yaml`
+The acceptance schema at `acceptance/v0.1.0/schema.yaml`
 is binding. Every release must pass:
 
 1. All 8 core role `.toml` files load without TOML errors.

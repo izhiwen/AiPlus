@@ -1,0 +1,152 @@
+name: Install Order Matrix
+
+# TEST-4: order-dependent AEL install regressions.
+#
+# PR runs are intentionally gated by the `test-infra` label to control CI
+# minutes. The nightly schedule and manual dispatch run the full 9-case x
+# 3-OS sweep.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-order:
+    name: ${{ matrix.os }} / ${{ matrix.case.id }}
+    if: |
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'test-infra')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        case:
+          - id: h1_codex_ael_then_claude
+            label: codex + aieconlab -> install claude-code (H1)
+          - id: codex_ael_then_opencode
+            label: codex + aieconlab -> install opencode
+          - id: claude_ael_then_codex
+            label: claude-code + aieconlab -> install codex
+          - id: claude_ael_then_opencode
+            label: claude-code + aieconlab -> install opencode
+          - id: opencode_ael_then_codex
+            label: opencode + aieconlab -> install codex
+          - id: opencode_ael_then_claude
+            label: opencode + aieconlab -> install claude-code
+          - id: all_runtimes_then_ael
+            label: install all 3 runtimes -> add aieconlab last
+          - id: claude_ael_then_codex_then_opencode
+            label: install claude-code + add aieconlab + 2 others in series
+          - id: codex_ael_then_claude_then_opencode
+            label: install codex + add aieconlab + 2 others in series
+
+    steps:
+      - name: Checkout AiEconLab
+        uses: actions/checkout@v4
+        with:
+          path: aieconlab
+
+      - name: Checkout AiPlus CLI source
+        uses: actions/checkout@v4
+        with:
+          repository: izhiwen/AiPlus
+          ref: main
+          path: aiplus
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aiplus/target
+          key: ${{ runner.os }}-cargo-aiplus-${{ hashFiles('aiplus/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-aiplus-
+
+      - name: Vendor live AiEconLab into AiPlus bundle
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.gif' \
+            --exclude='*.png' \
+            --exclude='*.jpg' \
+            --exclude='*.mp4' \
+            --exclude='*.mov' \
+            aieconlab/ aiplus/assets/aieconlab/
+          echo "Vendored AEL HEAD into aiplus/assets/aieconlab/"
+
+      - name: Vendor live AiEconLab into AiPlus bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = Join-Path $env:GITHUB_WORKSPACE "aieconlab"
+          $dst = Join-Path $env:GITHUB_WORKSPACE "aiplus\assets\aieconlab"
+          if (Test-Path $dst) {
+            Remove-Item -Recurse -Force $dst
+          }
+          New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+          & robocopy $src $dst /MIR /XD .git .github /XF *.gif *.png *.jpg *.mp4 *.mov /NFL /NDL /NJH /NJS /NP
+          if ($LASTEXITCODE -gt 7) {
+            throw "robocopy failed with exit code $LASTEXITCODE"
+          }
+          $global:LASTEXITCODE = 0
+          Write-Host "Vendored AEL HEAD into aiplus/assets/aieconlab/"
+
+      - name: Build aiplus CLI (release)
+        working-directory: aiplus
+        run: |
+          cargo build --release --bin aiplus
+          cargo run --release --bin aiplus -- --version
+
+      - name: Run install-order case
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          python3 aieconlab/tests/install_order_matrix.py \
+            --case "${{ matrix.case.id }}" \
+            --aiplus-bin "$GITHUB_WORKSPACE/aiplus/target/release/aiplus"
+
+      - name: Run install-order case (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python aieconlab\tests\install_order_matrix.py `
+            --case "${{ matrix.case.id }}" `
+            --aiplus-bin "$env:GITHUB_WORKSPACE\aiplus\target\release\aiplus.exe"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "TEST4_MATRIX_CASE=${{ matrix.case.id }}"
+          echo "TEST4_MATRIX_LABEL=${{ matrix.case.label }}"
+          echo "TEST4_MATRIX_OS=${{ matrix.os }}"
+          echo "TEST4_MATRIX_STATUS=PASS"

@@ -26,3 +26,11 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["LLM 测量", "多模型评分", "text-as-data", "LLM 评分", "multi-LLM"]
 english_aliases = ["llm-measurement", "text-as-data", "multi-llm", "llm-scoring", "validity-protocol", "prompt-versioning"]
+
+# S5: this role calls commercial LLM APIs (multi-model panel —
+# anthropic, openai, gemini, sometimes deepseek/qwen) for every
+# scoring run. Declaring needs lets `aiplus doctor` warn at install
+# time if any alias is missing, and lets `aiplus agent route` auto-
+# inject the corresponding env vars from the broker.
+[secret_needs]
+aliases = ["anthropic", "openai", "gemini"]

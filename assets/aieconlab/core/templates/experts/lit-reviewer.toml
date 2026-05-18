@@ -26,3 +26,10 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["文献综述", "文献", "lit", "literature", "lit map"]
 english_aliases = ["lit-reviewer", "literature", "lit-map", "prior-work", "placement"]
+
+# S5: lit-reviewer often uses LLMs for paper-abstract summarization
+# and bibliography cleanup. The actual paper search lives elsewhere
+# (Semantic Scholar / Google Scholar) but the workflow's LLM helper
+# step pulls anthropic.
+[secret_needs]
+aliases = ["anthropic"]

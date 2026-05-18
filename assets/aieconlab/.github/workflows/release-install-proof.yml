@@ -1,0 +1,73 @@
+name: Release Install Proof
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-22-04-container:
+    name: ubuntu:22.04 raw installer proof
+    runs-on: ubuntu-22.04
+    container: ubuntu:22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install base tools
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates curl tar gzip git
+
+      - name: Install AEL from raw GitHub URL
+        run: |
+          set -euo pipefail
+          export HOME=/tmp/home
+          mkdir -p "$HOME"
+          curl -fsSL https://raw.githubusercontent.com/izhiwen/AiEconLab/main/install.sh | bash
+          export PATH="$HOME/.local/bin:$PATH"
+          ael --version
+          test -x "$HOME/.local/bin/ael"
+          test -x "$HOME/.local/libexec/ael-support"
+
+      - name: Exercise install and headless talk path
+        run: |
+          set -euo pipefail
+          export HOME=/tmp/home
+          export PATH="$HOME/.local/bin:/tmp/fake-bin:$PATH"
+          mkdir -p /tmp/paper /tmp/fake-bin
+          cd /tmp/paper
+          git init -q -b main
+          git config user.email ci@example.com
+          git config user.name CI
+
+          ael install codex
+          test -f .aiplus/manifest.json
+
+          cat >/tmp/fake-bin/codex <<'SH'
+          #!/usr/bin/env bash
+          set -eu
+          answer_file=""
+          while [ "$#" -gt 0 ]; do
+            case "$1" in
+              --output-last-message)
+                answer_file="$2"
+                shift 2
+                ;;
+              *)
+                shift
+                ;;
+            esac
+          done
+          [ -n "$answer_file" ] || exit 2
+          printf 'I am the advisor in AiEconLab. My role is to stress-test identification, framing, and publication tradeoffs before the project commits.\n' >"$answer_file"
+          SH
+          chmod +x /tmp/fake-bin/codex
+
+          ael talk advisor "What is your role?" | tee /tmp/advisor.txt
+          grep -q AiEconLab /tmp/advisor.txt
+          if grep -Eiq 'aiplus|AiPlus|AIPLUS' /tmp/advisor.txt; then
+            exit 2
+          fi
+          echo "RELEASE_INSTALL_PROOF=PASS"

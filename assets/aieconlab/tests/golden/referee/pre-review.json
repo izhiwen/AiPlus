@@ -1,0 +1,37 @@
+{
+  "id": "top-five-pre-review",
+  "persona": "referee",
+  "kind": "in_scope",
+  "prompt": {
+    "input": "Read the near-final treaty-ports draft as a top-5 referee and identify the blockers before submission."
+  },
+  "runtime": {
+    "type": "fixture-matrix",
+    "adapters": ["codex", "claude-code", "opencode"],
+    "deterministic": true
+  },
+  "fixture_outputs": {
+    "codex": "AiEconLab Referee response: top-5 pre-review verdict is do not submit while major flags remain open. Major comment M1 is instrument validity: the exclusion restriction needs another defense. Major comment M2 is literature placement: the draft must engage the closest comparable paper. I would route M1 to Theorist via PI and M2 to Writer, then log the open referee flags.",
+    "claude-code": "AEL referee pre-review: do not send the paper yet. The major blocker is the exclusion restriction, and a second major comment is the missing closest-comparable paper. Route M1 to Theorist via PI and M2 to Writer.",
+    "opencode": "AiEconLab top-5 referee verdict: major flags remain open, so do not submit. Theorist should handle the identification blocker through PI, and Writer should fix the literature-placement comment."
+  },
+  "assertions": [
+    {
+      "name": "team-marker",
+      "any": ["AiEconLab", "AEL"]
+    },
+    {
+      "name": "role-marker",
+      "any": ["referee", "pre-review", "top-5"]
+    },
+    {
+      "name": "severity-marker",
+      "any": ["major", "blocker", "do not submit", "do not send"]
+    },
+    {
+      "name": "routing-marker",
+      "any": ["Theorist", "Writer", "PI"]
+    }
+  ],
+  "forbidden_any": ["ready to submit", "major flags closed"]
+}

@@ -1,10 +1,15 @@
 # AiEconLab — OpenCode Adapter
 
-## Current state in v0.1.x
+## Current state in v0.3.x
 
-This directory is **intentionally minimal in v0.1**. AEL's role
-dispatch and persona embodiment work today via the AiPlus CLI's
-generic `agent` subcommand, which is itself runtime-aware:
+This adapter ships OpenCode-native AEL assets. After a project installs
+OpenCode support and opts into AiEconLab, AiPlus writes:
+
+- 22 AEL subagents to `.opencode/agents/aieconlab-*.md`
+- 4 slash commands to `.opencode/commands/aiel-*.md`
+- project-local AEL module assets under `.aiplus/modules/aieconlab/`
+
+The generic `agent` subcommand remains runtime-aware and still works:
 
 ```bash
 aiplus install opencode       # installs .opencode/ prompts and configs
@@ -12,29 +17,38 @@ aiplus agent route pi <task>  # creates worktree, logs dispatch
 aiplus agent talk pi          # spawns OpenCode with pi.md pre-loaded
 ```
 
-The reason there are no OpenCode-specific assets shipped under
-`adapters/opencode/` in v0.1 is that all the OpenCode integration sits
-one layer up in the AiPlus CLI. The persona definitions
-(`core/templates/personas/*.md`) are runtime-agnostic Markdown.
+The persona definitions (`core/templates/personas/*.md`) remain
+runtime-agnostic Markdown. `subagents.toml` maps each AEL role to the
+matching persona file and supplies routing descriptions for OpenCode's
+agent surface.
 
-## What v0.2 will add here
+## Included files
 
-Once AiPlus CLI's `agent talk` flow ships richer runtime hooks
-(Phase D), this directory will hold:
+| File | Purpose |
+| --- | --- |
+| `subagents.toml` | Manifest of 22 OpenCode subagents: name, routing description, and source persona. |
+| `commands/aiel-route.md` | Explicit PI-style routing command. |
+| `commands/aiel-talk.md` | Role-switch command for opening a specific AEL persona. |
+| `commands/aiel-fire-consultant.md` | Research consultant-table command for non-trivial plans. |
+| `commands/aiel-status.md` | Team status snapshot command. |
 
-- OpenCode-specific `aiplus` key in `opencode.json` (migration from
-  the legacy aiplus block to the new agent-team-aware structure)
-- OpenCode prompts that pre-load AEL persona context for long-running
-  research sessions
-- OpenCode-specific MCP server bindings so AEL roles appear in the
-  MCP tool surface (per AiPlus Phase E)
+## Install check
 
-## Why this isn't blocked on v0.1 usage
+```bash
+aiplus install opencode
+aiplus add aieconlab
+aiplus doctor
+```
 
-Everything an AEL user needs today works through `aiplus agent *`
-regardless of which adapter directory has files in it. The runtime-
-specific assets here are ergonomic improvements for v0.2, not
-capability gaps.
+Expected result: `.opencode/agents/` contains 22 prefixed AEL agent
+files, `.opencode/commands/` contains the four `/aiel-*` commands, and
+`aiplus doctor` reports `DOCTOR_STATUS=PASS`.
 
-See [AiPlus Phase D / Phase E roadmap](https://github.com/izhiwen/AiPlus/blob/main/docs/roadmap/)
-for the runtime adapter work that gates v0.2 here.
+## Role switching from natural language
+
+OpenCode's interactive TUI recognizes role switches like "you are PI"
+or "switch to the Referee" without explicit slash-command invocation.
+The `subagents.toml` description gives OpenCode's agent picker enough
+signal to re-bind the active persona mid-session. Note: in
+non-interactive `opencode run` mode, this is currently limited by
+OpenCode itself — we're tracking the upstream fix.

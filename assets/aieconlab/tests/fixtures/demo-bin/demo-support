@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  install)
+    mkdir -p .aiplus/agents/personas
+    cat > .aiplus/manifest.json <<'JSON'
+{"runtimeAdapters":["codex"],"modules":{"aieconlab":{"version":"demo"}}}
+JSON
+    cat > .aiplus/agents/personas/advisor.md <<'MD'
+# Advisor
+
+Advisor: strategic second opinions on research framing, identification
+credibility, and publication risk.
+MD
+    ;;
+  add)
+    ;;
+  agent)
+    ;;
+esac

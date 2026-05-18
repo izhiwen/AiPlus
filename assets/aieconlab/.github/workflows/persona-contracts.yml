@@ -1,0 +1,31 @@
+name: persona contracts
+
+'on':
+  pull_request:
+    paths:
+      - 'aiplus-module.json'
+      - 'adapters/**'
+      - 'core/templates/**'
+      - 'tests/golden/**'
+      - 'tests/run_persona_contracts.sh'
+      - 'docs/dev/persona-contracts.md'
+      - '.github/workflows/persona-contracts.yml'
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  golden-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run persona contract golden tests
+        run: bash tests/run_persona_contracts.sh

@@ -1,0 +1,35 @@
+{
+  "id": "missing-required-role-marker",
+  "persona": "referee",
+  "kind": "regression",
+  "expect_fail": true,
+  "why": "This fixture deliberately omits any referee/pre-review/top-5 marker so the harness proves a missing required marker is caught.",
+  "prompt": {
+    "input": "Read the near-final treaty-ports draft as a top-5 referee and identify the blockers before submission."
+  },
+  "runtime": {
+    "type": "fixture-matrix",
+    "adapters": ["codex", "claude-code", "opencode"],
+    "deterministic": true
+  },
+  "fixture_outputs": {
+    "codex": "AiEconLab response: the draft has instrument-validity concerns and should route the issue to Theorist via PI before submission.",
+    "claude-code": "AEL response: the exclusion restriction needs work before submission, and PI should route the issue to Theorist.",
+    "opencode": "AiEconLab response: route the identification issue to Theorist via PI before submission."
+  },
+  "assertions": [
+    {
+      "name": "team-marker",
+      "any": ["AiEconLab", "AEL"]
+    },
+    {
+      "name": "role-marker",
+      "any": ["referee", "pre-review", "top-5"]
+    },
+    {
+      "name": "routing-marker",
+      "any": ["Theorist", "Writer", "PI"]
+    }
+  ],
+  "forbidden_any": []
+}

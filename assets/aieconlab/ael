@@ -1,0 +1,536 @@
+#!/usr/bin/env bash
+# AEL independent CLI wrapper.
+
+set -euo pipefail
+
+AEL_VERSION="${AEL_VERSION:-0.1.3}"
+
+die() {
+  printf 'ael: %s\n' "$*" >&2
+  exit 1
+}
+
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+  link="$(readlink "$script_path")"
+  if [[ "$link" = /* ]]; then
+    script_path="$link"
+  else
+    script_path="$(cd "$(dirname "$script_path")" && pwd)/$link"
+  fi
+done
+
+AEL_BIN_DIR="$(cd "$(dirname "$script_path")" && pwd)"
+AEL_ROOT="$(cd "$AEL_BIN_DIR" && pwd)"
+if [ -d "$AEL_BIN_DIR/../libexec" ]; then
+  AEL_ROOT="$(cd "$AEL_BIN_DIR/.." && pwd)"
+fi
+
+sanitize_substrate_output() {
+  perl -pe '
+    s/(?<![.\/-])\bAiPlus\b/AEL/g;
+    s/(?<![.\/-])\baiplus\b/ael/g;
+    s/(?<![.\/-])\bAIPLUS\b/AEL/g;
+  '
+}
+
+usage() {
+  cat <<'EOF'
+AEL 0.1.3
+
+Usage:
+  ael install [codex|claude-code|opencode|all] [options]
+  ael talk [--runtime codex|claude-code|opencode] <role> [prompt...]
+  ael status
+  ael doctor [--fix]
+  ael route <role> <task...>
+  ael telemetry [enable|disable|status]
+  ael invite|dismiss|integrate <role>
+  ael --version
+
+Examples:
+  ael install
+  ael talk advisor "What is your role?"
+  ael route pi "scope the next empirical milestone"
+EOF
+}
+
+substrate_bin() {
+  local exe="aiplus"
+  if [[ "${OS:-}" = "Windows_NT" ]]; then
+    exe="aiplus.exe"
+  fi
+
+  local -a candidates=()
+  if [ -n "${AEL_AIPLUS_BIN:-}" ]; then
+    candidates+=("$AEL_AIPLUS_BIN")
+  fi
+  candidates+=(
+    "$AEL_BIN_DIR/libexec/ael-support"
+    "$AEL_BIN_DIR/../libexec/ael-support"
+    "$AEL_ROOT/libexec/ael-support"
+    "$AEL_BIN_DIR/libexec/$exe"
+    "$AEL_BIN_DIR/../libexec/$exe"
+    "$AEL_ROOT/libexec/$exe"
+    "$AEL_ROOT/vendor/aiplus/target/release/$exe"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  die "bundled runtime not built. Run: scripts/build-ael.sh"
+}
+
+run_substrate_quiet() {
+  local bin tmp status
+  bin="$(substrate_bin)"
+  tmp="$(mktemp)"
+  if "$bin" "$@" >"$tmp" 2>&1; then
+    rm -f "$tmp"
+    return 0
+  fi
+  status=$?
+  sanitize_substrate_output <"$tmp" >&2
+  rm -f "$tmp"
+  return "$status"
+}
+
+run_substrate_visible() {
+  local bin
+  bin="$(substrate_bin)"
+  "$bin" "$@" 2>&1 | sanitize_substrate_output
+}
+
+telemetry_config_path() {
+  if [ -n "${AEL_TELEMETRY_PATH:-}" ]; then
+    printf '%s\n' "$AEL_TELEMETRY_PATH"
+  else
+    printf '%s\n' "$PWD/.ael/telemetry.json"
+  fi
+}
+
+telemetry_write_config() {
+  local enabled="$1"
+  local config_path
+  config_path="$(telemetry_config_path)"
+  mkdir -p "$(dirname "$config_path")"
+  python3 - "$config_path" "$enabled" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+path = Path(sys.argv[1])
+enabled = sys.argv[2] == "true"
+payload = {
+    "schema_version": "v0.2.1",
+    "enabled": enabled,
+    "mode": "local-json",
+    "hosted_endpoint": None,
+    "events_path": ".ael/telemetry-events.jsonl",
+    "event_payload": {
+        "expert": "string",
+        "task_class": "LIGHT|MEDIUM|HEAVY|unknown",
+        "outcome": "success|failure|unknown",
+        "timestamp": "RFC3339",
+    },
+    "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+telemetry_enabled_state() {
+  local config_path
+  config_path="$(telemetry_config_path)"
+  python3 - "$config_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit(0)
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("invalid")
+    raise SystemExit(0)
+print("true" if data.get("enabled") is True else "false")
+PY
+}
+
+telemetry_cmd() {
+  local action="${1:-status}"
+  case "$action" in
+    enable)
+      telemetry_write_config true
+      printf 'AEL telemetry enabled\n'
+      printf 'mode=local-json\n'
+      printf 'config=%s\n' "$(telemetry_config_path)"
+      printf 'hosted_endpoint=none\n'
+      ;;
+    disable)
+      telemetry_write_config false
+      printf 'AEL telemetry disabled\n'
+      printf 'mode=local-json\n'
+      printf 'config=%s\n' "$(telemetry_config_path)"
+      printf 'hosted_endpoint=none\n'
+      ;;
+    status)
+      local state
+      state="$(telemetry_enabled_state)"
+      [ "$state" != "invalid" ] || die "telemetry config is invalid JSON: $(telemetry_config_path)"
+      if [ "$state" = "true" ]; then
+        printf 'AEL telemetry status: enabled\n'
+      else
+        printf 'AEL telemetry status: disabled\n'
+      fi
+      printf 'mode=local-json\n'
+      printf 'config=%s\n' "$(telemetry_config_path)"
+      printf 'hosted_endpoint=none\n'
+      ;;
+    *)
+      die "usage: ael telemetry [enable|disable|status]"
+      ;;
+  esac
+}
+
+detect_runtime() {
+  if [ -n "${AEL_RUNTIME:-}" ]; then
+    printf '%s\n' "$AEL_RUNTIME"
+  elif command -v codex >/dev/null 2>&1; then
+    printf 'codex\n'
+  elif command -v claude >/dev/null 2>&1; then
+    printf 'claude-code\n'
+  elif command -v opencode >/dev/null 2>&1; then
+    printf 'opencode\n'
+  else
+    printf 'codex\n'
+  fi
+}
+
+runtime_from_manifest() {
+  python3 - <<'PY' 2>/dev/null || true
+import json
+from pathlib import Path
+
+path = Path(".aiplus/manifest.json")
+if not path.exists():
+    raise SystemExit(0)
+data = json.loads(path.read_text())
+adapters = data.get("runtimeAdapters") or []
+for preferred in ("codex", "claude-code", "opencode"):
+    if preferred in adapters:
+        print(preferred)
+        break
+PY
+}
+
+install_cmd() {
+  local runtime="" dry_run="0"
+  local -a args=()
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      codex|claude-code|opencode|all)
+        if [ -z "$runtime" ]; then
+          runtime="$1"
+        else
+          args+=("$1")
+        fi
+        shift
+        ;;
+      --runtime)
+        [ "$#" -ge 2 ] || die "--runtime requires a value"
+        runtime="$2"
+        shift 2
+        ;;
+      --runtime=*)
+        runtime="${1#--runtime=}"
+        shift
+        ;;
+      --dry-run)
+        dry_run="1"
+        args+=("$1")
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [ -z "$runtime" ]; then
+    runtime="$(detect_runtime)"
+  fi
+
+  if [ "$dry_run" = "1" ]; then
+    printf 'AEL install dry-run\n'
+    printf '  runtime=%s\n' "$runtime"
+    printf '  would bootstrap the project runtime adapter\n'
+    printf '  would install the AiEconLab research team\n'
+    printf '  would set AiEconLab as the active team\n'
+    printf 'AEL_DRY_RUN=PASS\n'
+    return 0
+  fi
+
+  if [ "${#args[@]}" -gt 0 ]; then
+    run_substrate_quiet install "$runtime" --allow-version-skew "${args[@]}"
+  else
+    run_substrate_quiet install "$runtime" --allow-version-skew
+  fi
+  run_substrate_quiet add aieconlab
+  run_substrate_quiet agent set-team aieconlab
+  printf 'AEL installed for runtime=%s\n' "$runtime"
+  printf 'Next: ael talk advisor "What is your role?"\n'
+}
+
+persona_path_for() {
+  local role="$1"
+  local candidates=(
+    "$PWD/.aiplus/agents/personas/$role.md"
+    "$PWD/.aiplus/agents/personas/_stubs/$role.md"
+    "$PWD/.aiplus/modules/aieconlab/core/templates/personas/$role.md"
+    "$AEL_ROOT/core/templates/personas/$role.md"
+    "$AEL_ROOT/../core/templates/personas/$role.md"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+}
+
+fallback_persona() {
+  local role="$1"
+  case "$role" in
+    advisor)
+      printf 'Advisor: research question framing, identification strategy, and paper risk tradeoffs.\n'
+      ;;
+    pi)
+      printf 'PI: research project scope, milestone coordination, dispatch, and artifact integration.\n'
+      ;;
+    ra-stata)
+      printf 'RA-Stata: empirical analysis, regression specifications, datasets, tables, robustness, and Stata reproducibility.\n'
+      ;;
+    referee)
+      printf 'Referee: internal pre-submission review of methodology, argument structure, evidence, coherence, and academic rigor.\n'
+      ;;
+    *)
+      printf '%s: AiEconLab research role. Follow the installed persona when available.\n' "$role"
+      ;;
+  esac
+}
+
+build_headless_prompt() {
+  local role="$1"
+  local request="$2"
+  local persona_path persona
+  persona_path="$(persona_path_for "$role" || true)"
+  if [ -n "$persona_path" ]; then
+    persona="$(sed -n '1,220p' "$persona_path" | sanitize_substrate_output)"
+  else
+    persona="$(fallback_persona "$role")"
+  fi
+
+  cat <<EOF
+You are the "$role" role in AiEconLab (AEL), an applied-economics research team.
+Stay in this role for the full response. Use the persona below as binding context.
+Do not mention implementation substrate details.
+
+Persona:
+---
+$persona
+---
+
+User request:
+$request
+
+When the user asks what your role is, include the literal text "AiEconLab", the
+resolved role name "$role", and one concrete research responsibility from the persona.
+EOF
+}
+
+runtime_binary() {
+  case "$1" in
+    codex) printf 'codex\n' ;;
+    claude-code) printf 'claude\n' ;;
+    opencode) printf 'opencode\n' ;;
+    *) die "unknown runtime: $1" ;;
+  esac
+}
+
+headless_talk() {
+  local runtime="$1"
+  local role="$2"
+  local request="$3"
+  local prompt
+  prompt="$(build_headless_prompt "$role" "$request")"
+
+  case "$runtime" in
+    codex)
+      command -v codex >/dev/null 2>&1 || die "codex CLI not found on PATH"
+      local -a codex_cmd=(codex exec --skip-git-repo-check --cd "$PWD" --color never)
+      if [ -n "${AEL_CODEX_MODEL:-}" ]; then
+        codex_cmd+=(--model "$AEL_CODEX_MODEL")
+      fi
+      local answer_file log_file status
+      answer_file="$(mktemp)"
+      log_file="$(mktemp)"
+      if "${codex_cmd[@]}" --output-last-message "$answer_file" "$prompt" >"$log_file" 2>&1; then
+        sanitize_substrate_output <"$answer_file"
+        rm -f "$answer_file" "$log_file"
+      else
+        status=$?
+        sanitize_substrate_output <"$log_file" >&2
+        rm -f "$answer_file" "$log_file"
+        return "$status"
+      fi
+      ;;
+    claude-code)
+      command -v claude >/dev/null 2>&1 || die "claude CLI not found on PATH"
+      local -a claude_cmd=(
+        claude --print --dangerously-skip-permissions
+        --model "${AEL_CLAUDE_MODEL:-sonnet}"
+      )
+      if [ -n "${AEL_CLAUDE_MAX_BUDGET_USD:-}" ]; then
+        claude_cmd+=(--max-budget-usd "$AEL_CLAUDE_MAX_BUDGET_USD")
+      fi
+      local claude_out claude_status
+      claude_out="$(mktemp)"
+      if "${claude_cmd[@]}" "$prompt" >"$claude_out" 2>&1; then
+        sanitize_substrate_output <"$claude_out"
+        rm -f "$claude_out"
+      else
+        claude_status=$?
+        sanitize_substrate_output <"$claude_out" >&2
+        rm -f "$claude_out"
+        return "$claude_status"
+      fi
+      ;;
+    opencode)
+      command -v opencode >/dev/null 2>&1 || die "opencode CLI not found on PATH"
+      local -a opencode_cmd=(
+        opencode run --dir "$PWD"
+        --model "${AEL_OPENCODE_MODEL:-openai/gpt-4o-mini}" \
+        --dangerously-skip-permissions
+      )
+      local opencode_out opencode_status
+      opencode_out="$(mktemp)"
+      if "${opencode_cmd[@]}" "$prompt" >"$opencode_out" 2>&1; then
+        sanitize_substrate_output <"$opencode_out"
+        rm -f "$opencode_out"
+      else
+        opencode_status=$?
+        sanitize_substrate_output <"$opencode_out" >&2
+        rm -f "$opencode_out"
+        return "$opencode_status"
+      fi
+      ;;
+    *)
+      die "unknown runtime: $runtime"
+      ;;
+  esac
+}
+
+talk_cmd() {
+  local runtime=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --runtime)
+        [ "$#" -ge 2 ] || die "--runtime requires a value"
+        runtime="$2"
+        shift 2
+        ;;
+      --runtime=*)
+        runtime="${1#--runtime=}"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  [ "$#" -ge 1 ] || die "usage: ael talk [--runtime RUNTIME] <role> [prompt...]"
+  local role="$1"
+  shift
+
+  if [ -z "$runtime" ]; then
+    runtime="$(runtime_from_manifest)"
+  fi
+  if [ -z "$runtime" ]; then
+    runtime="$(detect_runtime)"
+  fi
+
+  if [ "$#" -eq 0 ]; then
+    local bin
+    bin="$(runtime_binary "$runtime")"
+    command -v "$bin" >/dev/null 2>&1 || die "$bin CLI not found on PATH"
+    run_substrate_visible agent talk --runtime "$runtime" "$role"
+    return 0
+  fi
+
+  headless_talk "$runtime" "$role" "$*"
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    ""|-h|--help|help)
+      usage
+      ;;
+    -V|--version|version)
+      printf 'AEL %s\n' "$AEL_VERSION"
+      ;;
+    install)
+      shift
+      install_cmd "$@"
+      ;;
+    talk)
+      shift
+      talk_cmd "$@"
+      ;;
+    status)
+      shift
+      run_substrate_visible agent status "$@"
+      ;;
+    doctor)
+      shift
+      run_substrate_visible doctor "$@"
+      ;;
+    route)
+      shift
+      run_substrate_visible agent route "$@"
+      ;;
+    telemetry)
+      shift
+      telemetry_cmd "$@"
+      ;;
+    invite|dismiss|integrate)
+      local sub="$cmd"
+      shift
+      run_substrate_visible agent "$sub" "$@"
+      ;;
+    substrate)
+      shift
+      run_substrate_visible "$@"
+      ;;
+    *)
+      die "unknown command: $cmd"
+      ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,17 @@
+# AiEconLab Codex routing mirror (v0.2.1 beta additions)
+#
+# Codex still loads AEL personas through the generic AiPlus `agent`
+# subcommand. This narrow mirror records the two v0.2.1 beta experts
+# so manifest and adapter parity checks can verify runtime coverage.
+
+schema_version = "1.0"
+
+[[subagent]]
+name = "aieconlab-dof-auditor"
+description = "DOF-Auditor — degrees of freedom, small N, multiple testing, specification maximality, kitchen-sink specs, borderline t-tests. Use for 'DOF', 'degree of freedom', 'small N', 'multiple testing', '自由度', or '多重检验' when a result may spend more empirical flexibility than the design can defend."
+persona_file = "core/templates/personas/dof-auditor.md"
+
+[[subagent]]
+name = "aieconlab-rr-strategist"
+description = "RR-Strategist — R&R strategy, rebuttal architecture, response to referees, revise and resubmit, Reviewer 2, diplomatic concessions. Use for 'R&R', 'rebuttal', 'response to referees', 'reviewer 2', '答辩', or '修改稿' before drafting or executing revision work."
+persona_file = "core/templates/personas/rr-strategist.md"

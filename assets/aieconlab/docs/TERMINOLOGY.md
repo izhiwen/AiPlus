@@ -34,7 +34,7 @@ outreach should all follow these rules.
 - ✗ `aiplus add aiplus-econ-agent-team` (this is a legacy alias; do not use)
 
 **File paths and TOML keys**: `aieconlab`
-- ✓ `.aiplus/aieconlab/acceptance/v0.1.0/schema.yaml`
+- ✓ `acceptance/v0.1.0/schema.yaml`
 - ✓ `core/templates/consultant-team.aieconlab.toml`
 - ✓ `assets/aieconlab/` (in aiplus-public)
 

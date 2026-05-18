@@ -1,0 +1,101 @@
+#!/bin/bash
+# demo-lines.txt — exact line-by-line script for 30-second asciinema recording
+#
+# How to use:
+# 1. Open a clean terminal in iTerm2 / Terminal.app
+#    - PS1='\W $ '
+#    - 100 cols wide, 18pt+ font, high-contrast theme
+#    - Quit Slack, Discord, mail (no notifications)
+# 2. Start a clean tmp dir:
+#       cd /tmp && rm -rf demo-recording && mkdir demo-recording && cd demo-recording
+# 3. Start asciinema recording with idle compression:
+#       asciinema rec --idle-time-limit 2 ../demo.cast
+# 4. Type each numbered command below at human speed. Hit Enter normally.
+#    Wait 1 second after each command's output completes before the next.
+# 5. After step 5, press Ctrl+D to stop recording.
+# 6. Upload + get URL: asciinema upload ../demo.cast
+# 7. Embed URL in AiEconLab README right after the heatmap section, e.g.:
+#       [![asciinema 30s tour](https://asciinema.org/a/<ID>.svg)](https://asciinema.org/a/<ID>)
+#
+# Or convert to GIF and commit to repo:
+#       agg --theme monokai ../demo.cast demo.gif
+#       git add demo.gif && git commit -m "docs: add 30s demo GIF"
+
+# ─────────────────────────────────────────────
+# STEP 1 (0-5 sec) — setup
+# ─────────────────────────────────────────────
+
+mkdir my-paper && cd my-paper
+git init -q -b main
+
+# (no output expected; pause 1 sec)
+
+# ─────────────────────────────────────────────
+# STEP 2 (5-12 sec) — install AiPlus
+# ─────────────────────────────────────────────
+
+aiplus install codex
+
+# Expected output:
+#   AiPlus installed for Codex in this project.
+#   Next: ...
+#   INSTALL_STATUS=PASS
+#
+# (pause 1 second on INSTALL_STATUS=PASS — credibility beat)
+
+# ─────────────────────────────────────────────
+# STEP 3 (12-18 sec) — add AiEconLab module
+# ─────────────────────────────────────────────
+
+aiplus add aieconlab
+
+# Expected output:
+#   AiPlus module added: aieconlab
+#
+# (pause 1 sec)
+
+# ─────────────────────────────────────────────
+# STEP 4 (18-25 sec) — show the team roster
+# ─────────────────────────────────────────────
+
+aiplus agent list | head -10
+
+# Expected output (the payoff — viewer sees the named roles):
+#   All roles:
+#     - advisor (Advisor) [inactive]
+#     - pi (PI) [inactive]
+#     - theorist (Theorist) [inactive]
+#     - pm (Project Manager) [inactive]
+#     - ra-stata (RA-Stata) [inactive]
+#     - ra-python (RA-Python) [inactive]
+#     - referee (Referee) [inactive]
+#     - replicator (Replicator) [inactive]
+#     - llm-measurement (LLM-as-Measurement Specialist) [inactive]
+#     ...
+#
+# (pause 2 sec — let the viewer read the role names)
+
+# ─────────────────────────────────────────────
+# STEP 5 (25-30 sec) — route a real task
+# ─────────────────────────────────────────────
+
+aiplus agent route pi "kickoff the Treaty Ports paper"
+
+# Expected output (close on this — "oh it makes real artifacts"):
+#   Routing task to pi: kickoff the Treaty Ports paper
+#   Created worktree for pi at /tmp/my-paper.pi (Branch: agent/pi)
+
+# ─────────────────────────────────────────────
+# STOP HERE. Ctrl+D to end recording.
+# Total wall clock: ~30 seconds.
+# ─────────────────────────────────────────────
+
+# Common mistakes to avoid:
+#   ❌ Typing too fast — looks fake. Type at conversational speed.
+#   ❌ Editing out pauses — the real timing IS the credibility signal.
+#   ❌ Including `cd`, `ls`, or `clear` between beats — wastes seconds.
+#   ❌ Recording in a dir with prior `.aiplus/` state — looks like cheating.
+#   ❌ Using your real hostname in the prompt — use `PS1='\W $ '` instead.
+#
+# If you flub a beat, just Ctrl+C and restart `asciinema rec` — better to
+# re-record than to edit. The whole thing takes <2 minutes.

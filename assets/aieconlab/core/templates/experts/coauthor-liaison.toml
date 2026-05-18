@@ -26,3 +26,9 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["合作者", "co-author", "authorship", "attribution", "分工"]
 english_aliases = ["coauthor-liaison", "co-author", "authorship", "attribution", "joint-work"]
+
+# S5: coauthor coordination touches GitHub (PR comments, issue
+# coordination across co-authors using the repo). Declared so doctor
+# warns if `github` alias is missing before first dispatch.
+[secret_needs]
+aliases = ["github"]

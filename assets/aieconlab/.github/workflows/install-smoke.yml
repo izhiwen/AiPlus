@@ -1,0 +1,436 @@
+name: Install Smoke Test
+
+# Watchdog workflow: builds the aiplus CLI from source, vendors in the
+# current AiEconLab repo as the bundled snapshot, then runs the full
+# `aiplus install + aiplus add aieconlab + aiplus doctor + agent route`
+# flow in a clean tmp project. Catches regressions like the schema
+# mismatch we just fixed (where AEL's consultant-team.toml structure
+# diverged from what aiplus doctor expects).
+#
+# Runs on every push and PR; ~5 minutes with cargo cache, ~10 cold.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  install-smoke:
+    name: install-smoke (${{ matrix.runtime }}, ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [codex, claude-code, opencode]
+
+    steps:
+      - name: Checkout AiEconLab
+        uses: actions/checkout@v4
+        with:
+          path: aieconlab
+
+      - name: Checkout AiPlus CLI source
+        uses: actions/checkout@v4
+        with:
+          repository: izhiwen/AiPlus
+          ref: main
+          path: aiplus
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build deps
+        # aiplus depends on `keyring` (cross-platform credential store)
+        # which on Linux uses libdbus via the `secret-service` backend.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aiplus/target
+          key: ${{ runner.os }}-cargo-aiplus-${{ hashFiles('aiplus/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-aiplus-
+
+      - name: Vendor live AiEconLab into AiPlus bundle
+        run: |
+          set -euo pipefail
+          # Replace whatever aieconlab snapshot AiPlus has with the
+          # version of AEL being tested (this PR / commit). This is the
+          # whole point of the smoke test — does AEL HEAD install cleanly
+          # against AiPlus HEAD?
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='vendor' \
+            --exclude='*.gif' \
+            --exclude='*.png' \
+            --exclude='*.jpg' \
+            --exclude='*.mp4' \
+            --exclude='*.mov' \
+            aieconlab/ aiplus/assets/aieconlab/
+          # Heavy README assets (demo.gif, screenshots) live in the AEL
+          # repo for GitHub README rendering but are intentionally NOT
+          # vendored into the aiplus CLI binary — aiplus-public/build.rs
+          # enforce_public_asset_policy rejects these extensions to keep
+          # the embedded bundle small. Matches the symmetric exclusion
+          # aiplus-public applies on its own sync side.
+          echo "Vendored AEL HEAD into aiplus/assets/aieconlab/"
+          ls aiplus/assets/aieconlab/core/templates/experts/ | wc -l
+          ls aiplus/assets/aieconlab/core/templates/consultant-team*.toml
+
+      - name: Build aiplus CLI (release)
+        working-directory: aiplus
+        run: |
+          set -euo pipefail
+          cargo build --release --bin aiplus
+          ./target/release/aiplus --version
+
+      - name: Smoke test — clean default install (no AEL)
+        if: matrix.runtime == 'codex'
+        run: |
+          set -euo pipefail
+          BIN="$GITHUB_WORKSPACE/aiplus/target/release/aiplus"
+          mkdir -p "$RUNNER_TEMP/smoke-default" && cd "$RUNNER_TEMP/smoke-default"
+          git init -q -b main
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+
+          # Step 1: bootstrap
+          "$BIN" install codex
+
+          # Step 2: AEL should NOT be auto-installed (opt-in)
+          if [ -f .aiplus/agents/pi.toml ]; then
+            echo "::error::AEL leaked into default install — pi.toml present"
+            exit 1
+          fi
+          if [ -f .aiplus/agents/experts/llm-measurement.toml ]; then
+            echo "::error::AEL leaked into default install — llm-measurement.toml present"
+            exit 1
+          fi
+
+          # Step 3: consultant-team.toml should be SWE default (small)
+          size=$(wc -c < .aiplus/consultant-team.toml)
+          if [ "$size" -gt 7000 ]; then
+            echo "::error::AEL consultant config (large) leaked into default install. Size=$size"
+            exit 1
+          fi
+          echo "PASS: default install does not include AEL"
+
+      - name: Smoke test — opt-in install (${{ matrix.runtime }})
+        run: |
+          set -euo pipefail
+          RUNTIME="${{ matrix.runtime }}"
+          BIN="$GITHUB_WORKSPACE/aiplus/target/release/aiplus"
+          mkdir -p "$RUNNER_TEMP/smoke-opt-in-$RUNTIME" && cd "$RUNNER_TEMP/smoke-opt-in-$RUNTIME"
+          git init -q -b main
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+
+          "$BIN" install "$RUNTIME"
+          "$BIN" add aieconlab
+          git add -A && git commit -qm "init / 初始化"
+
+          # AEL core role files
+          for role in advisor pi theorist pm ra-stata ra-python referee replicator; do
+            if [ ! -f ".aiplus/agents/$role.toml" ]; then
+              echo "::error::missing AEL core role: $role"
+              exit 1
+            fi
+          done
+
+          # Expert TOMLs currently propagated by the AiPlus install path.
+          for expert in lit-reviewer writer econometrician reproducibility historical-sources job-talk-coach viz-specialist ethics-irb llm-measurement survey-experiment computation coauthor-liaison; do
+            if [ ! -f ".aiplus/agents/experts/$expert.toml" ]; then
+              echo "::error::missing AEL expert: $expert"
+              exit 1
+            fi
+          done
+
+          # Consultant config is AEL flavor
+          if ! grep -q 'id = "ai_integration"' .aiplus/consultant-team.toml; then
+            echo "::error::consultant-team.toml missing ai_integration member"
+            exit 1
+          fi
+          if ! grep -q '^\[user_evidence\]' .aiplus/consultant-team.toml; then
+            echo "::error::consultant-team.toml missing [user_evidence] section"
+            exit 1
+          fi
+          if ! grep -q 'light.review_mode\s*=\s*"skip"' .aiplus/consultant-team.toml; then
+            echo "::error::consultant-team.toml LIGHT tier not set to skip"
+            exit 1
+          fi
+          for gate in submission working-paper-post referee-response-send data-share authorship-change; do
+            if ! grep -q "id = \"${gate}\"" .aiplus/consultant-team.toml; then
+              echo "::error::consultant-team.toml missing owner gate: $gate"
+              exit 1
+            fi
+          done
+
+          # Doctor passes
+          doctor_status=$("$BIN" doctor 2>&1 | grep -E '^DOCTOR_STATUS=' || true)
+          echo "$doctor_status"
+          case "$doctor_status" in
+            DOCTOR_STATUS=PASS) ;;
+            *)
+              echo "::error::aiplus doctor reported $doctor_status (expected PASS)"
+              "$BIN" doctor 2>&1 | grep -E 'NEEDS_FIX|FAIL' | head -10
+              exit 1
+              ;;
+          esac
+
+          case "$RUNTIME" in
+            codex)
+              if ! grep -q '<!-- BEGIN AIPLUS MANAGED BLOCK -->' AGENTS.md; then
+                echo "::error::AGENTS.md missing AiPlus managed block"
+                exit 1
+              fi
+              if ! grep -q '<!-- BEGIN AIECONLAB_TEAM -->' .aiplus/AGENTS.aiplus.md; then
+                echo "::error::.aiplus/AGENTS.aiplus.md missing AIECONLAB_TEAM"
+                exit 1
+              fi
+              ;;
+            claude-code)
+              for f in \
+                .claude/agents/aieconlab-pi.md \
+                .claude/agents/aieconlab-llm-measurement.md \
+                .claude/commands/aiel-route.md \
+                .claude/commands/aiel-talk.md; do
+                if [ ! -f "$f" ]; then
+                  echo "::error::missing Claude Code AEL artifact: $f"
+                  exit 1
+                fi
+              done
+              if ! grep -q '<!-- BEGIN AIECONLAB MANAGED BLOCK -->' CLAUDE.md; then
+                echo "::error::CLAUDE.md missing AIECONLAB managed block"
+                exit 1
+              fi
+              if ! grep -q 'name: aieconlab-pi' .claude/agents/aieconlab-pi.md; then
+                echo "::error::Claude Code PI subagent missing frontmatter name"
+                exit 1
+              fi
+              ;;
+            opencode)
+              python3 - <<'PY'
+          import json
+          import pathlib
+
+          root = pathlib.Path(".")
+          manifest = json.loads((root / ".aiplus/manifest.json").read_text())
+          if "opencode" not in manifest.get("runtimeAdapters", []):
+              raise SystemExit("manifest missing opencode runtime adapter")
+          if "aieconlab" not in manifest.get("modules", {}):
+              raise SystemExit("manifest missing aieconlab module")
+
+          config = json.loads((root / ".opencode/opencode.json").read_text())
+          if config.get("$schema") != "https://opencode.ai/config.json":
+              raise SystemExit("opencode.json missing expected schema")
+
+          agents = sorted((root / ".opencode/agents").glob("aieconlab-*.md"))
+          commands = sorted((root / ".opencode/commands").glob("aiel-*.md"))
+          if len(agents) != 22:
+              raise SystemExit(f"expected 22 OpenCode AEL agents, found {len(agents)}")
+          if {p.name for p in commands} != {
+              "aiel-fire-consultant.md",
+              "aiel-route.md",
+              "aiel-status.md",
+              "aiel-talk.md",
+          }:
+              raise SystemExit(f"unexpected OpenCode AEL commands: {[p.name for p in commands]}")
+
+          def frontmatter(path):
+              text = path.read_text()
+              if not text.startswith("---\n"):
+                  raise SystemExit(f"{path} missing YAML frontmatter")
+              end = text.find("\n---", 4)
+              if end == -1:
+                  raise SystemExit(f"{path} missing YAML frontmatter close")
+              fields = {}
+              for line in text[4:end].splitlines():
+                  if ":" in line:
+                      key, value = line.split(":", 1)
+                      fields[key.strip()] = value.strip()
+              return fields, text
+
+          for path in agents:
+              fields, _ = frontmatter(path)
+              expected_name = path.stem
+              if fields.get("name") != expected_name:
+                  raise SystemExit(f"{path} has wrong name field: {fields.get('name')}")
+              if not fields.get("description"):
+                  raise SystemExit(f"{path} missing description field")
+
+          for path in commands:
+              text = path.read_text()
+              if f"/{path.stem}" not in text:
+                  raise SystemExit(f"{path} does not reference its slash command")
+          PY
+              ;;
+            *)
+              echo "::error::unknown runtime $RUNTIME"
+              exit 1
+              ;;
+          esac
+
+          if [ "$RUNTIME" = "codex" ]; then
+            "$BIN" agent route llm-measurement 2>&1 | tee /tmp/route.log
+            if ! grep -q 'Created worktree for llm-measurement' /tmp/route.log; then
+              echo "::error::agent route llm-measurement did not create worktree"
+              exit 1
+            fi
+          fi
+
+          echo "PASS: $RUNTIME opt-in install writes AEL artifacts and doctor passes"
+
+      - name: Run AEL acceptance test on installed snapshot
+        if: matrix.runtime == 'codex'
+        run: |
+          set -euo pipefail
+          cd aieconlab
+          bash tests/acceptance.test.sh
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✓ Opt-in install: ${{ matrix.runtime }} AEL files + runtime adapter artifacts landed"
+          echo "✓ Doctor: PASS"
+          if [ "${{ matrix.runtime }}" = "codex" ]; then
+            echo "✓ Default install: AEL not auto-installed"
+            echo "✓ Agent route llm-measurement: worktree created"
+            echo "✓ Acceptance test: 15 invariants pass"
+          fi
+
+  windows-ael-minimum-flow:
+    name: windows AEL minimum flow
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout AiEconLab
+        uses: actions/checkout@v4
+        with:
+          path: aieconlab
+
+      - name: Checkout AiPlus CLI source
+        uses: actions/checkout@v4
+        with:
+          repository: izhiwen/AiPlus
+          ref: main
+          path: aiplus
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aiplus/target
+          key: ${{ runner.os }}-cargo-aiplus-${{ hashFiles('aiplus/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-aiplus-
+
+      - name: Vendor live AiEconLab into AiPlus bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = Join-Path $env:GITHUB_WORKSPACE "aieconlab"
+          $dst = Join-Path $env:GITHUB_WORKSPACE "aiplus\assets\aieconlab"
+          if (Test-Path $dst) {
+            Remove-Item -Recurse -Force $dst
+          }
+          New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+          & robocopy $src $dst /MIR /XD .git .github vendor /XF *.gif *.png *.jpg *.mp4 *.mov /NFL /NDL /NJH /NJS /NP
+          if ($LASTEXITCODE -gt 7) {
+            throw "robocopy failed with exit code $LASTEXITCODE"
+          }
+          $global:LASTEXITCODE = 0
+          Write-Host "Vendored AEL HEAD into aiplus/assets/aieconlab/"
+          Get-ChildItem "$dst\core\templates\experts" -Filter *.toml | Measure-Object | Select-Object -ExpandProperty Count
+          Get-ChildItem "$dst\core\templates" -Filter "consultant-team*.toml"
+
+      - name: Build aiplus CLI (release)
+        working-directory: aiplus
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cargo build --release --bin aiplus
+          .\target\release\aiplus.exe --version
+
+      - name: Windows smoke test — codex + AEL + doctor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bin = Join-Path $env:GITHUB_WORKSPACE "aiplus\target\release\aiplus.exe"
+          $project = Join-Path $env:RUNNER_TEMP "ael-windows-codex"
+          New-Item -ItemType Directory -Force -Path $project | Out-Null
+          Set-Location $project
+          git init -q -b main
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+
+          $env:HOME = Join-Path $project "fake-home"
+          $env:USERPROFILE = Join-Path $project "fake-userprofile"
+          $env:CODEX_HOME = Join-Path $project "fake-codex-home"
+          $env:XDG_CONFIG_HOME = Join-Path $project "fake-xdg"
+          New-Item -ItemType Directory -Force -Path $env:HOME, $env:USERPROFILE, $env:CODEX_HOME, $env:XDG_CONFIG_HOME | Out-Null
+
+          & $bin install codex
+          & $bin add aieconlab
+
+          $doctor = & $bin doctor 2>&1 | Out-String
+          Write-Host $doctor
+          if ($LASTEXITCODE -ne 0) {
+            throw "aiplus doctor exited with $LASTEXITCODE"
+          }
+          if ($doctor -notmatch "DOCTOR_STATUS=PASS") {
+            throw "aiplus doctor did not report DOCTOR_STATUS=PASS"
+          }
+
+          $required = @(
+            ".aiplus\manifest.json",
+            ".aiplus\modules\aieconlab\aiplus-module.json",
+            ".aiplus\agents\pi.toml",
+            ".aiplus\agents\experts\llm-measurement.toml",
+            ".aiplus\consultant-team.toml",
+            "AGENTS.md",
+            ".aiplus\AGENTS.aiplus.md"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) {
+              throw "missing representative AEL file: $path"
+            }
+          }
+
+          $manifest = Get-Content ".aiplus\manifest.json" -Raw | ConvertFrom-Json
+          if ($manifest.runtimeAdapters -notcontains "codex") {
+            throw "manifest missing codex runtime adapter"
+          }
+          if ($manifest.modules.PSObject.Properties.Name -notcontains "aieconlab") {
+            throw "manifest missing aieconlab module"
+          }
+
+          $consultant = Get-Content ".aiplus\consultant-team.toml" -Raw
+          if ($consultant -notmatch 'id = "ai_integration"') {
+            throw "consultant-team.toml missing ai_integration member"
+          }
+          if ($consultant -notmatch "(?m)^\[user_evidence\]") {
+            throw "consultant-team.toml missing [user_evidence]"
+          }
+
+          $agents = Get-Content ".aiplus\AGENTS.aiplus.md" -Raw
+          if ($agents -notmatch "<!-- BEGIN AIECONLAB_TEAM -->") {
+            throw ".aiplus/AGENTS.aiplus.md missing AIECONLAB_TEAM"
+          }
+
+          Write-Host "DOCTOR_STATUS=PASS"
+          Write-Host "WINDOWS_AEL_MINIMUM_FLOW=PASS"

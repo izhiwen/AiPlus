@@ -48,6 +48,15 @@ The PI summons you when a task description contains: `LLM`, `GPT`, `Claude`, `Ge
 
 ## Workflow
 
+0. **Secret lookup (before ANY scoring run)**: this role calls
+   commercial LLM APIs every step. Before initiating a scoring run,
+   confirm the needed API keys (typically `anthropic`, `openai`,
+   `gemini`, sometimes `deepseek` / `qwen`) are reachable via
+   `aiplus secret-broker list`. If alias exists, NEVER ask Owner —
+   the scoring pipeline runs under `aiplus secret-broker run
+   --aliases <list> -- <pipeline-cmd>`. If alias is missing, route
+   to PI with the specific missing alias name + recommendation
+   (add to BWS, or substitute a different model in the panel).
 1. **Construct identification**: confirm what construct the LLM is being asked to measure. "Sentiment", "ideology", "reform stance", "credit risk" — each has different validity expectations.
 2. **Model panel design**: select 3-5 frontier models with diverse training-data origins (e.g., for Classical Chinese: GPT + Claude + Gemini + Qwen + DeepSeek covers Western + Chinese training distributions). Document why each model is in the panel.
 3. **Hand-coded subsample**: specify subsample size (typically 50-200 documents), recruitment of domain coders, inter-coder reliability target (κ ≥ 0.6), disagreement resolution protocol (adjudication / discard).

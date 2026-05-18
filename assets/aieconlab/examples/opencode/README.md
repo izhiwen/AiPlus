@@ -55,8 +55,9 @@ human capital. Set the project up."
   first scoring run — retrofit validity is the most common reason
   LLM-measurement papers get desk-rejected.
 
-## v0.1 status
+## Status
 
-The opencode runtime adapter is a placeholder in v0.1. This README
-documents the *intended* routing; the actual integration with OpenCode
-project-local agents lands in v0.2.
+The opencode runtime adapter is shipped (v0.3+). This README documents
+the intended routing; see
+[`adapters/opencode/README.md`](../../adapters/opencode/README.md) for
+current adapter details.

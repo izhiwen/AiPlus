@@ -1,0 +1,78 @@
+name: Bug report
+description: Report something that's broken or behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in
+        the sections below so the maintainer can reproduce and triage
+        quickly.
+  - type: input
+    id: aiplus-version
+    attributes:
+      label: AiPlus CLI version
+      description: Output of `aiplus --version`
+      placeholder: "0.5.9"
+    validations:
+      required: true
+  - type: input
+    id: aieconlab-version
+    attributes:
+      label: AiEconLab version (if known)
+      description: From `.aiplus/manifest.json` if the bug is in an installed project, or from this repo's tags
+      placeholder: "0.1.0"
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Which runtime adapter were you using?
+      options:
+        - codex
+        - claude-code
+        - opencode
+        - n/a — bug not runtime-specific
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear description of the bug
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What did you think would happen?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimum reproduction steps
+      description: Numbered steps starting from a clean state, ideally
+      placeholder: |
+        1. `cd MyProject && git init`
+        2. `aiplus install codex`
+        3. `aiplus add aieconlab`
+        4. `aiplus agent route llm-measurement`
+        5. ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Output of `aiplus doctor`
+      description: If the bug is in an installed project, paste the doctor output. Otherwise skip.
+      render: shell
+  - type: dropdown
+    id: irb-restricted
+    attributes:
+      label: Does this bug involve IRB-protected or restricted data?
+      description: If yes, please report via email (see SECURITY.md) rather than a public issue
+      options:
+        - "No"
+        - "Yes — I will report via SECURITY.md instead"
+    validations:
+      required: true
