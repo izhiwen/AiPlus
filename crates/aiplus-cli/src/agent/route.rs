@@ -20,8 +20,18 @@ pub fn handle_route(
     task: &str,
     owner_approved: &[String],
     workflow: Option<&str>,
+    score_only: bool,
 ) -> Result<()> {
     let workflow = parse_route_workflow(workflow)?;
+    maybe_print_route_first_run_hint();
+    if score_only {
+        if workflow.is_some() {
+            return Err(anyhow!("--score-only cannot be combined with --workflow"));
+        }
+        let project_root = std::env::current_dir()?;
+        let full_task = joined_route_task(role, task);
+        return run_score_only_route(&project_root, &full_task);
+    }
     let approved: BTreeSet<String> = owner_approved.iter().cloned().collect();
     if let Some(candidate) = role {
         let project_root = std::env::current_dir()?;
@@ -161,6 +171,7 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         if plan.fire_consultant { "fire" } else { "skip" },
     );
     println!("Staffing roles: {staffing}");
+    record_coordinator_decision(project_root, task, &plan, "route")?;
 
     let gate_state = enforce_gates(project_root, "ceo", task, approved)?;
     if gate_state == GateOutcome::PendingBlocked {
@@ -224,6 +235,132 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         plan.tier.as_str()
     );
     Ok(())
+}
+
+fn run_score_only_route(project_root: &Path, task: &str) -> Result<()> {
+    let task = task.trim();
+    if task.is_empty() {
+        return Err(anyhow!("agent route --score-only requires a task"));
+    }
+
+    let plan = coordinator::plan_task(task);
+    let staffing = if plan.staffing_roles.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", plan.staffing_roles.join(","))
+    };
+    println!(
+        "Adaptive coordinator: complexity={} risk={:.2} tier={} code_change={} design_impact={} consultant={}",
+        plan.score.complexity,
+        plan.score.risk,
+        plan.tier.as_str(),
+        plan.score.requires_code_change,
+        plan.score.design_impact,
+        if plan.fire_consultant { "fire" } else { "skip" },
+    );
+    if plan.fire_consultant {
+        println!(
+            "Plan step: would fire consultant for {} task",
+            plan.tier.as_str()
+        );
+    } else {
+        println!(
+            "Plan step: consultant would be skipped for {}",
+            plan.tier.as_str()
+        );
+    }
+    println!("Would staff: {staffing}");
+    record_coordinator_decision(project_root, task, &plan, "score_only")?;
+    Ok(())
+}
+
+fn joined_route_task(role: Option<&str>, task: &str) -> String {
+    match (role.map(str::trim).filter(|s| !s.is_empty()), task.trim()) {
+        (Some(role), "") => role.to_string(),
+        (Some(role), task) => format!("{role} {task}"),
+        (None, task) => task.to_string(),
+    }
+}
+
+fn record_coordinator_decision(
+    project_root: &Path,
+    task: &str,
+    plan: &coordinator::CoordinatorPlan,
+    mode: &str,
+) -> Result<()> {
+    let path = project_root.join(".aiplus/agents/dispatch-log.jsonl");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let line = serde_json::json!({
+        "schemaVersion": "0.3.0",
+        "event": "coordinator_decision",
+        "decisionId": format!("coord-{}", aiplus_core::epoch_millis()),
+        "timestamp": aiplus_core::now_iso(),
+        "mode": mode,
+        "taskExcerpt": task_excerpt(task),
+        "complexity": plan.score.complexity,
+        "risk": plan.score.risk,
+        "tier": plan.tier.as_str(),
+        "codeChange": plan.score.requires_code_change,
+        "designImpact": plan.score.design_impact,
+        "consultant": if plan.fire_consultant { "fire" } else { "skip" },
+        "staffingRoles": plan.staffing_roles,
+        "dispatched": mode == "route" && !plan.staffing_roles.is_empty(),
+        "secretValues": "none"
+    });
+    aiplus_core::append_jsonl_atomic(&path, &line.to_string())?;
+    Ok(())
+}
+
+fn task_excerpt(task: &str) -> String {
+    let redacted = task
+        .lines()
+        .map(|line| {
+            if aiplus_core::reject_sensitive_memory_text(line).is_err() {
+                "[REDACTED]"
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let normalized = redacted.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= 200 {
+        normalized
+    } else {
+        let prefix: String = normalized.chars().take(200).collect();
+        format!("{prefix}...")
+    }
+}
+
+fn maybe_print_route_first_run_hint() {
+    let Some(marker) = route_first_run_marker() else {
+        return;
+    };
+    if marker.exists() {
+        return;
+    }
+    println!(
+        "Hint: for BWS-backed runtime keys, wrap live dispatch with `aiplus secret-broker run --aliases anthropic,openai -- aiplus agent route \"<task>\"`."
+    );
+    if let Some(parent) = marker.parent() {
+        if std::fs::create_dir_all(parent).is_ok() {
+            let _ = std::fs::write(marker, b"seen\n");
+        }
+    }
+}
+
+fn route_first_run_marker() -> Option<std::path::PathBuf> {
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        if !xdg.trim().is_empty() {
+            return Some(std::path::PathBuf::from(xdg).join("aiplus/.route_first_run_seen"));
+        }
+    }
+    std::env::var("HOME")
+        .ok()
+        .filter(|home| !home.trim().is_empty())
+        .map(|home| std::path::PathBuf::from(home).join(".config/aiplus/.route_first_run_seen"))
 }
 
 fn coordinator_role_task(role: &str, position: usize, total: usize, task: &str) -> String {

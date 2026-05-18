@@ -36,6 +36,16 @@ pub fn handle_doctor() -> Result<()> {
     for warning in crate::agent::cache::cache_warnings(&project_root) {
         println!("  WARNING: disk cache {warning}");
     }
+    if should_warn_secret_broker_runtime_auth(&state) {
+        println!("  WARN_SECRET_BROKER_RUNTIME_AUTH");
+        println!("  Detected BWS backend + active agent-team roles, but no provider key in env.");
+        println!("  Adapter dispatch will fail with auth error.");
+        println!("  Fix: wrap your dispatch with");
+        println!(
+            "    aiplus secret-broker run --aliases anthropic,openai -- aiplus agent route \"<task>\""
+        );
+        println!("  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY in your shell once.");
+    }
 
     for (role, config) in &state.agents {
         print!("  {} ({})", role, config.display_name);
@@ -74,4 +84,20 @@ pub fn handle_doctor() -> Result<()> {
 
     println!("Doctor check complete.");
     Ok(())
+}
+
+fn should_warn_secret_broker_runtime_auth(state: &crate::agent::core::TeamState) -> bool {
+    let provider_is_bws = std::env::var("AIPLUS_SECRET_PROVIDER")
+        .map(|provider| provider.trim().eq_ignore_ascii_case("bws"))
+        .unwrap_or(false);
+    let active_roles_present = !state.active_roles.is_empty();
+    let provider_key_present = env_present("ANTHROPIC_API_KEY") || env_present("OPENAI_API_KEY");
+
+    provider_is_bws && active_roles_present && !provider_key_present
+}
+
+fn env_present(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
 }

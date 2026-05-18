@@ -1,0 +1,114 @@
+# v0.3.0 coordinator calibration baselines.
+# These assert current scorer behavior without changing the scorer rubric.
+
+[[task]]
+input = "describe the current git status in one sentence"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "T3 LIGHT live verification baseline"
+
+[[task]]
+input = "summarize the README goals without editing files"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "read-only summary"
+
+[[task]]
+input = "explain why the last command failed"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "analysis wording does not request code"
+
+[[task]]
+input = "update the typo in docs/proposals/local-note.md"
+expected_complexity = 2
+expected_risk_max = 0.45
+expected_tier = "LIGHT_CODE"
+notes = "small update, complexity 2"
+
+[[task]]
+input = "fix the CLI help text for one flag"
+expected_complexity = 2
+expected_risk_max = 0.45
+expected_tier = "LIGHT_CODE"
+notes = "small fix, complexity 2"
+
+[[task]]
+input = "delete the obsolete fixture file"
+expected_complexity = 2
+expected_risk_max = 0.45
+expected_tier = "LIGHT_CODE"
+notes = "small deletion, complexity 2"
+
+[[task]]
+input = "implement scorer calibration tests"
+expected_complexity = 3
+expected_risk_max = 0.45
+expected_tier = "MEDIUM"
+notes = "complexity 3 boundary from implement"
+
+[[task]]
+input = "build a workflow for reviewer handoff"
+expected_complexity = 3
+expected_risk_max = 0.45
+expected_tier = "MEDIUM"
+notes = "workflow/build baseline"
+
+[[task]]
+input = "refactor the route command output"
+expected_complexity = 3
+expected_risk_max = 0.45
+expected_tier = "MEDIUM"
+notes = "refactor baseline"
+
+[[task]]
+input = "architecture for the adapter schema session continuation"
+expected_complexity = 4
+expected_risk_max = 0.65
+expected_tier = "MEDIUM"
+notes = "design impact without heavy risk"
+
+[[task]]
+input = "integrate the API endpoint with the adapter"
+expected_complexity = 4
+expected_risk_max = 0.65
+expected_tier = "MEDIUM"
+notes = "integration/API medium baseline"
+
+[[task]]
+input = "migrate the local database schema in tests only"
+expected_complexity = 4
+expected_risk_max = 0.70
+expected_tier = "MEDIUM"
+notes = "risk 0.65 below heavy threshold but complexity 4"
+
+[[task]]
+input = "fix auth permission handling for runtime tokens"
+expected_complexity = 5
+expected_risk_max = 0.85
+expected_tier = "HEAVY"
+notes = "security/auth heavy"
+
+[[task]]
+input = "implement payment billing refund support"
+expected_complexity = 5
+expected_risk_max = 0.95
+expected_tier = "HEAVY"
+notes = "payment risk heavy"
+
+[[task]]
+input = "deploy the production rollback release"
+expected_complexity = 5
+expected_risk_max = 0.75
+expected_tier = "HEAVY"
+notes = "release/deploy complexity heavy with 0.65 risk"
+
+[[task]]
+input = "inspect the API key naming policy"
+expected_complexity = 4
+expected_risk_max = 0.80
+expected_tier = "HEAVY"
+notes = "risk boundary: key/token risk alone forces heavy tier"

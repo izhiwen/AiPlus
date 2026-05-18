@@ -43,6 +43,7 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         AgentSub::List { functional } => list::handle_list(functional),
         AgentSub::Talk { role, runtime } => talk::handle_talk(&role, runtime.as_deref()),
         AgentSub::Route {
+            score_only,
             workflow,
             role,
             task,
@@ -53,6 +54,7 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
             &task.join(" "),
             &owner_approved,
             workflow.as_deref(),
+            score_only,
         ),
         AgentSub::Reset => reset::handle_reset(),
         AgentSub::SetTeam { team } => set_team::handle_set_team(&team),

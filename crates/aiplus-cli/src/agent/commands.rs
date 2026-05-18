@@ -49,6 +49,10 @@ pub enum AgentSub {
 
     #[command(visible_aliases = ["派单", "分"])]
     Route {
+        /// Score and plan the task without consulting, staffing roles, or writing cache.
+        /// For BWS-backed secrets, wrap live dispatch with `aiplus secret-broker run --aliases anthropic,openai --`.
+        #[arg(long = "score-only", visible_alias = "打分", action = clap::ArgAction::SetTrue)]
+        score_only: bool,
         /// Optional multi-phase workflow. Supported: author-critic-fixer.
         /// Must precede the positional role/task so it isn't swallowed
         /// by the trailing-var-arg task parser.
