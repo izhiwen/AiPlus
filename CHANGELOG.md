@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## 0.6.1
+
+### Quality + observability
+
+- **Pre-flight scoring with `aiplus agent route --score-only "<task>"`**: ask
+  the coordinator what it would do for a task without actually dispatching
+  anyone or spending tokens. Prints the same `Adaptive coordinator:` line,
+  the planned consult step, and the team it would staff. Chinese alias:
+  `--打分`.
+- **Coordinator audit trail**: every coordinator decision now writes a
+  `coordinator_decision` event to `.aiplus/agents/dispatch-log.jsonl`, even
+  for tasks the CEO handles directly (LIGHT_NO_CODE) or for `--score-only`
+  dry-runs. Previously only role-dispatching decisions were logged, so half
+  the coordinator activity was invisible to post-hoc auditing.
+- **`aiplus doctor` warns when Bitwarden + missing API key**: emits
+  `WARN_SECRET_BROKER_RUNTIME_AUTH` when `AIPLUS_SECRET_PROVIDER=bws`,
+  agent-team has at least one active role, and neither `ANTHROPIC_API_KEY`
+  nor `OPENAI_API_KEY` is in your shell environment. The warning includes a
+  copy-pasteable fix line (`aiplus secret-broker run --aliases ... -- ...`).
+  Catches the most common onboarding failure for BWS-backend users before
+  the adapter spawn fails with a confusing auth error.
+
+### Internal
+
+- Coordinator calibration regression suite: new
+  `crates/aiplus-cli/tests/coordinator_calibration.rs` driven by a 16-entry
+  TOML fixture spanning all four tiers (LIGHT_NO_CODE / LIGHT_CODE / MEDIUM
+  / HEAVY) and the boundary cases (complexity 2↔3, risk 0.69↔0.70).
+  Detects accidental scoring drift in future coordinator changes.
+- `aiplus agent route` first-run hint marker now lives under
+  `~/.config/aiplus/` instead of the project working tree, so it no longer
+  causes `git status` to show a dirty file after the first dispatch in a
+  fresh project.
+
+### Migration notes
+
+- No breaking CLI changes.
+- Existing dispatch-log consumers should expect new `coordinator_decision`
+  event rows alongside the existing per-role dispatch rows. Filter by
+  `event` field if you only want one kind.
+
 ## 0.6.0
 
 ### New features
