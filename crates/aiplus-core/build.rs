@@ -51,6 +51,15 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) ->
             {
                 continue;
             }
+            // Silently skip binary blobs (images, video, archives, transient
+            // captures). They have no business in an `include_bytes!`-style
+            // embed and would bloat the binary. Unlike private-asset patterns
+            // below, these are allowed in the assets tree (e.g. a public
+            // module ships a demo.gif for its README); they just don't get
+            // baked into aiplus-core.
+            if is_skip_embed_asset(&rel) {
+                continue;
+            }
             enforce_public_asset_policy(&rel);
             files.push((rel, path));
         }
@@ -58,7 +67,21 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) ->
     Ok(())
 }
 
+fn is_skip_embed_asset(rel: &str) -> bool {
+    // File extensions that are public-allowed in the assets tree but should
+    // never be embedded in the binary. Match by suffix only (so a file named
+    // `foo.gif.txt` is NOT skipped — it would still hit the policy check).
+    const SKIP_EXTS: &[&str] = &[
+        ".gif", ".png", ".jpg", ".jpeg", ".mp4", ".mov", ".m4a", ".wav",
+        ".zip", ".tar", ".tgz", ".har", ".webrtcdump", ".log",
+    ];
+    SKIP_EXTS.iter().any(|ext| rel.ends_with(ext))
+}
+
 fn enforce_public_asset_policy(rel: &str) {
+    // Truly-private patterns: panic if any of these slip into the assets tree.
+    // Binary-blob extensions are handled separately by `is_skip_embed_asset`
+    // and never reach this function.
     let forbidden = [
         "aiplus-work-with-zhiwen",
         "work-with-zhiwen",
@@ -66,20 +89,6 @@ fn enforce_public_asset_policy(rel: &str) {
         "profile.toml",
         "secret-aliases.tsv",
         ".codex/compact/checkpoints",
-        ".har",
-        ".webrtcdump",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".log",
-        ".mp4",
-        ".mov",
-        ".m4a",
-        ".wav",
-        ".zip",
-        ".tar",
-        ".tgz",
     ];
     if forbidden.iter().any(|needle| rel.contains(needle)) {
         panic!("refusing to embed private or generated asset: {rel}");
