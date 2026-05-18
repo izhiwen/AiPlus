@@ -14,7 +14,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -> Result<()> {
+pub fn handle_route(
+    role: Option<&str>,
+    task: &str,
+    owner_approved: &[String],
+    workflow: Option<&str>,
+) -> Result<()> {
+    let workflow = parse_route_workflow(workflow)?;
     let approved: BTreeSet<String> = owner_approved.iter().cloned().collect();
     if let Some(candidate) = role {
         let project_root = std::env::current_dir()?;
@@ -32,6 +38,31 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
             Ok(config) => {
                 if let Some(input) = role_input {
                     println!("Resolved role alias `{input}` -> `{canonical_role}`");
+                }
+
+                if let Some(RouteWorkflow::AuthorCriticFixer) = workflow {
+                    let gate_state = enforce_gates(&project_root, canonical_role, task, &approved)?;
+                    if gate_state == GateOutcome::PendingBlocked {
+                        let _ = state::record_dispatch_with_outcome(
+                            &project_root,
+                            canonical_role,
+                            task,
+                            "aiplus agent route --workflow author-critic-fixer",
+                            state::DispatchOutcome::Canceled {
+                                reason: "owner_gate_pending",
+                            },
+                        );
+                        return Err(anyhow!(
+                            "dispatch refused: owner gate not approved; pass --owner-approved <gate-id> to authorize"
+                        ));
+                    }
+                    return run_author_critic_fixer(
+                        &project_root,
+                        canonical_role,
+                        role_input,
+                        task,
+                        config,
+                    );
                 }
 
                 // W2: run the gate check *before* worktree provisioning
@@ -80,6 +111,11 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
                 return Ok(());
             }
             Err(_) => {
+                if workflow.is_some() {
+                    return Err(anyhow!(
+                        "--workflow author-critic-fixer requires a known role; unknown role `{candidate}` cannot run a multi-phase workflow"
+                    ));
+                }
                 // Not a known role — rebuild the full free-form task and
                 // route to PI/CEO for scoring.
                 let full_task = if task.is_empty() {
@@ -100,6 +136,11 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
             }
         }
     }
+    if workflow.is_some() {
+        return Err(anyhow!(
+            "--workflow author-critic-fixer requires an explicit ROLE before the task"
+        ));
+    }
     let project_root = std::env::current_dir()?;
     let gate_state = enforce_gates(&project_root, "pi", task, &approved)?;
     if gate_state == GateOutcome::PendingBlocked {
@@ -109,6 +150,175 @@ pub fn handle_route(role: Option<&str>, task: &str, owner_approved: &[String]) -
     }
     println!("Routing task to PI/CEO for scoring and dispatch: {task}");
     run_consult(&project_root, "pi", task)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouteWorkflow {
+    AuthorCriticFixer,
+}
+
+fn parse_route_workflow(workflow: Option<&str>) -> Result<Option<RouteWorkflow>> {
+    let Some(raw) = workflow else {
+        return Ok(None);
+    };
+    match raw.trim() {
+        "author-critic-fixer" => Ok(Some(RouteWorkflow::AuthorCriticFixer)),
+        "" => Err(anyhow!("--workflow requires a workflow name")),
+        other => Err(anyhow!(
+            "unsupported route workflow `{other}`; supported workflow: author-critic-fixer"
+        )),
+    }
+}
+
+fn run_author_critic_fixer(
+    project_root: &Path,
+    role: &str,
+    role_input: Option<&str>,
+    task: &str,
+    config: AgentConfig,
+) -> Result<()> {
+    if task.trim().is_empty() {
+        return Err(anyhow!(
+            "author-critic-fixer workflow requires a non-empty task prompt"
+        ));
+    }
+
+    let critic_role = author_critic_fixer_critic_role(project_root);
+    if critic_role == role {
+        return Err(anyhow!(
+            "author-critic-fixer requires an independent critic; ROLE `{role}` is the configured critic role"
+        ));
+    }
+    let critic_config = get_role_config_for_project(project_root, critic_role)?;
+    let fixer_config = config.clone();
+    let workflow_run_id = format!("acf-{}", aiplus_core::epoch_millis());
+    println!(
+        "Author/Critic/Fixer workflow {workflow_run_id}: author={role} critic={critic_role} fixer={role}"
+    );
+
+    let author_agent_id = format!("{workflow_run_id}:author:{role}");
+    let author_task = format!(
+        "AUTHOR/CRITIC/FIXER phase 1/3 AUTHOR.\n\
+         Produce v1 draft for the task below. Stop after the v1 draft; \
+         a separate critic will review it before the fixer pass.\n\n\
+         Original task:\n{task}"
+    );
+    println!("  Phase 1/3 author: dispatching {role} for v1 draft");
+    route_known_role(
+        project_root,
+        role,
+        role_input,
+        &author_task,
+        config,
+        Some(&workflow_run_id),
+        DispatchKind::Primary,
+        None,
+    )?;
+    record_workflow_phase(
+        project_root,
+        &workflow_run_id,
+        "author",
+        role,
+        &author_agent_id,
+        &author_task,
+    )?;
+
+    let critic_agent_id = format!("{workflow_run_id}:critic:{critic_role}");
+    let critic_task = format!(
+        "AUTHOR/CRITIC/FIXER phase 2/3 CRITIC.\n\
+         Independently critique the v1 draft requested from `{role}`. \
+         Do not rewrite it. Identify correctness, evidence, structure, \
+         omission, and escalation issues the fixer must address.\n\n\
+         Original task:\n{task}"
+    );
+    println!("  Phase 2/3 critic: dispatching independent {critic_role}");
+    route_known_role(
+        project_root,
+        critic_role,
+        None,
+        &critic_task,
+        critic_config,
+        Some(&workflow_run_id),
+        DispatchKind::Sidecar,
+        None,
+    )?;
+    record_workflow_phase(
+        project_root,
+        &workflow_run_id,
+        "critic",
+        critic_role,
+        &critic_agent_id,
+        &critic_task,
+    )?;
+
+    let fixer_agent_id = format!("{workflow_run_id}:fixer:{role}");
+    let fixer_task = format!(
+        "AUTHOR/CRITIC/FIXER phase 3/3 FIXER.\n\
+         Produce the v2 draft for the task below, explicitly incorporating \
+         the independent `{critic_role}` critique. If the critique surfaces \
+         an Owner gate or missing evidence, preserve that escalation instead \
+         of smoothing it over.\n\n\
+         Original task:\n{task}"
+    );
+    println!("  Phase 3/3 fixer: dispatching {role} for v2 draft");
+    route_known_role(
+        project_root,
+        role,
+        role_input,
+        &fixer_task,
+        fixer_config,
+        Some(&workflow_run_id),
+        DispatchKind::Primary,
+        None,
+    )?;
+    record_workflow_phase(
+        project_root,
+        &workflow_run_id,
+        "fixer",
+        role,
+        &fixer_agent_id,
+        &fixer_task,
+    )?;
+
+    println!("  Workflow audit recorded: .aiplus/agents/workflow-log.jsonl");
+    println!(
+        "  v2 draft dispatched to {role}; PI integrates v2 after reviewing the workflow audit."
+    );
+    Ok(())
+}
+
+fn author_critic_fixer_critic_role(project_root: &Path) -> &'static str {
+    match crate::agent::set_team::read_active_team(project_root).as_deref() {
+        Some("aieconlab") => "referee",
+        _ => "reviewer",
+    }
+}
+
+fn record_workflow_phase(
+    project_root: &Path,
+    workflow_run_id: &str,
+    phase: &str,
+    role: &str,
+    agent_id: &str,
+    task: &str,
+) -> Result<()> {
+    let path = project_root.join(".aiplus/agents/workflow-log.jsonl");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let line = serde_json::json!({
+        "schema_version": "0.1.0",
+        "workflow": "author-critic-fixer",
+        "workflow_run_id": workflow_run_id,
+        "phase": phase,
+        "role": role,
+        "agent_id": agent_id,
+        "task": task,
+        "timestamp": aiplus_core::timestamp(),
+        "secret_values": "none"
+    });
+    aiplus_core::append_jsonl_atomic(&path, &line.to_string())?;
     Ok(())
 }
 

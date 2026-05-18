@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `aiplus agent route --workflow author-critic-fixer <role> <task>` now
+  records a three-phase author -> independent critic -> fixer workflow. AEL
+  uses `referee` as the critic role and writes workflow audit records with
+  distinct `agent_id` values for the author and critic phases.
 - Installer/module cleanup now refuses to delete git-tracked project files.
   If cleanup encounters a tracked file, it aborts with a clear error and a
   module-manifest issue hint while preserving the file; untracked managed

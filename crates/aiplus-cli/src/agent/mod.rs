@@ -36,11 +36,17 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         AgentSub::List { functional } => list::handle_list(functional),
         AgentSub::Talk { role, runtime } => talk::handle_talk(&role, runtime.as_deref()),
         AgentSub::Route {
+            workflow,
             role,
             task,
             role_opt: _,
             owner_approved,
-        } => route::handle_route(role.as_deref(), &task.join(" "), &owner_approved),
+        } => route::handle_route(
+            role.as_deref(),
+            &task.join(" "),
+            &owner_approved,
+            workflow.as_deref(),
+        ),
         AgentSub::Reset => reset::handle_reset(),
         AgentSub::SetTeam { team } => set_team::handle_set_team(&team),
         AgentSub::Invite { role } => invite::handle_invite(&role),

@@ -37,6 +37,11 @@ pub enum AgentSub {
 
     #[command(visible_aliases = ["派单", "分"])]
     Route {
+        /// Optional multi-phase workflow. Supported: author-critic-fixer.
+        /// Must precede the positional role/task so it isn't swallowed
+        /// by the trailing-var-arg task parser.
+        #[arg(long, value_name = "WORKFLOW")]
+        workflow: Option<String>,
         /// Approve one or more owner gates before dispatch. Repeatable.
         /// Must precede the positional role/task so it isn't swallowed
         /// by the trailing-var-arg task parser.
