@@ -1,6 +1,6 @@
 # G2: Dispatch gate — verb-object semantic parse
 
-**Status**: DRAFT — Owner approval pending.
+**Status**: APPROVED — implementation shipped 2026-05-17.
 **Drafted by**: Advisor (Claude Code session, paired with CEO codex)
 **Owner**: Steve (izhiwen@icloud.com)
 **Date**: 2026-05-16
