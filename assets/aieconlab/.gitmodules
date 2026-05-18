@@ -1,0 +1,3 @@
+[submodule "vendor/aiplus"]
+	path = vendor/aiplus
+	url = https://github.com/izhiwen/AiPlus

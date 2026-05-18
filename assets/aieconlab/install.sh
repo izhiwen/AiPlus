@@ -3,7 +3,7 @@ set -eu
 
 REPO="izhiwen/AiEconLab"
 AEL_VERSION_VALUE="${AEL_VERSION:-}"
-AEL_DEFAULT_VERSION="v0.1.3"
+AEL_DEFAULT_VERSION="v0.1.4"
 INSTALL_DIR="${AEL_INSTALL_DIR:-$HOME/.local/bin}"
 LIBEXEC_DIR="${AEL_LIBEXEC_DIR:-$(dirname "$INSTALL_DIR")/libexec}"
 DRY_RUN=0
@@ -16,7 +16,7 @@ Usage:
   sh install.sh [--dry-run]
 
 Environment:
-  AEL_VERSION      Release version to install, default v0.1.3
+  AEL_VERSION      Release version to install, default v0.1.4
   AEL_INSTALL_DIR  Install directory for the ael wrapper, default $HOME/.local/bin
   AEL_LIBEXEC_DIR  Install directory for bundled runtime support, default ../libexec
   AEL_BASE_URL     Override release base URL for tests/mirrors

@@ -20,6 +20,67 @@ The first command installs the `ael` CLI. Inside a paper or replication
 project, `ael install` sets up the economics research team for your local AI
 runtime. `ael talk advisor ...` opens a role-specific conversation.
 
+## I'm New — Start Here
+
+If you've never used Claude Code, Codex, or OpenCode before, do these
+three things first (in this order). It'll save you an hour.
+
+### Step 1: Install ONE AI coding agent first
+
+Pick ONE to start (you can add more later):
+
+- **Claude Code** (recommended for most researchers) — install from
+  [claude.com/download](https://claude.com/download). Comes with
+  Claude Pro; no separate API key needed.
+- **Codex** — OpenAI's CLI. Requires a paid OpenAI account.
+- **OpenCode** — open source, runs local or remote models.
+
+Confirm the agent works on its own first (open it, ask "hi") before
+adding AEL on top.
+
+### Step 2: Install AEL
+
+Open the macOS Terminal app (or Linux / Windows terminal), paste this
+**one line**, and press Enter:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/izhiwen/AiEconLab/main/install.sh | bash
+```
+
+If it says "command not added to PATH," follow the one-line fix it
+prints. This is a one-time setup per machine.
+
+### Step 3: Try it in a paper project
+
+Make a folder for a paper (or use an existing one), then:
+
+```bash
+cd MyPaperProject       # the folder where your paper lives
+ael install             # auto-detects your AI agent
+ael talk advisor "I'm starting a paper on X. What should I think about first?"
+```
+
+Advisor will respond with 3-5 things to think about (identification
+strategy, data feasibility, contribution framing). You go from there.
+
+### Common first-day questions
+
+- **"Do I need an API key?"** Not if you already have Claude Pro or
+  ChatGPT Plus desktop. Only needed for batch / unattended runs.
+- **"Will it touch my real paper files?"** No — read-only by default.
+  Each role gets its own isolated workspace under `.aiplus/`.
+- **"How do I undo the install?"** `aiplus uninstall --yes` removes
+  everything cleanly. Only touches `.aiplus/` and adapter dirs in
+  your project.
+- **"Is my data uploaded anywhere?"** No. All local. Roles log to
+  `.aiplus/` in your project, never to a server.
+- **"It says `NEEDS_FIX` — what now?"** Run `aiplus doctor`. The
+  most common fix is `aiplus install <runtime>` to refresh the
+  adapter. If you're still stuck, open a GitHub issue with the
+  doctor output.
+
+---
+
 ## Demo
 
 ![AiEconLab demo](demo.gif)

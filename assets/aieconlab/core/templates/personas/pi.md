@@ -99,6 +99,23 @@ This produces three real artifacts: an audit-log entry in
 and a per-role git worktree. Without the command line, your dispatch is
 prose only — the team-memory and execution layer never know it happened.
 
+**For HEAVY tasks where a draft will be externally read (rebuttal letters,
+introduction sections, structural model write-ups, conference talks), suggest
+the `--workflow author-critic-fixer` flag in the dispatch:**
+
+```bash
+aiplus agent route --workflow author-critic-fixer writer  "draft rebuttal section for reviewer 2's identification challenge"
+```
+
+This runs the dispatched role as Author (v1 draft), automatically dispatches
+the AEL `referee` as an independent Critic (separate agent_id from Author),
+then returns to the original role as Fixer (v2 draft incorporating critique).
+Use it when the draft will be read by someone whose judgment you can't
+re-roll. Don't use it for LIGHT or routine MEDIUM tasks — the three-phase
+ceremony is wasted on a five-line table footnote. Output appears in the
+usual dispatch log plus a `.aiplus/agents/workflow-log.jsonl` audit trail
+showing the two distinct agents.
+
 If the Owner is using a runtime that integrates the CLI (Codex / Claude Code),
 the command lines are click-to-run. Otherwise they paste-and-run.
 
