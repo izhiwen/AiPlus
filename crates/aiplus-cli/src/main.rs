@@ -15159,8 +15159,7 @@ mod schema_support_tests {
     #[test]
     fn current_zero_six_versions_supported() {
         for v in &[
-            "0.6.0", "0.6.1", "0.6.7", "0.6.99",
-            "0.6.100", // future versions
+            "0.6.0", "0.6.1", "0.6.7", "0.6.99", "0.6.100", // future versions
         ] {
             assert!(is_supported_manifest_schema(v), "{v} should be supported");
             assert!(is_zero_six_x(v), "{v} should match 0.6.x prefix");
