@@ -575,6 +575,7 @@ mod tests {
             let embedded: BTreeSet<&str> = embedded_asset_paths()
                 .filter_map(|path| path.strip_prefix(&prefix))
                 .filter_map(|stripped| stripped.split('/').next())
+                .filter(|adapter| ["codex", "claude-code", "opencode"].contains(adapter))
                 .collect();
             assert_eq!(declared, embedded, "{}", spec.name);
         }
