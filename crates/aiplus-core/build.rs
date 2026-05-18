@@ -72,8 +72,20 @@ fn is_skip_embed_asset(rel: &str) -> bool {
     // never be embedded in the binary. Match by suffix only (so a file named
     // `foo.gif.txt` is NOT skipped — it would still hit the policy check).
     const SKIP_EXTS: &[&str] = &[
-        ".gif", ".png", ".jpg", ".jpeg", ".mp4", ".mov", ".m4a", ".wav",
-        ".zip", ".tar", ".tgz", ".har", ".webrtcdump", ".log",
+        ".gif",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".mp4",
+        ".mov",
+        ".m4a",
+        ".wav",
+        ".zip",
+        ".tar",
+        ".tgz",
+        ".har",
+        ".webrtcdump",
+        ".log",
     ];
     SKIP_EXTS.iter().any(|ext| rel.ends_with(ext))
 }
