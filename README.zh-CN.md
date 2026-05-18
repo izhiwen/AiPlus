@@ -53,7 +53,17 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 **Auto Team Consultant** —— Agent 不再忽略关键事项。**一个虚拟团队**（5 位专家成员 + 你项目的用户 persona，**坐同一桌**）会在每次重要 plan 之前被咨询。Coordinator 按复杂度和风险决定咨询规模，让你拿到真实评审团队的价值，但不在每次提交都付成本。
 
-**Agent Team** —— 用常驻团队取代单 Agent 的**角色漂移**。Advisor、CEO、Architect、PM、两名 Engineer、Reviewer 和 QA —— 每个角色都有独立人设、工作区和内存命名空间。Coordinator 把任务路由给正确角色，保存对话记录，清理过时工作区。不再角色污染，不再每顶帽子都戴得很浅。
+**Agent Team** —— 用常驻团队取代单 Agent 的**角色漂移**。Advisor、CEO、Architect、PM、两名 Engineer、Reviewer 和 QA —— 每个角色都有独立人设、工作区和内存命名空间。Coordinator 把任务路由给正确角色，保存对话记录，清理过时工作区。不再角色污染，不再每顶帽子都戴得很浅。**这个团队自带：**
+
+- **用人话切角色** —— 说"你是 CEO"、"take the reviewer role"、
+  "切换到 PI"，agent 就会开始用那个角色回应你，并加载它的内存。
+  不用 CLI 命令。Codex、Claude Code、OpenCode（交互模式）都支持。
+- **理解意图的安全门** —— 做任何危险操作之前（删文件、发布改动、
+  跑受保护的命令），Coordinator 会先理解你到底想做什么，而不只是
+  匹配你打的字眼。改个说法、加引号已经骗不过它了。
+- **评审和 QA 并行** —— review 步骤和 QA 步骤同时跑，每个角色的
+  工作区在任务之间保持就绪，不再每次从头建。典型迭代周期 ~8-10
+  分钟，不再 ~15-20，质量门槛不变。
 
 **Agent Velocity** —— Agent 不再瞎报工时。每次估时和实际完成时间记成本地 JSONL。Human-time bias 自动检测。后续估时用基于你自己历史校准过的 AI-native p50 / p90 数字。
 

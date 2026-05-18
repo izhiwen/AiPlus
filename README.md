@@ -140,7 +140,21 @@ calibrated from your own history.
 Advisor, CEO, Architect, PM, two Engineers, Reviewer, and QA — each with its
 own persona, workspace, and memory namespace. A coordinator routes work to the
 right role, keeps transcripts, and prunes stale worktrees so your project stays
-clean. No more role pollution, no more shallow-each-hat.
+clean. No more role pollution, no more shallow-each-hat. **The team comes with:**
+
+- **Plain-language role switching** — say "you are CEO", "take the
+  reviewer role", or "switch to PI" mid-session and the agent will
+  respond as that role with its memory loaded. No CLI command needed.
+  Works in Codex, Claude Code, and OpenCode interactive mode.
+- **Intent-aware safety gate** — before doing anything risky
+  (deleting files, publishing changes, running protected commands),
+  the coordinator understands what you're actually asking for, not
+  just the words you typed. Rephrasing or putting things in quotes
+  can't bypass the check.
+- **Parallel review and QA** — the review step and the QA step run
+  side by side, and each role's workspace stays ready between tasks
+  instead of being rebuilt every turn. Typical iterations land in
+  ~8-10 min instead of ~15-20, same quality bar.
 
 **Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
 where the six modules above are *project-local*, the AiPlus-Work-with-Me template
