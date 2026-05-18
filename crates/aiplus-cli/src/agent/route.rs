@@ -344,6 +344,9 @@ fn maybe_print_route_first_run_hint() {
     println!(
         "Hint: for BWS-backed runtime keys, wrap live dispatch with `aiplus secret-broker run --aliases anthropic,openai -- aiplus agent route \"<task>\"`."
     );
+    if marker_is_inside_current_project(&marker) {
+        return;
+    }
     if let Some(parent) = marker.parent() {
         if std::fs::create_dir_all(parent).is_ok() {
             let _ = std::fs::write(marker, b"seen\n");
@@ -361,6 +364,25 @@ fn route_first_run_marker() -> Option<std::path::PathBuf> {
         .ok()
         .filter(|home| !home.trim().is_empty())
         .map(|home| std::path::PathBuf::from(home).join(".config/aiplus/.route_first_run_seen"))
+}
+
+fn marker_is_inside_current_project(marker: &Path) -> bool {
+    let Ok(project_root) = std::env::current_dir() else {
+        return false;
+    };
+    if marker.starts_with(&project_root) {
+        return true;
+    }
+
+    let Ok(project_root) = std::fs::canonicalize(project_root) else {
+        return false;
+    };
+    if let Some(parent) = marker.parent() {
+        if let Ok(parent) = std::fs::canonicalize(parent) {
+            return parent.starts_with(project_root);
+        }
+    }
+    false
 }
 
 fn coordinator_role_task(role: &str, position: usize, total: usize, task: &str) -> String {
