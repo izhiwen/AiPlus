@@ -2,14 +2,76 @@
 
 ## Unreleased
 
+## 0.6.0
+
+### New features
+
+- **Natural-language role triggers (G1)**: mid-session, say "you are CEO",
+  "take the reviewer role", or "switch to PI" and the agent re-binds to that
+  role and loads its memory namespace. No CLI command needed. Works in
+  Codex, Claude Code, and OpenCode interactive mode. Verified at 10/10 on
+  Codex and Claude Code test matrices; OpenCode `opencode run`
+  non-interactive mode currently limited by upstream OpenCode.
+- **Semantic dispatch gate (G2)**: the coordinator now parses the intent of
+  a request (verb-object semantic analysis) before approving owner-gated
+  operations. Quoting, backticks, or wording tricks can no longer bypass
+  the gate. Includes `dispatch_gate=PASS` check in `aiplus doctor`.
+- **~2× faster dispatch cycle (Perf-1)**: reviewer and QA dispatch run
+  concurrently as parallel sidecars. Per-role worktrees live in a pool with
+  shared build cache (`crates/aiplus-cli/src/agent/worktree_pool.rs`).
+  Typical iteration drops from ~15-20 min to ~8-10 min with identical
+  quality gates.
 - `aiplus agent route --workflow author-critic-fixer <role> <task>` now
   records a three-phase author -> independent critic -> fixer workflow. AEL
   uses `referee` as the critic role and writes workflow audit records with
   distinct `agent_id` values for the author and critic phases.
-- Installer/module cleanup now refuses to delete git-tracked project files.
-  If cleanup encounters a tracked file, it aborts with a clear error and a
+
+### AEL additions
+
+- Two new applied-economics specialist roles: **DoF Auditor** (degrees-of-
+  freedom auditing) and **R&R Strategist** (revise-and-resubmit strategy
+  for top-field submissions). Brings total to 8 core + 14 experts.
+- LLM-as-Measurement correlation heatmap surfaced in main AEL README.
+- Adapter READMEs document natural-language role switching per runtime.
+
+### Safety
+
+- Installer/module cleanup refuses to delete git-tracked project files. If
+  cleanup encounters a tracked file, it aborts with a clear error and a
   module-manifest issue hint while preserving the file; untracked managed
   cleanup behavior is unchanged.
+- `aiplus install <runtime>` after `aiplus add aieconlab` now preserves the
+  active AEL team layout instead of falling back to default. Covered by new
+  `cross_runtime_install_matrix` test.
+- Dispatch gate hardened across six rounds of edge-case fixes: quoted
+  commands, imperative-with-false-safety-waiver, negation scope, mixed
+  execution, owner-bypass attempts, approval-wording bypass.
+
+### Docs
+
+- READMEs (AiPlus and AEL) document G1 / G2 / Perf-1 as team capabilities.
+- G2 spec promoted from DRAFT to APPROVED.
+- New `docs/proposals/perf-1-dispatch-acceleration.md`.
+- New `docs/team-protocols/dispatch-batching.md`.
+- `docs/proposals/g1-t2-ai-integration-contract.md` (identity-context API
+  contract).
+
+### Internal
+
+- Re-vendored `aiplus-public/assets/aieconlab/` from current AEL main.
+- Worktree pool implementation at
+  `crates/aiplus-cli/src/agent/worktree_pool.rs`.
+- `is_supported_manifest_schema` extended to accept 0.6.x prefix (anticipated
+  in source comment from prior 0.5.x stabilization work).
+
+### Migration notes
+
+- No breaking CLI changes.
+- AEL users running `aiplus add aieconlab` automatically pick up DoF + R&R
+  experts on next install.
+- Existing dispatch-gate behavior is tightened: some prompts that
+  previously slipped through will now require explicit Owner approval. This
+  is the intended safety improvement.
 
 ## 0.5.26
 

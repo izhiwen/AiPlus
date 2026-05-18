@@ -191,7 +191,7 @@ and `aiplus-agent-velocity`.
 
 ## Install
 
-### Option A — pre-built binary (recommended, v0.5.26+)
+### Option A — pre-built binary (recommended, v0.6.0+)
 
 Pre-built binaries for macOS (Intel + Apple Silicon), Linux (x86_64 +
 aarch64), and Windows ship with every release.
@@ -373,7 +373,7 @@ placeholders (USER.md / sync/projects.toml / secret-aliases.tsv), then run
 ## Status
 
 Latest release: see [Releases](https://github.com/izhiwen/AiPlus/releases/latest)
-(currently `v0.5.26`, pre-built binaries for macOS / Linux / Windows).
+(currently `v0.6.0`, pre-built binaries for macOS / Linux / Windows).
 Active development on `main`; pre-release notes for the next cut live
 under [`docs/roadmap/`](docs/roadmap/).
 
