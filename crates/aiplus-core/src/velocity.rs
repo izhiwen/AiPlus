@@ -86,21 +86,16 @@ pub const DEFAULT_MIN_BUCKET_SAMPLES: usize = 8;
 /// `ReadWrite`. `None` is full isolation; `ReadOnly` is "learn from
 /// others but don't share." A `bool` flag would conflate the two and
 /// is rejected by spec.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ShareToGlobalMode {
     /// Read from + write to the global ledger. Default for new projects.
+    #[default]
     ReadWrite,
     /// Read from the global ledger; do not contribute writes.
     ReadOnly,
     /// Full isolation. Project does not read or write global ledger.
     None,
-}
-
-impl Default for ShareToGlobalMode {
-    fn default() -> Self {
-        Self::ReadWrite
-    }
 }
 
 impl ShareToGlobalMode {
@@ -690,18 +685,18 @@ fn generate_ulid() -> String {
     let mut buf = [0u8; 26];
     let ts_ms = crate::epoch_millis();
     // Encode 48-bit timestamp into the first 10 chars (5 bits per char).
-    for i in 0..10 {
+    for (i, slot) in buf.iter_mut().enumerate().take(10) {
         let shift = 5 * (9 - i);
         let idx = ((ts_ms >> shift) & 0x1F) as usize;
-        buf[i] = ULID_ALPHABET[idx];
+        *slot = ULID_ALPHABET[idx];
     }
     // 16 random chars (80 bits). Pull from a SystemRandom-style mix
     // of nanos + thread id + a per-call counter so concurrent calls
     // on the same machine never share entropy bits.
     let mut rnd = ulid_entropy();
-    for i in 10..26 {
+    for slot in buf.iter_mut().skip(10) {
         let idx = (rnd & 0x1F) as usize;
-        buf[i] = ULID_ALPHABET[idx];
+        *slot = ULID_ALPHABET[idx];
         rnd = ulid_mix(rnd);
     }
     String::from_utf8(buf.to_vec()).expect("ULID alphabet is ASCII")
@@ -1670,10 +1665,8 @@ fn classify_global_ledger_health() -> String {
                     needs_fix = true;
                 }
             }
-        } else if !text.is_empty() {
-            if serde_json::from_str::<serde_json::Value>(&text).is_err() {
-                needs_fix = true;
-            }
+        } else if !text.is_empty() && serde_json::from_str::<serde_json::Value>(&text).is_err() {
+            needs_fix = true;
         }
     }
     // iCloud / Dropbox warning: flock is unreliable on sync mounts.

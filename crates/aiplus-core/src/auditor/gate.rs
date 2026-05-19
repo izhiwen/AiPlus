@@ -871,12 +871,16 @@ mod tests {
 
         // Compute hashes
         let mut cache = HashMap::new();
-        let bin_aliases_hash = compute_list_hash(&[bin_aliases_path.clone()], &mut cache).unwrap();
-        let acceptance_hash = compute_list_hash(&[acceptance_path.clone()], &mut cache).unwrap();
+        let bin_aliases_hash =
+            compute_list_hash(std::slice::from_ref(&bin_aliases_path), &mut cache).unwrap();
+        let acceptance_hash =
+            compute_list_hash(std::slice::from_ref(&acceptance_path), &mut cache).unwrap();
         let audit_scripts_hash =
-            compute_list_hash(&[audit_script_path.clone()], &mut cache).unwrap();
-        let self_tests_hash = compute_list_hash(&[self_test_path.clone()], &mut cache).unwrap();
-        let fixtures_hash = compute_list_hash(&[fixture_path.clone()], &mut cache).unwrap();
+            compute_list_hash(std::slice::from_ref(&audit_script_path), &mut cache).unwrap();
+        let self_tests_hash =
+            compute_list_hash(std::slice::from_ref(&self_test_path), &mut cache).unwrap();
+        let fixtures_hash =
+            compute_list_hash(std::slice::from_ref(&fixture_path), &mut cache).unwrap();
 
         // Build manifest
         let manifest = ReleaseManifest {

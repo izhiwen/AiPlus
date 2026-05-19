@@ -18,7 +18,10 @@ pub enum AgentSub {
     },
 
     #[command(visible_aliases = ["健康", "诊断"])]
-    Doctor,
+    Doctor {
+        #[arg(short, long, action = clap::ArgAction::SetTrue)]
+        quiet: bool,
+    },
 
     #[command(visible_aliases = ["缓存", "暖"])]
     Cache {

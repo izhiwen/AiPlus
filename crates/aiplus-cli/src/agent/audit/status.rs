@@ -81,7 +81,7 @@ fn read_canary_state(path: &Path) -> Result<String> {
     let content =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     // Read the last line (most recent state)
-    let last_line = content.lines().filter(|l| !l.trim().is_empty()).last();
+    let last_line = content.lines().rfind(|l| !l.trim().is_empty());
     match last_line {
         Some(line) => {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {

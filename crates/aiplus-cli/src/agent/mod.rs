@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod cache;
 pub mod commands;
+#[allow(clippy::items_after_test_module)]
 pub mod coordinator;
 pub mod core;
 pub mod disable;
@@ -33,7 +34,7 @@ use anyhow::Result;
 pub fn dispatch(args: AgentArgs) -> Result<()> {
     match args.subcommand {
         AgentSub::Status { verbose, json } => status::handle_status(verbose, json),
-        AgentSub::Doctor => doctor::handle_doctor(),
+        AgentSub::Doctor { quiet } => doctor::handle_doctor(quiet),
         AgentSub::Cache {
             enable_disk,
             disable_disk,

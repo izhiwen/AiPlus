@@ -27,6 +27,8 @@ const RELEASE_MANIFEST_PATH: &str = ".aiplus/agent-team/release-manifest.yaml";
 const FINGERPRINT_PATH: &str = ".aiplus/agent-team/owner-key-fingerprint";
 const SENTINEL_PATH: &str = ".aiplus/agent-team/.owner-setup-authorized";
 
+type CheckExecution = (bool, Option<i32>, Option<String>, Option<String>);
+
 #[derive(Debug, Clone, Deserialize)]
 struct SchemaFile {
     #[serde(default)]
@@ -267,7 +269,7 @@ fn run_deliverable(
     Ok((report, evidence_vec))
 }
 
-fn execute_check(check: &Check) -> Result<(bool, Option<i32>, Option<String>, Option<String>)> {
+fn execute_check(check: &Check) -> Result<CheckExecution> {
     match check.kind {
         CheckKind::ExitCode => {
             let cmd_str = check.cmd.as_deref().unwrap_or("");

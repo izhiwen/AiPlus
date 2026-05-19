@@ -47,7 +47,7 @@ pub fn should_trigger_canary(
     }
 
     // Count-based cadence: every 7 audit runs
-    if canary_state.audit_run_count > 0 && canary_state.audit_run_count % 7 == 0 {
+    if canary_state.audit_run_count > 0 && canary_state.audit_run_count.is_multiple_of(7) {
         return Ok(true);
     }
 

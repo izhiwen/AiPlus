@@ -125,7 +125,7 @@ fn command_exists(name: &str) -> bool {
     if name.contains('/') {
         std::path::Path::new(name).exists()
     } else {
-        std::env::var_os("PATH").map_or(false, |paths| {
+        std::env::var_os("PATH").is_some_and(|paths| {
             std::env::split_paths(&paths).any(|path| {
                 let full = path.join(name);
                 full.exists()

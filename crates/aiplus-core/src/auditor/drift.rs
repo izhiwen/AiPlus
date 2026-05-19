@@ -106,14 +106,9 @@ impl DriftDetector {
         let mut findings = Vec::new();
 
         // Find baseline for same deliverable with same inputs
-        let baseline = self
-            .history
-            .iter()
-            .filter(|run| {
-                run.deliverable_id == new_run.deliverable_id
-                    && run.inputs_hash == new_run.inputs_hash
-            })
-            .last();
+        let baseline = self.history.iter().rev().find(|run| {
+            run.deliverable_id == new_run.deliverable_id && run.inputs_hash == new_run.inputs_hash
+        });
 
         if let Some(base) = baseline {
             if base.verdict != new_run.verdict {
@@ -233,11 +228,8 @@ impl DriftDetector {
             .iter()
             .map(|f| {
                 format!(
-                    "[{}] {} for deliverable {}: {}",
-                    f.priority,
-                    format!("{:?}", f.drift_type),
-                    f.deliverable_id,
-                    f.message
+                    "[{}] {:?} for deliverable {}: {}",
+                    f.priority, f.drift_type, f.deliverable_id, f.message
                 )
             })
             .collect()

@@ -303,7 +303,7 @@ pub fn resolve_role_for_active_team(project_root: &Path, role: &str) -> Resolved
 
 pub fn is_unknown_active_aieconlab_alias(project_root: &Path, role: &str) -> bool {
     crate::agent::set_team::read_active_team(project_root).as_deref() == Some("aieconlab")
-        && role.chars().any(|ch| !ch.is_ascii())
+        && !role.is_ascii()
         && aieconlab_alias_canonical(role).is_none()
 }
 

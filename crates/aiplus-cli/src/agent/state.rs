@@ -116,9 +116,13 @@ pub fn load_active_roles(project_root: &Path) -> Result<ActiveRolesState> {
 /// `aiplus agent route <role>` whenever a known role is dispatched
 /// successfully. Convenience wrapper around `record_dispatch_with_outcome`
 /// for the happy path.
-pub fn record_dispatch(project_root: &Path, role: &str, task: &str, source: &str) -> Result<()> {
+pub fn record_dispatch(
+    project_root: &Path,
+    role: &str,
+    task: &str,
+    source: &str,
+) -> Result<String> {
     record_dispatch_with_outcome(project_root, role, task, source, DispatchOutcome::Success)
-        .map(|_dispatch_id| ())
 }
 
 pub fn record_dispatch_with_role_input(
@@ -127,7 +131,7 @@ pub fn record_dispatch_with_role_input(
     role_input: Option<&str>,
     task: &str,
     source: &str,
-) -> Result<()> {
+) -> Result<String> {
     record_dispatch_inner(
         project_root,
         role,
@@ -136,7 +140,6 @@ pub fn record_dispatch_with_role_input(
         source,
         DispatchOutcome::Success,
     )
-    .map(|_dispatch_id| ())
 }
 
 /// P1.3: full-control variant. Records the dispatch outcome (success /
@@ -185,7 +188,7 @@ fn record_dispatch_inner(
     };
 
     let entry = DispatchLogEntry {
-        schema_version: "0.2.0".to_string(),
+        schema_version: "0.4.0".to_string(),
         dispatch_id: dispatch_id.clone(),
         timestamp: timestamp.clone(),
         role: role.to_string(),

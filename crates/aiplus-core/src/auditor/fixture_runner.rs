@@ -268,8 +268,8 @@ impl FixtureRunner {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
-            if line.starts_with("author ") {
-                return Ok(Some(line["author ".len()..].trim().to_string()));
+            if let Some(author) = line.strip_prefix("author ") {
+                return Ok(Some(author.trim().to_string()));
             }
         }
 
@@ -442,9 +442,10 @@ mod tests {
 
     #[test]
     fn test_stats_threshold() {
-        let mut stats = FixtureRunnerStats::default();
-        stats.total_scripts = 10;
-        stats.not_applicable_behavioral = 4;
+        let mut stats = FixtureRunnerStats {
+            total_scripts: 10,
+            not_applicable_behavioral: 4,
+        };
         assert!(stats.exceeds_threshold(30.0));
 
         stats.not_applicable_behavioral = 3;

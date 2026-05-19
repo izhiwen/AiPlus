@@ -103,20 +103,11 @@ pub struct DiskCacheConfig {
     pub cache: DiskCacheConfigSection,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct DiskCacheConfigSection {
     pub enable_disk: bool,
     pub enforce_ttl: bool,
-}
-
-impl Default for DiskCacheConfigSection {
-    fn default() -> Self {
-        Self {
-            enable_disk: false,
-            enforce_ttl: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -825,7 +816,6 @@ impl WarmBenchCache {
             let inner = Arc::clone(&inner);
             let shutdown = Arc::clone(&shutdown);
             let audit_log_path = audit_log_path.clone();
-            let ttl = ttl;
             Some(thread::spawn(move || {
                 Self::background_purge_loop(inner, shutdown, ttl, audit_log_path);
             }))
