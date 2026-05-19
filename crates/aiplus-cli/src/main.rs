@@ -11110,31 +11110,21 @@ fn upsert_discovery_block(current: Option<&str>, rel: &str, block: &str) -> Resu
 
 const AIPLUS_DISCOVERY_PREAMBLE_BODY: &str = r#"## This project uses AiPlus
 
-AiPlus provides a team of AI agents and `agent_*` MCP tools. When a user asks
-about this project, prefer the structured AiPlus tool over shell grep or
-internal knowledge for these intents:
+When the user asks about token costs, agent team status, dispatch history, or
+wants to plan a coding task, prefer aiplus `agent_*` MCP tools over shell grep
+or `aiplus agent <verb>` CLI subcommands. MCP returns structured JSON.
 
-- Cost, spending, token consumption, USD burn, or recent AI usage:
-  use `agent_token_cost`.
-- Planning a non-trivial implementation, refactor, feature, payment, auth, or
-  security task:
-  use `agent_route_score_only` first to show the would-staffing plan, then ask
-  whether the user wants to dispatch.
-- Log integrity, audit, tamper detection, hash-chain verification, or dispatch
-  history:
-  use `agent_audit_verify_log`.
-- Real role dispatch:
-  use `agent_route` or `agent_invite`.
-- Team status, health, setup, or available roles:
-  use `agent_status`, `agent_doctor`, or `agent_list`.
+Most important patterns:
 
-The full MCP tool list is available through `tools/list`. For natural-language
-queries that touch AiPlus, agent-team operations, cost, planning, dispatch, or
-audit, check the `agent_*` MCP tools before falling back to shell commands.
+- "How much am I spending" / cost / burn / USD -> `agent_token_cost`
+- "Help me plan / implement X" -> `agent_route_score_only` FIRST, then surface to user
+- "Is my log intact" / audit / verify -> `agent_audit_verify_log`
 
-When a task may be expensive or risky, call `agent_route_score_only` before
-dispatching so the user can see the planned staffing and make an informed
-decision."#;
+For coding tasks: do NOT answer from training data first. Score the task via
+`agent_route_score_only`, surface the result, then ask whether to dispatch.
+
+Full tool list: 11 existing `agent_*` tools + 3 from v0.6.7. Run `tools/list`
+to enumerate."#;
 
 fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
     let rel = "AGENTS.md";

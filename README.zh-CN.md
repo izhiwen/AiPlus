@@ -69,7 +69,7 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 **Token Cost** —— `aiplus agent token-cost` 读取 dispatch log，按 1 小时 / 8 小时 / 24 小时统计 token 消耗和 USD 成本，并列出最贵 task。定价来自社区维护的 per-model 表，带离线兜底和本地 override；也可直接跑 standalone `aiplus-token-cost`。
 
-**自然语言工具发现** —— `aiplus install` 会写入项目本地 skill 和 preamble，让 Codex / Claude Code / OpenCode 在用户自然问成本、计划、审计、派单、团队状态时优先调用 AiPlus 的 `agent_*` MCP 工具，而不是绕去 shell grep 或只给通用建议。
+**自然语言工具发现** —— `aiplus install` 会写入项目本地 skill 和 preamble，让 Codex / Claude Code / OpenCode 在用户自然问成本、计划、审计、派单、团队状态时优先调用 AiPlus 的 `agent_*` MCP 工具，而不是绕去 shell grep、解析 `aiplus agent <verb>` CLI 输出，或只给通用建议。用户说 "implement X" 时，第一步应是 `agent_route_score_only`，不是直接背训练数据 checklist。
 
 **Companion 模板：[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面七个模块都是 *项目本地*，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
 

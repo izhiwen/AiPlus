@@ -192,7 +192,9 @@ clean. No more role pollution, no more shallow-each-hat. **The team comes with:*
   project-local skill and preamble files so Codex, Claude Code,
   and OpenCode know to call AiPlus MCP tools for cost, planning,
   audit, routing, and team-status questions instead of bypassing
-  them with shell grep or generic advice.
+  them with shell grep, `aiplus agent <verb>` CLI parsing, or
+  generic advice. For "implement X" prompts, the first move is
+  `agent_route_score_only`, not a training-data checklist.
 
 **Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
 where the seven modules above are *project-local*, the AiPlus-Work-with-Me template

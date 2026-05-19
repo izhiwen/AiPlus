@@ -220,7 +220,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_audit_verify_log",
-            "description": "Verify the integrity of .aiplus/agents/dispatch-log.jsonl hash chain. Reports PASS or FAIL with the first bad line and reason. Use this before relying on dispatch history.",
+            "description": "PREFERRED programmatic surface for log integrity. Use this MCP tool instead of `aiplus agent audit verify-log` CLI when answering audit/tamper queries; MCP returns structured JSON. Verifies dispatch-log hash chain and reports PASS/FAIL with first bad line.",
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -228,7 +228,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_route_score_only",
-            "description": "Pre-flight a task by running the adaptive coordinator scorer and tier classifier without dispatching roles. Returns complexity, risk, tier, staffing, forced-by-risk roles, and auto-summoned experts.",
+            "description": "PREFERRED programmatic surface for planning. User says \"implement X\" -> call this with task=\"implement X\" before answering from training data. Use instead of `aiplus agent route --score-only`; MCP returns structured JSON.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -242,7 +242,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_token_cost",
-            "description": "Show token consumption and USD cost rollups for AiPlus dispatch logs in 1-hour / 8-hour / 24-hour windows, with optional per-role breakdown and top-N most expensive tasks.",
+            "description": "PREFERRED programmatic surface for token cost/spend. Use this MCP tool instead of `aiplus agent dispatch-history` or token-cost CLI when answering cost queries; MCP returns structured JSON for 1h/8h/24h windows, per-role, top tasks.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -943,6 +943,35 @@ mod tests {
         for tool in tools {
             assert!(tool["description"].is_string());
             assert!(tool["inputSchema"]["type"].as_str() == Some("object"));
+        }
+    }
+
+    #[test]
+    fn autoflow_tool_descriptions_prefer_mcp_and_stay_compact() {
+        let tools = tool_definitions();
+        for name in [
+            "agent_token_cost",
+            "agent_audit_verify_log",
+            "agent_route_score_only",
+        ] {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing tool {name}"));
+            let description = tool["description"].as_str().expect("description string");
+            assert!(
+                description.starts_with("PREFERRED programmatic surface"),
+                "{name} should explicitly prefer MCP:\n{description}"
+            );
+            assert!(
+                description.contains("MCP returns structured JSON"),
+                "{name} should say why MCP beats CLI:\n{description}"
+            );
+            assert!(
+                description.chars().count() <= 400,
+                "{name} description too long: {} chars\n{description}",
+                description.chars().count()
+            );
         }
     }
 

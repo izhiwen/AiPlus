@@ -71,9 +71,9 @@ fn assert_discovery_block_once(path: &Path) {
         "agent_token_cost",
         "agent_route_score_only",
         "agent_audit_verify_log",
-        "agent_status",
-        "agent_doctor",
-        "agent_list",
+        "prefer aiplus `agent_*` MCP tools over shell grep",
+        "do NOT answer from training data first",
+        "Full tool list: 11 existing `agent_*` tools + 3 from v0.6.7",
     ] {
         assert!(
             text.contains(expected),
@@ -94,7 +94,10 @@ fn assert_skill(path: &Path) {
         "agent_token_cost",
         "agent_route_score_only",
         "agent_audit_verify_log",
-        "Do not answer AiPlus cost, audit, planning, or team-status questions by only",
+        "Prefer MCP Tools Over CLI Subcommands",
+        "Do NOT immediately answer with design checklists from training data",
+        "aiplus agent dispatch-history --json",
+        "Known Runtime Limitation",
     ] {
         assert!(
             text.contains(expected),
