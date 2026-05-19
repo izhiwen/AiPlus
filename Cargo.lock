@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "aiplus-cli"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "aiplus-core",
  "anyhow",

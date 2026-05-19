@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+## 0.6.3
+
+### Performance — HEAVY task dispatch now parallel
+
+- **HEAVY-tier (and MEDIUM / LIGHT_CODE) dispatch is now parallel, not
+  serial.** Previously when the adaptive coordinator staffed multiple
+  roles, they ran one at a time. Now all staffed roles dispatch
+  concurrently via a peer-based parallel primitive. Wall-clock overhead
+  drops from ~6× single-role time on a HEAVY task to ~1-2×. Benchmark
+  fixture (6 mock roles delayed 900ms each): 5.40s serial baseline →
+  0.94s parallel = ~5.7× speedup.
+- **Partial-failure semantics**: if one role errors mid-flight, the
+  other roles continue to completion; the final result aggregates all
+  outcomes rather than failing fast. You see all the work that
+  succeeded, not just up to the first failure.
+- New `kind=coordinator_peer` field on dispatch metrics distinguishes
+  adaptive-coordinator-staffed roles from Perf-1's primary/sidecar
+  dispatch pattern.
+
+### Internal
+
+- New `coordinator_batch` peer-based parallel primitive in `route.rs`,
+  living alongside Perf-1's existing `route_batch` (which keeps the
+  primary/sidecar model for `--workflow author-critic-fixer` and direct
+  role dispatch). Shared `WorktreePool` and `route_known_role`; no
+  infrastructure duplication beyond the spawn/join loop.
+- WorktreePool was confirmed safe at 6-way concurrent fan-out; the
+  existing `Arc<Mutex<WorktreePool>>` serialization is sufficient
+  (Perf-1 had only been validated at 1+2=3-way).
+- New `tests/coordinator_parallel_smoke.rs` covers 6-way fan-out,
+  partial failure, WorktreePool contention, and wall-clock benchmark.
+  `cargo test --package aiplus-cli`: 352 passed (was 348);
+  `cargo test --workspace`: 547 passed (was 543).
+- `install.sh` fallback bumped to `v0.6.3` for parity test.
+
+### Migration notes
+
+- No breaking CLI changes.
+- **Dispatch order in `.aiplus/agents/dispatch-log.jsonl` is no longer
+  guaranteed for adaptive-coordinator-staffed dispatches.** Roles
+  run in parallel, so log lines for a single HEAVY-task batch may
+  appear in any order. Consumers that depend on strict role ordering
+  should sort by `timestamp` field instead.
+- LIGHT_NO_CODE dispatch (no staffing) behavior unchanged — CEO still
+  handles directly with no role dispatched.
+
 ## 0.6.2
 
 ### Adaptive coordinator polish (v0.3.1 P1)
