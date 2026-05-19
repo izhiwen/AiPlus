@@ -69,6 +69,8 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 **Token Cost** —— `aiplus agent token-cost` 读取 dispatch log，按 1 小时 / 8 小时 / 24 小时统计 token 消耗和 USD 成本，并列出最贵 task。定价来自社区维护的 per-model 表，带离线兜底和本地 override；也可直接跑 standalone `aiplus-token-cost`。
 
+**自然语言工具发现** —— `aiplus install` 会写入项目本地 skill 和 preamble，让 Codex / Claude Code / OpenCode 在用户自然问成本、计划、审计、派单、团队状态时优先调用 AiPlus 的 `agent_*` MCP 工具，而不是绕去 shell grep 或只给通用建议。
+
 **Companion 模板：[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面七个模块都是 *项目本地*，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
 
 所有数据都留在你项目里的 `.aiplus/`。**不上传，不云同步，不动你的全局 agent 配置。**
@@ -152,6 +154,7 @@ aiplus mcp-register --runtime claude-code  # 也可用 codex / opencode；claude
 ```bash
 aiplus status                        # 所有模块状态
 aiplus doctor                        # 跨模块健康检查
+aiplus mcp-register --runtime codex  # 暴露 agent_* MCP 工具给 runtime
 
 # Memory
 aiplus memory status
@@ -169,6 +172,9 @@ aiplus velocity report
 # Agent Team
 aiplus agent status              # 显示团队状态
 aiplus agent route engineer-a    # 分配任务给 engineer-a
+aiplus agent route --score-only "实现支付接口"  # 只预览 staffing，不派单
+aiplus agent token-cost          # token + USD 成本统计
+aiplus agent audit verify-log    # 校验 dispatch-log hash chain
 aiplus agent integrate engineer-a # 合并工作回主分支
 aiplus agent audit run           # 运行验收审计
 aiplus 团队                      # 中文别名：显示团队状态

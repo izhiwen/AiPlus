@@ -89,6 +89,8 @@ const PRICING_CATALOG_URL: &str =
 const MANAGED_BEGIN: &str = "<!-- BEGIN AIPLUS MANAGED BLOCK -->";
 const MANAGED_END: &str = "<!-- END AIPLUS MANAGED BLOCK -->";
 const MANAGED_REF: &str = "@./.aiplus/AGENTS.aiplus.md";
+const DISCOVERY_BEGIN: &str = "<!-- aiplus-discovery-block:start -->";
+const DISCOVERY_END: &str = "<!-- /aiplus-discovery-block -->";
 const OPENCODE_INSTRUCTIONS_REL: &str = ".opencode/instructions/aiplus.md";
 const OPENCODE_INSTRUCTIONS_CONFIG_PATH: &str = "instructions/aiplus.md";
 const OPENCODE_AIPLUS_INSTRUCTIONS_MARKER: &str = "<!-- AIPLUS_OPENCODE_G1_ROLE_TRIGGERS_V1 -->";
@@ -3198,7 +3200,9 @@ fn command_uninstall(dry_run: bool, yes: bool, force: bool) -> Result<()> {
         ..Plan::default()
     };
     remove_managed_block(&root, &mut plan)?;
+    remove_discovery_preamble(&root, "AGENTS.md", &mut plan)?;
     remove_claude_md_managed_block(&root, &mut plan)?;
+    remove_discovery_preamble(&root, "CLAUDE.md", &mut plan)?;
     remove_claude_md_aieconlab_block(&root, &mut plan)?;
     remove_claude_md_agent_team_block(&root, &mut plan)?;
     remove_claude_hooks(&root, &mut plan)?;
@@ -10397,12 +10401,30 @@ fn install_runtime_adapter(
     options: &Options,
 ) -> Result<()> {
     match runtime {
-        "codex" => update_agents_md(root, plan, options),
+        "codex" => {
+            update_agents_md(root, plan, options)?;
+            update_discovery_preamble(root, "AGENTS.md", plan)?;
+            install_discovery_skill(
+                root,
+                "aiplus-agent-team/adapters/codex/skills/aiplus/SKILL.md",
+                ".codex/skills/aiplus/SKILL.md",
+                plan,
+                options,
+            )?;
+            install_discovery_skill(
+                root,
+                "aiplus-agent-team/adapters/codex/skills/aiplus/SKILL.md",
+                ".agents/skills/aiplus/SKILL.md",
+                plan,
+                options,
+            )
+        }
         "claude-code" => {
             // Bridge .aiplus/AGENTS.aiplus.md into the Claude Code session
             // via a managed block in top-level AGENTS.md (Claude Code reads
             // AGENTS.md alongside CLAUDE.md). Same mechanism as codex.
             update_agents_md(root, plan, options)?;
+            update_discovery_preamble(root, "AGENTS.md", plan)?;
             write_file_safe(
                 root,
                 ".claude/commands/aiplus-refresh.md",
@@ -10454,14 +10476,30 @@ fn install_runtime_adapter(
                 plan,
                 options,
             )?;
+            install_discovery_skill(
+                root,
+                "aiplus-agent-team/adapters/claude-code/skills/aiplus/SKILL.md",
+                ".claude/skills/aiplus/SKILL.md",
+                plan,
+                options,
+            )?;
             install_claude_hooks(root, plan)?;
-            update_claude_md(root, plan)
+            update_claude_md(root, plan)?;
+            update_discovery_preamble(root, "CLAUDE.md", plan)
         }
         "opencode" => {
             // Same bridge for OpenCode — sst/opencode also reads AGENTS.md.
             update_agents_md(root, plan, options)?;
+            update_discovery_preamble(root, "AGENTS.md", plan)?;
             install_opencode_config(root, plan, options)?;
             install_opencode_instructions(root, plan, options)?;
+            install_discovery_skill(
+                root,
+                "aiplus-agent-team/adapters/opencode/skills/aiplus/SKILL.md",
+                ".opencode/skills/aiplus/SKILL.md",
+                plan,
+                options,
+            )?;
             write_file_safe(
                 root,
                 ".opencode/commands/aiplus-refresh.md",
@@ -11010,6 +11048,94 @@ fn update_agents_md(root: &Path, plan: &mut Plan, options: &Options) -> Result<(
     }
 }
 
+fn install_discovery_skill(
+    root: &Path,
+    asset_rel: &str,
+    dest_rel: &str,
+    plan: &mut Plan,
+    options: &Options,
+) -> Result<()> {
+    let content = embedded_asset_text(asset_rel)?;
+    write_file_safe(root, dest_rel, content.as_bytes(), plan, options)
+}
+
+fn discovery_preamble_block() -> String {
+    format!(
+        "{begin}\n{body}\n{end}",
+        begin = DISCOVERY_BEGIN,
+        body = AIPLUS_DISCOVERY_PREAMBLE_BODY.trim(),
+        end = DISCOVERY_END
+    )
+}
+
+fn update_discovery_preamble(root: &Path, rel: &str, plan: &mut Plan) -> Result<()> {
+    let abs = rel_to_abs(root, rel)?;
+    assert_no_symlink_path(root, &abs)?;
+    let current = read_text_if_exists(&abs)?;
+    let block = discovery_preamble_block();
+    let next = upsert_discovery_block(current.as_deref(), rel, &block)?;
+    write_managed_text(root, rel, &next, plan)
+}
+
+fn upsert_discovery_block(current: Option<&str>, rel: &str, block: &str) -> Result<String> {
+    match current {
+        None => Ok(format!("{block}\n")),
+        Some(text) if text.trim().is_empty() => Ok(format!("{block}\n")),
+        Some(text) => {
+            let begin_count = text.matches(DISCOVERY_BEGIN).count();
+            let end_count = text.matches(DISCOVERY_END).count();
+            if begin_count != end_count
+                || begin_count > 1
+                || (begin_count == 1 && text.find(DISCOVERY_BEGIN) > text.find(DISCOVERY_END))
+            {
+                return Err(CliError::new(
+                    1,
+                    format!("ERROR malformed or duplicate AiPlus discovery block in {rel}"),
+                )
+                .into());
+            }
+            if begin_count == 1 {
+                replace_between(text, DISCOVERY_BEGIN, DISCOVERY_END, block)
+            } else {
+                Ok(format!(
+                    "{}{}{}\n",
+                    text,
+                    if text.ends_with('\n') { "\n" } else { "\n\n" },
+                    block
+                ))
+            }
+        }
+    }
+}
+
+const AIPLUS_DISCOVERY_PREAMBLE_BODY: &str = r#"## This project uses AiPlus
+
+AiPlus provides a team of AI agents and `agent_*` MCP tools. When a user asks
+about this project, prefer the structured AiPlus tool over shell grep or
+internal knowledge for these intents:
+
+- Cost, spending, token consumption, USD burn, or recent AI usage:
+  use `agent_token_cost`.
+- Planning a non-trivial implementation, refactor, feature, payment, auth, or
+  security task:
+  use `agent_route_score_only` first to show the would-staffing plan, then ask
+  whether the user wants to dispatch.
+- Log integrity, audit, tamper detection, hash-chain verification, or dispatch
+  history:
+  use `agent_audit_verify_log`.
+- Real role dispatch:
+  use `agent_route` or `agent_invite`.
+- Team status, health, setup, or available roles:
+  use `agent_status`, `agent_doctor`, or `agent_list`.
+
+The full MCP tool list is available through `tools/list`. For natural-language
+queries that touch AiPlus, agent-team operations, cost, planning, dispatch, or
+audit, check the `agent_*` MCP tools before falling back to shell commands.
+
+When a task may be expensive or risky, call `agent_route_score_only` before
+dispatching so the user can see the planned staffing and make an informed
+decision."#;
+
 fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
     let rel = "AGENTS.md";
     let abs = rel_to_abs(root, rel)?;
@@ -11020,6 +11146,21 @@ fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
         return Ok(());
     }
     let next = replace_between(&current, MANAGED_BEGIN, MANAGED_END, "")?;
+    if next != current {
+        write_managed_text(root, rel, &next, plan)?;
+    }
+    Ok(())
+}
+
+fn remove_discovery_preamble(root: &Path, rel: &str, plan: &mut Plan) -> Result<()> {
+    let abs = rel_to_abs(root, rel)?;
+    let Some(current) = read_text_if_exists(&abs)? else {
+        return Ok(());
+    };
+    if !current.contains(DISCOVERY_BEGIN) {
+        return Ok(());
+    }
+    let next = replace_between(&current, DISCOVERY_BEGIN, DISCOVERY_END, "")?;
     if next != current {
         write_managed_text(root, rel, &next, plan)?;
     }
@@ -11753,6 +11894,27 @@ fn remove_runtime_adapter_artifacts(root: &Path, plan: &mut Plan) -> Result<()> 
             let _ = fs::remove_file(&instruction_abs);
         }
         touched_parents.insert(".opencode/instructions".to_string());
+    }
+
+    for rel in [
+        ".claude/skills/aiplus/SKILL.md",
+        ".codex/skills/aiplus/SKILL.md",
+        ".agents/skills/aiplus/SKILL.md",
+        ".opencode/skills/aiplus/SKILL.md",
+    ] {
+        let abs = rel_to_abs(root, rel)?;
+        if abs.exists() && abs.is_file() {
+            plan.items.push(PlanItem {
+                action: "remove".to_string(),
+                path: rel.to_string(),
+            });
+            if !plan.dry_run {
+                let _ = fs::remove_file(&abs);
+            }
+            if let Some(parent) = Path::new(rel).parent().and_then(|p| p.to_str()) {
+                touched_parents.insert(parent.to_string());
+            }
+        }
     }
     remove_opencode_config_instruction_injection(root, plan)?;
 
@@ -16971,6 +17133,8 @@ access, publish, deploy, push, release, machine-level config edits, global
 OpenCode config edits, external accounts, telemetry, private-data upload, or any other
 Owner-gated operation. Escalate Owner gates instead of executing them.
 
+{discovery}
+
 ## OpenCode activation behavior
 
 When the Owner gives a natural-language role-bind request, follow the G1 catalog
@@ -17075,6 +17239,7 @@ text before or after it.
         marker = OPENCODE_AIPLUS_INSTRUCTIONS_MARKER,
         config_path = OPENCODE_INSTRUCTIONS_CONFIG_PATH,
         rel_path = OPENCODE_INSTRUCTIONS_REL,
+        discovery = discovery_preamble_block(),
         catalog = role_trigger_catalog_content().trim()
     )
 }

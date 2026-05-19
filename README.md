@@ -188,6 +188,11 @@ clean. No more role pollution, no more shallow-each-hat. **The team comes with:*
   expensive tasks. Pricing comes from a community-maintained
   per-model table, with offline fallback and a local override for
   enterprise rates.
+- **Natural-language tool discovery** — `aiplus install` writes
+  project-local skill and preamble files so Codex, Claude Code,
+  and OpenCode know to call AiPlus MCP tools for cost, planning,
+  audit, routing, and team-status questions instead of bypassing
+  them with shell grep or generic advice.
 
 **Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
 where the seven modules above are *project-local*, the AiPlus-Work-with-Me template
@@ -288,6 +293,7 @@ Each adapter is project-local. We do not touch your global config.
 ```bash
 aiplus status                        # status across all modules
 aiplus doctor                        # health checks across all modules
+aiplus mcp-register --runtime codex  # expose agent_* tools to a runtime
 
 # Memory
 aiplus memory status
