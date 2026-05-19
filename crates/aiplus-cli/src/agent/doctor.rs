@@ -3,28 +3,33 @@ use crate::agent::core::load_team_config;
 use anyhow::Result;
 use std::process::Command;
 
-pub fn handle_doctor() -> Result<()> {
+pub fn handle_doctor(quiet: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
     let agents_dir = project_root.join(".aiplus").join("agents");
+    let mut out = DoctorOutput::new(quiet);
 
-    println!("Running agent team doctor...");
-    println!("Checking .aiplus/agents/ directory...");
+    out.info("Running agent team doctor...");
+    out.info("Checking .aiplus/agents/ directory...");
     match crate::agent::audit::verify_log::verify_dispatch_log(&project_root) {
-        Ok(report) => println!("  INFO dispatch_log_chain={}", report.doctor_status()),
-        Err(e) => println!("  INFO dispatch_log_chain=unavailable reason={e}"),
+        Ok(report) => out.info(format!(
+            "  INFO dispatch_log_chain={}",
+            report.doctor_status()
+        )),
+        Err(e) => out.info(format!("  INFO dispatch_log_chain=unavailable reason={e}")),
     }
-    println!("  INFO commit_signing={}", detect_commit_signing());
+    out.info(format!("  INFO commit_signing={}", detect_commit_signing()));
 
     if !agents_dir.exists() {
-        println!("  WARNING: .aiplus/agents/ does not exist");
+        out.warn("  WARNING: .aiplus/agents/ does not exist");
+        out.finish();
         return Ok(());
     }
 
     let state = load_team_config(&project_root)?;
-    println!("  Found {} agent config(s)", state.agents.len());
+    out.info(format!("  Found {} agent config(s)", state.agents.len()));
     match crate::agent::cache::disk_cache_status(&project_root) {
         Ok(status) => {
-            println!(
+            out.info(format!(
                 "  Disk cache: {} enforce_ttl={} ({})",
                 if status.enabled {
                     "enabled"
@@ -33,48 +38,53 @@ pub fn handle_doctor() -> Result<()> {
                 },
                 status.enforce_ttl,
                 status.project_dir.display()
-            );
+            ));
             if let Some(meta) = &status.meta {
                 let now = crate::agent::cache::current_epoch_millis();
                 for (role, entry) in &meta.roles {
                     let age_ms = now.saturating_sub(entry.last_used_at_ms);
-                    println!(
+                    out.info(format!(
                         "    INFO cache_age role={} age_seconds={} ttl_seconds={}",
                         role,
                         age_ms / 1000,
                         entry.ttl_seconds
-                    );
+                    ));
                     if status.enforce_ttl && age_ms > entry.ttl_seconds as u128 * 1000 {
-                        println!(
+                        out.warn(format!(
                             "    WARN cache_ttl_expired role={} age_seconds={} ttl_seconds={}",
                             role,
                             age_ms / 1000,
                             entry.ttl_seconds
-                        );
+                        ));
                     }
                 }
             }
             if let Some(warning) = status.sync_warning {
-                println!("    WARNING: {warning}");
+                out.warn(format!("    WARNING: {warning}"));
             }
         }
-        Err(e) => println!("  WARNING: disk cache status unavailable: {e}"),
+        Err(e) => out.warn(format!("  WARNING: disk cache status unavailable: {e}")),
     }
     for warning in crate::agent::cache::cache_warnings(&project_root) {
-        println!("  WARNING: disk cache {warning}");
+        out.warn(format!("  WARNING: disk cache {warning}"));
     }
     if should_warn_secret_broker_runtime_auth(&state) {
-        println!("  WARN_SECRET_BROKER_RUNTIME_AUTH");
-        println!("  Detected BWS backend + active agent-team roles, but no provider key in env.");
-        println!("  Adapter dispatch will fail with auth error.");
-        println!("  Fix: wrap your dispatch with");
-        println!(
+        out.warn("  WARN_SECRET_BROKER_RUNTIME_AUTH");
+        out.warn(
+            "  WARN Detected BWS backend + active agent-team roles, but no provider key in env.",
+        );
+        out.warn("  WARN Adapter dispatch will fail with auth error.");
+        out.warn("  WARN Fix: wrap your dispatch with");
+        out.warn(
             "    aiplus secret-broker run --aliases anthropic,openai -- aiplus agent route \"<task>\""
         );
-        println!("  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY in your shell once.");
+        out.warn("  WARN Or set ANTHROPIC_API_KEY / OPENAI_API_KEY in your shell once.");
     }
 
     for (role, config) in &state.agents {
+        if out.quiet {
+            continue;
+        }
         print!("  {} ({})", role, config.display_name);
         if config.stub {
             print!(" [STUB]");
@@ -103,14 +113,53 @@ pub fn handle_doctor() -> Result<()> {
     }
 
     if coordinator::thresholds_match_design() {
-        println!("  PASS coordinator scoring config valid");
-        println!("  PASS coordinator tier thresholds match DESIGN.md §9.2");
+        out.pass("  PASS coordinator scoring config valid");
+        out.pass("  PASS coordinator tier thresholds match DESIGN.md §9.2");
     } else {
-        println!("  WARNING: coordinator tier thresholds drift from DESIGN.md §9.2");
+        out.warn("  WARNING: coordinator tier thresholds drift from DESIGN.md §9.2");
     }
 
-    println!("Doctor check complete.");
+    out.info("Doctor check complete.");
+    out.finish();
     Ok(())
+}
+
+struct DoctorOutput {
+    quiet: bool,
+    warning_seen: bool,
+}
+
+impl DoctorOutput {
+    fn new(quiet: bool) -> Self {
+        Self {
+            quiet,
+            warning_seen: false,
+        }
+    }
+
+    fn info(&self, line: impl AsRef<str>) {
+        if !self.quiet {
+            println!("{}", line.as_ref());
+        }
+    }
+
+    fn pass(&self, line: impl AsRef<str>) {
+        if !self.quiet {
+            println!("{}", line.as_ref());
+        }
+    }
+
+    fn warn(&mut self, line: impl AsRef<str>) {
+        self.warning_seen = true;
+        println!("{}", line.as_ref());
+    }
+
+    fn finish(&self) {
+        println!(
+            "DOCTOR_STATUS={}",
+            if self.warning_seen { "WARN" } else { "PASS" }
+        );
+    }
 }
 
 fn should_warn_secret_broker_runtime_auth(state: &crate::agent::core::TeamState) -> bool {

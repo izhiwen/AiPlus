@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+
+cargo_version=$(grep -m1 '^version = ' crates/aiplus-cli/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+install_sh_version=$(grep -m1 'VERSION="${VERSION:-v' install.sh | sed 's/.*VERSION="${VERSION:-v\([^}"]*\)}".*/\1/')
+
+if [ "$cargo_version" != "$install_sh_version" ]; then
+  echo "ERROR: aiplus-cli Cargo.toml version ($cargo_version) does not match install.sh fallback (v$install_sh_version)"
+  echo "Either bump install.sh fallback OR revert Cargo.toml version change."
+  exit 1
+fi

@@ -1050,17 +1050,17 @@ fn run(command: Commands) -> Result<()> {
             auto_prompt,
             env_var,
             command,
-        } => command_secret_broker(
+        } => command_secret_broker(SecretBrokerCommandArgs {
             subcommand,
             arg,
-            print,
-            alias,
+            print_secret: print,
+            alias_flags: alias,
             aliases,
             to,
             auto_prompt,
             env_var,
             command,
-        ),
+        }),
         Commands::SelfCommand {
             subcommand,
             dry_run,
@@ -1722,7 +1722,7 @@ fn command_add_from_git(
         },
         &adapters,
         &installed,
-        &[module_name.clone()],
+        std::slice::from_ref(&module_name),
     )?;
 
     if dry_run {
@@ -2438,7 +2438,8 @@ fn dispatch_gate_doctor_status_from_fixture(fixture: &str) -> String {
             aiplus_core::consult::Tier::Heavy,
         );
         let gates = aiplus_core::consult::match_gates(&team, &matched, &sample.task);
-        if !gates.is_empty() != expected_gate {
+        let gate_found = !gates.is_empty();
+        if gate_found != expected_gate {
             let _ = sample.id;
             return "FAIL_FIXTURE_MISMATCH".to_string();
         }
@@ -6165,17 +6166,30 @@ fn skill_candidate_reject(id: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn command_secret_broker(
+struct SecretBrokerCommandArgs {
     subcommand: Option<String>,
     arg: Option<String>,
     print_secret: bool,
     alias_flags: Vec<String>,
-    aliases_csv: Option<String>,
+    aliases: Option<String>,
     to: Option<String>,
     auto_prompt: bool,
     env_var: Option<String>,
     command: Vec<String>,
-) -> Result<()> {
+}
+
+fn command_secret_broker(args: SecretBrokerCommandArgs) -> Result<()> {
+    let SecretBrokerCommandArgs {
+        subcommand,
+        arg,
+        print_secret,
+        alias_flags,
+        aliases: aliases_csv,
+        to,
+        auto_prompt,
+        env_var,
+        command,
+    } = args;
     match subcommand.as_deref() {
         Some("status") => secret_broker_status(),
         Some("doctor") => secret_broker_doctor(),
@@ -8219,7 +8233,7 @@ fn write_keychain_token(token: &str) -> Result<()> {
         Err(keyring::Error::NoStorageAccess(detail))
         | Err(keyring::Error::PlatformFailure(detail)) => Err(CliError::new(
             1,
-            &format!(
+            format!(
                 "TOKEN_SET_STATUS=FAIL reason=keyring_unavailable detail={detail}\n\
                  No usable OS keyring backend on this system. On Linux this usually \
                  means no Secret Service daemon (gnome-keyring / kwallet) is running, \
@@ -8230,7 +8244,7 @@ fn write_keychain_token(token: &str) -> Result<()> {
         .into()),
         Err(e) => Err(CliError::new(
             1,
-            &format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}"),
+            format!("TOKEN_SET_STATUS=FAIL reason=keyring_write_failed detail={e}"),
         )
         .into()),
     }
@@ -11270,8 +11284,7 @@ fn wrap_aieconlab_subagent(entry: &AielSubagentEntry, persona_body: &str) -> Str
     // YAML stays valid even if the manifest entry spans lines.
     let description = entry
         .description
-        .replace('\n', " ")
-        .replace('\r', " ")
+        .replace(['\n', '\r'], " ")
         .replace('"', "\\\"");
     format!(
         "---\nname: {name}\ndescription: \"{desc}\"\n---\n\n{body}",
@@ -11769,13 +11782,10 @@ fn prune_dir_if_empty(dir: &Path) {
     if !dir.is_dir() {
         return;
     }
-    match fs::read_dir(dir) {
-        Ok(mut it) => {
-            if it.next().is_none() {
-                let _ = fs::remove_dir(dir);
-            }
+    if let Ok(mut it) = fs::read_dir(dir) {
+        if it.next().is_none() {
+            let _ = fs::remove_dir(dir);
         }
-        Err(_) => {}
     }
 }
 
@@ -11787,8 +11797,7 @@ fn wrap_agent_team_subagent(entry: &AielSubagentEntry, persona_body: &str) -> St
     // YAML stays valid even if the manifest entry spans lines.
     let description = entry
         .description
-        .replace('\n', " ")
-        .replace('\r', " ")
+        .replace(['\n', '\r'], " ")
         .replace('"', "\\\"");
     format!(
         "---\nname: {name}\ndescription: \"{desc}\"\n---\n\n{body}",

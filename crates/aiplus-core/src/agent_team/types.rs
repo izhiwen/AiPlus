@@ -255,21 +255,10 @@ pub struct AuditRun {
 }
 
 /// Canary replay state entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CanaryState {
     pub audit_run_count: u64,
     pub last_canary_trigger: Option<String>,
     pub canary_dropped_this_run: u32,
     pub consecutive_drop_runs: u32,
-}
-
-impl Default for CanaryState {
-    fn default() -> Self {
-        Self {
-            audit_run_count: 0,
-            last_canary_trigger: None,
-            canary_dropped_this_run: 0,
-            consecutive_drop_runs: 0,
-        }
-    }
 }

@@ -99,19 +99,19 @@ pub fn handle_route(
 
                 let sidecars = requested_sidecars(canonical_role);
                 if sidecars.is_empty() {
-                    route_known_role(
-                        &project_root,
-                        canonical_role,
+                    let _ = route_known_role(RouteKnownRoleArgs {
+                        project_root: &project_root,
+                        role: canonical_role,
                         role_input,
                         task,
                         config,
-                        None,
-                        DispatchKind::Primary,
-                        None,
-                        true,
-                    )?;
+                        batch_id: None,
+                        kind: DispatchKind::Primary,
+                        pool: None,
+                        consult_after_dispatch: true,
+                    })?;
                 } else {
-                    route_batch(
+                    let _ = route_batch(
                         &project_root,
                         canonical_role,
                         role_input,
@@ -136,7 +136,7 @@ pub fn handle_route(
                     format!("{candidate} {task}")
                 };
                 let project_root = std::env::current_dir()?;
-                return run_adaptive_route(&project_root, &full_task, &approved);
+                return run_adaptive_route(&project_root, &full_task, &approved).map(|_| ());
             }
         }
     }
@@ -146,10 +146,14 @@ pub fn handle_route(
         ));
     }
     let project_root = std::env::current_dir()?;
-    run_adaptive_route(&project_root, task, &approved)
+    run_adaptive_route(&project_root, task, &approved).map(|_| ())
 }
 
-fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<String>) -> Result<()> {
+fn run_adaptive_route(
+    project_root: &Path,
+    task: &str,
+    approved: &BTreeSet<String>,
+) -> Result<Vec<AdapterResult>> {
     let task = task.trim();
     if task.is_empty() {
         return Err(anyhow!("agent route requires a task when ROLE is omitted"));
@@ -198,13 +202,13 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
 
     if plan.tier == CoordinatorTier::LightNoCode {
         println!("Execute step: CEO handles directly; no worktree staffing required.");
-        let _ = state::record_dispatch(
+        let dispatch_id = state::record_dispatch(
             project_root,
             "ceo",
             task,
             "aiplus agent route adaptive-coordinator",
-        );
-        return Ok(());
+        )?;
+        return Ok(vec![AdapterResult::dispatch_only(dispatch_id)]);
     }
 
     let batch_id = format!(
@@ -216,12 +220,12 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         "Execute step: dispatching {} staffed role(s) with batch {batch_id}",
         plan.staffing_roles.len()
     );
-    coordinator_batch(project_root, task, &plan.staffing_roles, &batch_id)?;
+    let results = coordinator_batch(project_root, task, &plan.staffing_roles, &batch_id)?;
     println!(
         "Adaptive coordinator dispatch complete: tier={}",
         plan.tier.as_str()
     );
-    Ok(())
+    Ok(results)
 }
 
 fn run_score_only_route(project_root: &Path, task: &str) -> Result<()> {
@@ -288,7 +292,7 @@ fn record_coordinator_decision(
     let ttl_expired = coordinator_decision_ttl_expired(project_root, plan, mode);
     let decision_id = format!("coord-{}", aiplus_core::epoch_millis());
     let line = serde_json::json!({
-        "schemaVersion": "0.3.0",
+        "schemaVersion": "0.4.0",
         "event": "coordinator_decision",
         "decisionId": decision_id,
         "timestamp": aiplus_core::now_iso(),
@@ -469,17 +473,17 @@ fn run_author_critic_fixer(
          Original task:\n{task}"
     );
     println!("  Phase 1/3 author: dispatching {role} for v1 draft");
-    route_known_role(
+    route_known_role(RouteKnownRoleArgs {
         project_root,
         role,
         role_input,
-        &author_task,
+        task: &author_task,
         config,
-        Some(&workflow_run_id),
-        DispatchKind::Primary,
-        None,
-        true,
-    )?;
+        batch_id: Some(&workflow_run_id),
+        kind: DispatchKind::Primary,
+        pool: None,
+        consult_after_dispatch: true,
+    })?;
     record_workflow_phase(
         project_root,
         &workflow_run_id,
@@ -498,17 +502,17 @@ fn run_author_critic_fixer(
          Original task:\n{task}"
     );
     println!("  Phase 2/3 critic: dispatching independent {critic_role}");
-    route_known_role(
+    route_known_role(RouteKnownRoleArgs {
         project_root,
-        critic_role,
-        None,
-        &critic_task,
-        critic_config,
-        Some(&workflow_run_id),
-        DispatchKind::Sidecar,
-        None,
-        true,
-    )?;
+        role: critic_role,
+        role_input: None,
+        task: &critic_task,
+        config: critic_config,
+        batch_id: Some(&workflow_run_id),
+        kind: DispatchKind::Sidecar,
+        pool: None,
+        consult_after_dispatch: true,
+    })?;
     record_workflow_phase(
         project_root,
         &workflow_run_id,
@@ -528,17 +532,17 @@ fn run_author_critic_fixer(
          Original task:\n{task}"
     );
     println!("  Phase 3/3 fixer: dispatching {role} for v2 draft");
-    route_known_role(
+    route_known_role(RouteKnownRoleArgs {
         project_root,
         role,
         role_input,
-        &fixer_task,
-        fixer_config,
-        Some(&workflow_run_id),
-        DispatchKind::Primary,
-        None,
-        true,
-    )?;
+        task: &fixer_task,
+        config: fixer_config,
+        batch_id: Some(&workflow_run_id),
+        kind: DispatchKind::Primary,
+        pool: None,
+        consult_after_dispatch: true,
+    })?;
     record_workflow_phase(
         project_root,
         &workflow_run_id,
@@ -596,6 +600,33 @@ enum DispatchKind {
     CoordinatorPeer,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AdapterResult {
+    pub schema_version: String,
+    pub session_id: String,
+    pub stdout_raw: String,
+    pub tool_calls: Option<serde_json::Value>,
+    pub final_text: String,
+    pub usage_tokens: Option<serde_json::Value>,
+    pub exit_status: String,
+    pub partial: bool,
+}
+
+impl AdapterResult {
+    fn dispatch_only(session_id: String) -> Self {
+        Self {
+            schema_version: "1.0".to_string(),
+            session_id,
+            stdout_raw: String::new(),
+            tool_calls: None,
+            final_text: String::new(),
+            usage_tokens: None,
+            exit_status: "OK".to_string(),
+            partial: false,
+        }
+    }
+}
+
 impl DispatchKind {
     fn as_str(self) -> &'static str {
         match self {
@@ -626,7 +657,7 @@ fn route_batch(
     task: &str,
     primary_config: AgentConfig,
     sidecars: Vec<String>,
-) -> Result<()> {
+) -> Result<Vec<AdapterResult>> {
     let batch_id = format!(
         "batch-{}-{}",
         aiplus_core::epoch_millis(),
@@ -647,17 +678,17 @@ fn route_batch(
         let batch_id = batch_id.clone();
         let pool = Arc::clone(&pool);
         handles.push(thread::spawn(move || {
-            route_known_role(
-                &project_root,
-                &role,
-                role_input.as_deref(),
-                &task,
-                primary_config,
-                Some(&batch_id),
-                DispatchKind::Primary,
-                Some(pool),
-                true,
-            )
+            route_known_role(RouteKnownRoleArgs {
+                project_root: &project_root,
+                role: &role,
+                role_input: role_input.as_deref(),
+                task: &task,
+                config: primary_config,
+                batch_id: Some(&batch_id),
+                kind: DispatchKind::Primary,
+                pool: Some(pool),
+                consult_after_dispatch: true,
+            })
         }));
     }
 
@@ -668,27 +699,28 @@ fn route_batch(
         let pool = Arc::clone(&pool);
         handles.push(thread::spawn(move || {
             let config = get_role_config_for_project(&project_root, &sidecar)?;
-            route_known_role(
-                &project_root,
-                &sidecar,
-                None,
-                &task,
+            route_known_role(RouteKnownRoleArgs {
+                project_root: &project_root,
+                role: &sidecar,
+                role_input: None,
+                task: &task,
                 config,
-                Some(&batch_id),
-                DispatchKind::Sidecar,
-                Some(pool),
-                true,
-            )
+                batch_id: Some(&batch_id),
+                kind: DispatchKind::Sidecar,
+                pool: Some(pool),
+                consult_after_dispatch: true,
+            })
         }));
     }
 
+    let mut results = Vec::new();
     for handle in handles {
         match handle.join() {
-            Ok(result) => result?,
+            Ok(result) => results.push(result?),
             Err(_) => return Err(anyhow!("dispatch batch worker panicked")),
         }
     }
-    Ok(())
+    Ok(results)
 }
 
 fn coordinator_batch(
@@ -696,7 +728,7 @@ fn coordinator_batch(
     task: &str,
     staffing_roles: &[String],
     batch_id: &str,
-) -> Result<()> {
+) -> Result<Vec<AdapterResult>> {
     println!(
         "Coordinator batch {batch_id}: peers=[{}]",
         staffing_roles.join(",")
@@ -716,32 +748,33 @@ fn coordinator_batch(
             role.clone(),
             thread::spawn(move || {
                 let config = get_role_config_for_project(&project_root, &role)?;
-                route_known_role(
-                    &project_root,
-                    &role,
-                    None,
-                    &role_task,
+                route_known_role(RouteKnownRoleArgs {
+                    project_root: &project_root,
+                    role: &role,
+                    role_input: None,
+                    task: &role_task,
                     config,
-                    Some(&batch_id),
-                    DispatchKind::CoordinatorPeer,
-                    Some(pool),
-                    false,
-                )
+                    batch_id: Some(&batch_id),
+                    kind: DispatchKind::CoordinatorPeer,
+                    pool: Some(pool),
+                    consult_after_dispatch: false,
+                })
             }),
         ));
     }
 
     let mut failures = Vec::new();
+    let mut results = Vec::new();
     for (role, handle) in handles {
         match handle.join() {
-            Ok(Ok(())) => {}
+            Ok(Ok(result)) => results.push(result),
             Ok(Err(e)) => failures.push(format!("{role}: {e}")),
             Err(_) => failures.push(format!("{role}: worker panicked")),
         }
     }
 
     if failures.is_empty() {
-        return Ok(());
+        return Ok(results);
     }
 
     println!(
@@ -766,17 +799,30 @@ fn sidecar_task(role: &str, task: &str) -> String {
     }
 }
 
-fn route_known_role(
-    project_root: &Path,
-    role: &str,
-    role_input: Option<&str>,
-    task: &str,
+struct RouteKnownRoleArgs<'a> {
+    project_root: &'a Path,
+    role: &'a str,
+    role_input: Option<&'a str>,
+    task: &'a str,
     config: AgentConfig,
-    batch_id: Option<&str>,
+    batch_id: Option<&'a str>,
     kind: DispatchKind,
     pool: Option<Arc<Mutex<WorktreePool>>>,
     consult_after_dispatch: bool,
-) -> Result<()> {
+}
+
+fn route_known_role(args: RouteKnownRoleArgs<'_>) -> Result<AdapterResult> {
+    let RouteKnownRoleArgs {
+        project_root,
+        role,
+        role_input,
+        task,
+        config,
+        batch_id,
+        kind,
+        pool,
+        consult_after_dispatch,
+    } = args;
     let started = Instant::now();
     maybe_delay_for_perf_fixture(role);
     println!("Routing task to {}: {}", role, task);
@@ -793,13 +839,15 @@ fn route_known_role(
         );
         record_dispatch_metric(
             project_root,
-            batch_id,
-            role,
-            kind,
-            "fail",
-            "fixture_failed",
-            false,
-            started.elapsed(),
+            DispatchMetric {
+                batch_id,
+                role,
+                kind,
+                outcome: "fail",
+                worktree_status: "fixture_failed",
+                cache_invalidated: false,
+                elapsed: started.elapsed(),
+            },
         );
         return Err(anyhow!("{reason}"));
     }
@@ -873,13 +921,15 @@ fn route_known_role(
                 );
                 record_dispatch_metric(
                     project_root,
-                    batch_id,
-                    role,
-                    kind,
-                    "fail",
-                    &worktree_status,
-                    cache_invalidated,
-                    started.elapsed(),
+                    DispatchMetric {
+                        batch_id,
+                        role,
+                        kind,
+                        outcome: "fail",
+                        worktree_status: &worktree_status,
+                        cache_invalidated,
+                        elapsed: started.elapsed(),
+                    },
                 );
                 return Err(e);
             }
@@ -900,11 +950,16 @@ fn route_known_role(
     } else {
         state::record_dispatch(project_root, role, task, "aiplus agent route")
     };
-    if let Err(e) = dispatch_result {
-        eprintln!("  WARN: failed to record dispatch: {e}");
-    } else {
-        println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
-    }
+    let dispatch_id = match dispatch_result {
+        Ok(dispatch_id) => {
+            println!("  Dispatch recorded: .aiplus/agents/dispatch-log.jsonl");
+            dispatch_id
+        }
+        Err(e) => {
+            eprintln!("  WARN: failed to record dispatch: {e}");
+            format!("dispatch-unrecorded-{}-{role}", aiplus_core::epoch_millis())
+        }
+    };
     // S7: surface this role's secret needs so the agent
     // that receives the dispatch knows which broker
     // aliases to pull. We do NOT auto-resolve here (that
@@ -929,15 +984,17 @@ fn route_known_role(
     }
     record_dispatch_metric(
         project_root,
-        batch_id,
-        role,
-        kind,
-        "success",
-        &worktree_status,
-        cache_invalidated,
-        started.elapsed(),
+        DispatchMetric {
+            batch_id,
+            role,
+            kind,
+            outcome: "success",
+            worktree_status: &worktree_status,
+            cache_invalidated,
+            elapsed: started.elapsed(),
+        },
     );
-    Ok(())
+    Ok(AdapterResult::dispatch_only(dispatch_id))
 }
 
 fn maybe_delay_for_perf_fixture(role: &str) {
@@ -968,16 +1025,26 @@ fn perf_fixture_failure(role: &str) -> Option<String> {
     matched.then(|| format!("perf fixture requested failure for role {role}"))
 }
 
-fn record_dispatch_metric(
-    project_root: &Path,
-    batch_id: Option<&str>,
-    role: &str,
+struct DispatchMetric<'a> {
+    batch_id: Option<&'a str>,
+    role: &'a str,
     kind: DispatchKind,
-    outcome: &str,
-    worktree_status: &str,
+    outcome: &'a str,
+    worktree_status: &'a str,
     cache_invalidated: bool,
     elapsed: Duration,
-) {
+}
+
+fn record_dispatch_metric(project_root: &Path, metric: DispatchMetric<'_>) {
+    let DispatchMetric {
+        batch_id,
+        role,
+        kind,
+        outcome,
+        worktree_status,
+        cache_invalidated,
+        elapsed,
+    } = metric;
     let Some(batch_id) = batch_id else {
         return;
     };
@@ -1165,4 +1232,23 @@ fn run_consult(project_root: &std::path::Path, role: &str, task: &str) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_only_adapter_result_matches_contract_shape() {
+        let result = AdapterResult::dispatch_only("dispatch-1-engineer-a".to_string());
+
+        assert_eq!(result.schema_version, "1.0");
+        assert_eq!(result.session_id, "dispatch-1-engineer-a");
+        assert_eq!(result.exit_status, "OK");
+        assert!(!result.partial);
+        assert!(result.stdout_raw.is_empty());
+        assert!(result.final_text.is_empty());
+        assert!(result.tool_calls.is_none());
+        assert!(result.usage_tokens.is_none());
+    }
 }

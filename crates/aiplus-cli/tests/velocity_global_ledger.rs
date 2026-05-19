@@ -20,6 +20,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+type CompletionFailures = Vec<(i32, String)>;
+type CompletionWrites = Vec<(String, String, String)>;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_aiplus")
 }
@@ -322,41 +325,39 @@ fn global_ledger_concurrency_stress() {
     let mut handles = Vec::new();
     for (p, tids) in grouped {
         let env_pairs = env_pairs.clone();
-        let h = std::thread::spawn(
-            move || -> (Vec<(i32, String)>, Vec<(String, String, String)>) {
-                let mut fails = Vec::new();
-                let mut writes = Vec::new();
-                for tid in tids {
-                    let out = Command::new(bin())
-                        .args([
-                            "velocity",
-                            "complete",
-                            "--task-id",
-                            &tid,
-                            "--actual",
-                            "10m",
-                            "--outcome",
-                            "pass",
-                        ])
-                        .current_dir(&p)
-                        .envs(env_pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-                        .output()
-                        .expect("run aiplus velocity complete");
-                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-                    let global_write = stdout
-                        .lines()
-                        .find_map(|l| l.strip_prefix("GLOBAL_WRITE="))
-                        .unwrap_or("?")
-                        .to_string();
-                    writes.push((tid.clone(), global_write, stderr.clone()));
-                    if !out.status.success() {
-                        fails.push((out.status.code().unwrap_or(-1), stderr));
-                    }
+        let h = std::thread::spawn(move || -> (CompletionFailures, CompletionWrites) {
+            let mut fails = Vec::new();
+            let mut writes = Vec::new();
+            for tid in tids {
+                let out = Command::new(bin())
+                    .args([
+                        "velocity",
+                        "complete",
+                        "--task-id",
+                        &tid,
+                        "--actual",
+                        "10m",
+                        "--outcome",
+                        "pass",
+                    ])
+                    .current_dir(&p)
+                    .envs(env_pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                    .output()
+                    .expect("run aiplus velocity complete");
+                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                let global_write = stdout
+                    .lines()
+                    .find_map(|l| l.strip_prefix("GLOBAL_WRITE="))
+                    .unwrap_or("?")
+                    .to_string();
+                writes.push((tid.clone(), global_write, stderr.clone()));
+                if !out.status.success() {
+                    fails.push((out.status.code().unwrap_or(-1), stderr));
                 }
-                (fails, writes)
-            },
-        );
+            }
+            (fails, writes)
+        });
         handles.push(h);
     }
     let mut all_fails: Vec<(i32, String)> = Vec::new();

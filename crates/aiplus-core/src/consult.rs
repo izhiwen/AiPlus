@@ -989,7 +989,7 @@ const ACTION_BOUNDARY_PUNCTUATION: &[char] = &[',', ';', '.', '\n'];
 
 fn split_gate_clauses(text: &str) -> Vec<&str> {
     let mut clauses = Vec::new();
-    for part in text.split(|ch: char| matches!(ch, '\n' | '.' | ';')) {
+    for part in text.split(['\n', '.', ';']) {
         clauses.extend(split_action_boundary_clauses(part));
     }
     clauses
@@ -1132,13 +1132,11 @@ fn gate_kind_for_id(id: &str) -> Option<GateKind> {
 }
 
 fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> GateDecision {
-    let mut mentioned = false;
     for span in spans {
         let clause = span.text.to_lowercase();
         if !mentions_gate_kind(&clause, kind) {
             continue;
         }
-        mentioned = true;
         if has_explicit_gate_execution_context(&clause, kind) {
             return GateDecision::Fire;
         }
@@ -1162,11 +1160,8 @@ fn semantic_gate_decision(task: &str, spans: &[TextSpan], kind: GateKind) -> Gat
             continue;
         }
     }
-    if mentioned || gate_mentioned(task, "", kind) {
-        GateDecision::Ignore
-    } else {
-        GateDecision::Ignore
-    }
+    let _ = task;
+    GateDecision::Ignore
 }
 
 fn semantic_stop_gate_decision(task: &str, spans: &[TextSpan], patterns: &[String]) -> bool {

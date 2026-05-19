@@ -184,8 +184,8 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
         30,
         31,
     ];
-    for m in 0..(month as usize - 1) {
-        days += month_days[m];
+    for month_length in month_days.iter().take(month as usize - 1) {
+        days += month_length;
     }
     days += day - 1;
     let seconds = days * 86400 + hour * 3600 + min * 60 + sec;
@@ -193,7 +193,7 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
 }
 
 fn is_leap(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 #[cfg(test)]

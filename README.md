@@ -355,6 +355,17 @@ AiPlus stays inside your project. It does not:
 Validation is structural and heuristic. It is not a safety or compliance
 certification.
 
+## Development hooks
+
+Contributors can install the optional local pre-commit hook:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+The hook refuses commits when `crates/aiplus-cli/Cargo.toml`'s package version
+and the `install.sh` fallback version drift apart.
+
 ## Private profiles
 
 AiPlus supports optional user-level private profiles for personal preferences
