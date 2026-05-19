@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+## 0.6.8
+
+### Bug fixes (userland-test discoveries)
+
+- **`aiplus mcp-register --runtime claude-code`** is now accepted as
+  a synonym for `--runtime claude` (previously rejected with "Valid:
+  codex, claude, opencode"). This matches the runtime name used by
+  `aiplus install claude-code` and the README. Both `claude` and
+  `claude-code` forms work; help text now lists both.
+- **`aiplus doctor --quiet`** (alias `-q`) is now a real flag. v0.6.5
+  CHANGELOG documented this feature but the binary rejected the flag
+  (clap variant was never updated). Now: emits only NEEDS_FIX items
+  and the final `DOCTOR_STATUS` line; suppresses successful/INFO
+  detail lines.
+- **`aiplus mcp-register` now honors `CODEX_HOME` and
+  `CLAUDE_CONFIG_DIR` env vars** before falling back to the default
+  config paths (`~/.codex/config.toml`, `~/.claude/.mcp.json` etc.).
+  A new `--config-dir <path>` flag provides explicit override. This
+  enables safe isolated testing without touching the user's real
+  configuration directory. (Previously hard-coded to `~/.codex/`
+  etc., which silently mutated user config during CI / dev test
+  setup.)
+- **Expert auto-summoning by LLM intent now works in practice.**
+  v0.6.5 G-AT-AUTOSUMMON-INTENT-1 shipped the feature but it failed
+  silently on real userland: `auto_summoned=[]` despite valid
+  `intent_hint` and API keys in env. Root cause was provider-
+  selection: the classifier only tried Anthropic Haiku, and silently
+  returned empty when only `OPENAI_API_KEY` was available. Fix:
+  classifier now tries both providers (Anthropic preferred,
+  OpenAI fallback), and surfaces `skipped=<reason>` or
+  `failed=<error>` warnings on the CLI output line + in the
+  `dispatch-log.jsonl` `warnings` field. Users now see why auto-
+  summon did or didn't fire.
+
+### Internal
+
+- `crates/aiplus-cli/tests/userland_bugfix.rs`: 5 new regression
+  tests covering each of the four bugs above. Future Phase C
+  ratifications can re-run these specific tests to verify userland
+  command paths haven't regressed.
+- `install.sh` fallback bumped to `v0.6.8` (parity test).
+- Test growth: 574 → 579 workspace tests.
+
+### Documentation
+
+- README + README.zh-CN: `claude-code` runtime naming clarified.
+
+### Migration notes
+
+- No breaking CLI changes.
+- Auto-summon previously returning `[]` will now return matched
+  experts (when intent matches by LLM). If you have downstream
+  consumers that depended on the empty result, they'll see new
+  entries.
+- `--quiet` is a new doctor flag; default doctor output unchanged.
+- mcp-register on default-config-dir setups: behavior unchanged.
+  Only matters if `CODEX_HOME` / `CLAUDE_CONFIG_DIR` is set, in
+  which case those paths are now honored (more intuitive).
+
 ## 0.6.7
 
 ### Features — Agent discoverability via MCP
