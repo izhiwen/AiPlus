@@ -155,6 +155,39 @@ clean. No more role pollution, no more shallow-each-hat. **The team comes with:*
   side by side, and each role's workspace stays ready between tasks
   instead of being rebuilt every turn. Typical iterations land in
   ~8-10 min instead of ~15-20, same quality bar.
+- **Adaptive staffing** — the coordinator reads each task, scores
+  its complexity (1-5) and risk (0.0-1.0), and scales the team
+  accordingly: trivial questions get answered directly, mid-size
+  changes pull in one engineer, high-risk or large work fires a
+  full HEAVY team. High-risk tasks also pull a reviewer (and QA at
+  very high risk) regardless of tier. Run `aiplus agent route
+  --score-only "<task>"` to pre-flight any task without spending
+  tokens.
+- **LLM-judged expert auto-summon** — when a task touches a domain
+  with a designated expert (security / docs / LLM integration),
+  the coordinator asks a small classification model "does this
+  task match this expert's intent?" and joins the matching expert
+  to the team. Replaces brittle keyword matching with semantic
+  understanding. Configure new experts by adding an `intent_hint`
+  string to their role TOML.
+- **HEAVY tasks dispatch in parallel** — when the coordinator
+  staffs 6 roles for a HEAVY task, they run concurrently across
+  runtimes instead of one-at-a-time. ~5.7× faster end-to-end
+  dispatch overhead than serial.
+- **Tamper-evident audit log** — every coordinator decision is
+  written into a sha256-chained log. `aiplus agent audit
+  verify-log` walks the chain and surfaces any line that was
+  edited or removed after the fact.
+- **Hardware-backed commit signing** — on macOS, `aiplus identity
+  setup-signing` configures git to sign your commits with a
+  Secure Enclave-backed SSH key. Passwordless, biometric-gated,
+  no YubiKey purchase needed.
+- **Token cost rollups** — `aiplus agent token-cost` reads the
+  dispatch log and shows tokens consumed plus USD cost for the
+  past 1-hour / 8-hour / 24-hour windows, with a top-5 most
+  expensive tasks. Pricing comes from a community-maintained
+  per-model table, with offline fallback and a local override for
+  enterprise rates.
 
 **Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
 where the six modules above are *project-local*, the AiPlus-Work-with-Me template
@@ -274,14 +307,27 @@ aiplus velocity report
 
 # Agent Team
 aiplus agent status              # Show team status
-aiplus agent route engineer-a    # Assign task to engineer-a
+aiplus agent route engineer-a    # Assign task to a specific role
+aiplus agent route "<task>"      # Auto-staffed dispatch (coordinator picks roles)
+aiplus agent route --score-only "<task>"  # Pre-flight: see who would be staffed, no dispatch
 aiplus agent integrate engineer-a # Merge work back
 aiplus agent audit run           # Run acceptance audit
+aiplus agent audit verify-log    # Verify dispatch-log hash chain (tamper detection)
+aiplus agent token-cost          # Tokens + USD cost rollups (1h / 8h / 24h)
+aiplus agent token-cost --by-role # Per-role breakdown
 aiplus agent talk <role>
 aiplus agent invite <role>
 aiplus agent dismiss <role>
 aiplus agent transcript
 aiplus agent prune-worktrees
+
+# Identity (commit signing)
+aiplus identity setup-signing --dry-run   # Preview Secure Enclave commit signing setup (macOS)
+aiplus identity setup-signing             # Apply it
+
+# Doctor
+aiplus doctor                    # Full health check
+aiplus doctor --quiet            # Only WARN and FAIL (suppress INFO chatter)
 
 # Updates
 aiplus update all
@@ -347,10 +393,24 @@ AiPlus stays inside your project. It does not:
 
 - upload project data, prompts, or transcripts
 - emit telemetry, sync to cloud, or call external services
-- edit global agent configuration
+- edit global agent configuration (except `aiplus identity
+  setup-signing`, which is the one Owner-explicitly-invoked
+  subcommand that writes git signing config; it refuses to
+  clobber existing config, and `--dry-run` previews what it
+  would change)
 - store secrets in memory, compact files, or ledgers
 - approve Owner-gated actions on its own
 - publish packages, create tags, or push releases
+
+Defenses worth knowing about:
+
+- **Dispatch log is hash-chained** — `aiplus agent audit
+  verify-log` detects any post-hoc edit or removal in
+  `.aiplus/agents/dispatch-log.jsonl`.
+- **Mac Secure Enclave commit signing** — opt-in via `aiplus
+  identity setup-signing`; the signing key never leaves the
+  hardware enclave, so a compromised disk can't be used to
+  forge commits.
 
 Validation is structural and heuristic. It is not a safety or compliance
 certification.
