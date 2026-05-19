@@ -6,14 +6,15 @@
 # Environment overrides:
 #   $env:AIPLUS_VERSION      Release tag (e.g. "v0.5.10"); default = latest GitHub release
 #   $env:AIPLUS_INSTALL_DIR  Install directory; default = $HOME\.local\bin
+#   $env:AIPLUS_BASE_URL     Override release asset base URL for local demos/tests
 #
 # Safety boundaries (parity with install.sh):
 #   - Downloads only the official GitHub Release asset and its checksum.
 #   - Verifies SHA-256 against the published checksums.txt before installing.
-#   - Installs only the `aiplus.exe` binary. Does not touch your PATH,
-#     PowerShell profile, sudo, Defender exclusions, or any global Codex /
-#     Claude Code / OpenCode config. Does not collect telemetry or upload
-#     data.
+#   - Installs `aiplus.exe` plus `aiplus-token-cost.exe` when present in
+#     the archive. Does not touch your PATH, PowerShell profile, sudo,
+#     Defender exclusions, or any global Codex / Claude Code / OpenCode
+#     config. Does not collect telemetry or upload data.
 
 [CmdletBinding()]
 param(
@@ -35,12 +36,12 @@ if (-not $Version) {
             -Uri "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $latest.tag_name
     } catch {
-        Write-Warning "Could not query latest release; falling back to v0.5.10"
-        $Version = "v0.5.10"
+        Write-Warning "Could not query latest release; falling back to v0.6.5"
+        $Version = "v0.6.5"
     }
 }
 $Version = $Version.Trim()
-if (-not $Version) { $Version = "v0.5.10" }
+if (-not $Version) { $Version = "v0.6.5" }
 
 # --- 2. Resolve install dir ---------------------------------------------------
 $InstallDir = $env:AIPLUS_INSTALL_DIR
@@ -54,10 +55,14 @@ Write-Host "version=$Version"
 Write-Host "asset=$Asset"
 Write-Host "install_dir=$InstallDir"
 Write-Host "writes=$InstallDir\aiplus.exe"
+Write-Host "writes=$InstallDir\aiplus-token-cost.exe"
 Write-Host "shell_profile_edits=none"
 Write-Host "telemetry=none"
 
-$BaseUrl = "https://github.com/$Repo/releases/download/$Version"
+$BaseUrl = $env:AIPLUS_BASE_URL
+if (-not $BaseUrl) {
+    $BaseUrl = "https://github.com/$Repo/releases/download/$Version"
+}
 
 if ($DryRun) {
     Write-Host "DRY_RUN=YES"
@@ -73,8 +78,8 @@ try {
     $ChecksumsPath = Join-Path $Tmp "checksums.txt"
 
     Write-Host "Downloading $Asset ..."
-    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Asset"           -OutFile $AssetPath
-    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/checksums.txt"   -OutFile $ChecksumsPath
+    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Asset" -OutFile $AssetPath
+    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/checksums.txt" -OutFile $ChecksumsPath
 
     # --- 5. Verify SHA-256 ----------------------------------------------------
     $expected = (Get-Content $ChecksumsPath |
@@ -94,6 +99,7 @@ try {
     $ExtractDir = Join-Path $Tmp "extract"
     Expand-Archive -Path $AssetPath -DestinationPath $ExtractDir -Force
     $Bin = Get-ChildItem -Path $ExtractDir -Filter "aiplus.exe" -Recurse | Select-Object -First 1
+    $TokenCostBin = Get-ChildItem -Path $ExtractDir -Filter "aiplus-token-cost.exe" -Recurse | Select-Object -First 1
     if (-not $Bin) {
         throw "ERROR release archive did not contain aiplus.exe"
     }
@@ -103,9 +109,17 @@ try {
         New-Item -ItemType Directory -Path $InstallDir | Out-Null
     }
     Copy-Item -Path $Bin.FullName -Destination (Join-Path $InstallDir "aiplus.exe") -Force
+    if ($TokenCostBin) {
+        Copy-Item -Path $TokenCostBin.FullName -Destination (Join-Path $InstallDir "aiplus-token-cost.exe") -Force
+    }
 
     Write-Host "INSTALL_STATUS=PASS"
     Write-Host "installed=$InstallDir\aiplus.exe"
+    if ($TokenCostBin) {
+        Write-Host "installed=$InstallDir\aiplus-token-cost.exe"
+    } else {
+        Write-Host "OPTIONAL_NOTICE=aiplus-token-cost.exe not found in archive; installed aiplus.exe only"
+    }
 
     # --- 8. PATH advisory (do NOT auto-edit the user's profile) ---------------
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")

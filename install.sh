@@ -38,6 +38,7 @@ Environment:
   AIPLUS_VERSION       Release version to install, default latest GitHub release
   AIPLUS_INSTALL_DIR   Install directory, default $HOME/.local/bin
   AIPLUS_REGISTER_MCP  "yes" / "no" — same as flags, but settable from CI etc.
+  AIPLUS_BASE_URL      Override release asset base URL for local demos/tests
 
 Flags:
   --dry-run             Print what would happen without writing
@@ -47,9 +48,9 @@ Flags:
   -h, --help            Show this help
 
 The installer downloads a GitHub Release asset, verifies checksums.txt, and
-installs only the aiplus binary. It does not edit shell profiles, require sudo,
-install project modules, upload data, collect telemetry, or modify global
-Codex/Claude Code/OpenCode config.
+installs the aiplus binary plus aiplus-token-cost when present in the archive.
+It does not edit shell profiles, require sudo, install project modules, upload
+data, collect telemetry, or modify global Codex/Claude Code/OpenCode config.
 
 Supported platforms (auto-detected by uname):
   Darwin arm64 / aarch64           macOS Apple Silicon
@@ -148,7 +149,7 @@ else
 fi
 
 ASSET="$(detect_asset)"
-BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
+BASE_URL="${AIPLUS_BASE_URL:-https://github.com/$REPO/releases/download/$VERSION}"
 TMP_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -160,6 +161,7 @@ echo "version=$VERSION"
 echo "asset=$ASSET"
 echo "install_dir=$INSTALL_DIR"
 echo "writes=$INSTALL_DIR/aiplus"
+echo "writes=$INSTALL_DIR/aiplus-token-cost"
 echo "shell_profile_edits=none"
 echo "telemetry=none"
 
@@ -176,21 +178,29 @@ sha256_verify "$TMP_DIR/checksums.txt" "$TMP_DIR/$ASSET"
 
 mkdir -p "$TMP_DIR/extract"
 case "$ASSET" in
-  *.tar.gz)
-    tar -xzf "$TMP_DIR/$ASSET" -C "$TMP_DIR/extract"
-    BIN="$TMP_DIR/extract/aiplus"
-    if [ ! -f "$BIN" ]; then
-      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus | head -n 1)"
-    fi
-    ;;
-  *.zip)
-    need_cmd unzip
-    unzip -q "$TMP_DIR/$ASSET" -d "$TMP_DIR/extract"
-    BIN="$TMP_DIR/extract/aiplus.exe"
-    if [ ! -f "$BIN" ]; then
-      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus.exe | head -n 1)"
-    fi
-    ;;
+	  *.tar.gz)
+	    tar -xzf "$TMP_DIR/$ASSET" -C "$TMP_DIR/extract"
+	    BIN="$TMP_DIR/extract/aiplus"
+	    TOKEN_COST_BIN="$TMP_DIR/extract/aiplus-token-cost"
+	    if [ ! -f "$BIN" ]; then
+	      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus | head -n 1)"
+	    fi
+	    if [ ! -f "$TOKEN_COST_BIN" ]; then
+	      TOKEN_COST_BIN="$(find "$TMP_DIR/extract" -type f -name aiplus-token-cost | head -n 1)"
+	    fi
+	    ;;
+	  *.zip)
+	    need_cmd unzip
+	    unzip -q "$TMP_DIR/$ASSET" -d "$TMP_DIR/extract"
+	    BIN="$TMP_DIR/extract/aiplus.exe"
+	    TOKEN_COST_BIN="$TMP_DIR/extract/aiplus-token-cost.exe"
+	    if [ ! -f "$BIN" ]; then
+	      BIN="$(find "$TMP_DIR/extract" -type f -name aiplus.exe | head -n 1)"
+	    fi
+	    if [ ! -f "$TOKEN_COST_BIN" ]; then
+	      TOKEN_COST_BIN="$(find "$TMP_DIR/extract" -type f -name aiplus-token-cost.exe | head -n 1)"
+	    fi
+	    ;;
   *)
     echo "ERROR unsupported asset extension: $ASSET" >&2
     exit 1
@@ -206,9 +216,22 @@ mkdir -p "$INSTALL_DIR"
 chmod 755 "$BIN"
 cp "$BIN" "$INSTALL_DIR/aiplus"
 chmod 755 "$INSTALL_DIR/aiplus"
+if [ -n "${TOKEN_COST_BIN:-}" ] && [ -f "$TOKEN_COST_BIN" ]; then
+  chmod 755 "$TOKEN_COST_BIN"
+  cp "$TOKEN_COST_BIN" "$INSTALL_DIR/aiplus-token-cost"
+  chmod 755 "$INSTALL_DIR/aiplus-token-cost"
+  TOKEN_COST_INSTALLED=1
+else
+  TOKEN_COST_INSTALLED=0
+fi
 
 echo "INSTALL_STATUS=PASS"
 echo "installed=$INSTALL_DIR/aiplus"
+if [ "$TOKEN_COST_INSTALLED" -eq 1 ]; then
+  echo "installed=$INSTALL_DIR/aiplus-token-cost"
+else
+  echo "OPTIONAL_NOTICE=aiplus-token-cost not found in archive; installed aiplus only"
+fi
 
 # Optional-feature notice (Linux only): the aiplus binary statically links
 # libdbus (vendored in v0.5.11+), so it RUNS fine on any Linux. But to

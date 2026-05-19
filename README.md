@@ -14,7 +14,7 @@ same seven coordination failures: cross-session amnesia, tokens burned
 fighting `/compact`, agents racing to lead the same task, estimates
 anchored to human-engineer hours, plans that skipped security until
 release week, one agent wearing every hat in one context window, and
-re-handing the agent my API keys every session. AiPlus is the six small
+re-handing the agent my API keys every session. AiPlus is the seven small
 Rust modules I built to treat all seven (Agent Team treats two of them).
 The honest meta-frame: **I used AI agents to build the toolchain that
 manages AI agents.** What's here works for my workflow today; what isn't
@@ -63,7 +63,7 @@ If you spend your days driving AI coding agents, these probably feel familiar:
    carries to Project B. Each project starts with the agent re-meeting
    you. The "how I work" baseline has no home above a single project.
 
-AiPlus is six core Rust modules that together fix the seven in-project
+AiPlus is seven core Rust modules that together fix the seven in-project
 failure modes (Agent Team treats both #3 multi-agent collision and #6
 single-agent role-drift). The eighth — cross-project preference amnesia
 — is treated by the [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me)
@@ -190,7 +190,7 @@ clean. No more role pollution, no more shallow-each-hat. **The team comes with:*
   enterprise rates.
 
 **Companion: [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —
-where the six modules above are *project-local*, the AiPlus-Work-with-Me template
+where the seven modules above are *project-local*, the AiPlus-Work-with-Me template
 is the **user-level profile bundle** that layers on top: your collaboration
 style, project map, role identities, tooling preferences — captured once,
 then inherited across every project. Fork it, fill in the placeholders,
@@ -217,10 +217,10 @@ AiPlus serves two audiences with the same underlying agent substrate:
   Specialist. Replaces the SWE consultant team with one designed from
   first principles for plan-time econ review.
 
-Both audiences share six bundled substrate modules:
+Both audiences share seven bundled substrate modules:
 `aiplus-agent-memory`, `aiplus-compact-reminder`,
 `aiplus-auto-team-consultant`, `aiplus-agent-team`, `aiplus-agent-key`,
-and `aiplus-agent-velocity`.
+`aiplus-agent-velocity`, and `aiplus-token-cost`.
 
 ## Install
 
@@ -234,10 +234,11 @@ not supported — build from source if you need them.
 ```bash
 # Apple Silicon Mac (M1 / M2 / M3 / M4)
 curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv aiplus /usr/local/bin/
+sudo mv aiplus aiplus-token-cost /usr/local/bin/
 
 # Intel Windows (PowerShell)
-# Download aiplus-x86_64-pc-windows-msvc.zip from the latest release, extract, add to PATH
+# Download aiplus-x86_64-pc-windows-msvc.zip from the latest release;
+# extract aiplus.exe + aiplus-token-cost.exe, add to PATH.
 ```
 
 Checksums published at `https://github.com/izhiwen/AiPlus/releases/latest/download/checksums.txt`.
@@ -346,7 +347,7 @@ MyProject/
 └── AGENTS.md                    # Codex managed block (if installed)
 ```
 
-## The six bundled standalone modules
+## The seven bundled standalone modules
 
 Each module ships as its own GitHub repo for inspection / piecewise
 adoption AND is auto-installed by `aiplus install` so its schemas,
@@ -359,6 +360,7 @@ in every AiPlus project:
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) — standing 8 core + 11 expert roles with persistent identities.
 - [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) — **stop telling the agent your keys every time**. Default: free, zero-config OS keyring backend. `aiplus secret-broker set --alias openai` once per machine, then every agent session in any project picks up the key automatically. Opt-in Bitwarden Secrets Manager backend for multi-machine sync / team sharing.
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) — AI-native time estimation (`aiplus velocity` — track estimated vs actual, learn bias, surface calibrated p50/p90).
+- [AiPlus-Token-Cost](https://github.com/izhiwen/AiPlus-Token-Cost) — token and USD cost rollups from `.aiplus/agents/dispatch-log.jsonl`; use the standalone `aiplus-token-cost` binary or the bundled `aiplus agent token-cost` command.
 
 ## Optional opt-in module
 
@@ -378,7 +380,7 @@ Two verbs, two distinct purposes:
   `.opencode/` directories. Run once per project per runtime.
 - **`aiplus add <module>`** — add a bundled module (agent-memory,
   compact-reminder, auto-team-consultant, agent-team, agent-key,
-  agent-velocity, aieconlab). The 6 substrate modules are
+  agent-velocity, token-cost, aieconlab). The 7 substrate modules are
   auto-installed by `aiplus install`; aieconlab is opt-in via explicit
   `aiplus add`. v0.5.4+ also supports `aiplus add --from-git
   <URL>[@REF]` for third-party modules.

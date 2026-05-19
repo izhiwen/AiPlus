@@ -4,7 +4,7 @@
 
 [English README](README.md)
 
-我用 AI coding agent 全职写代码已经有大半年 —— 平时主要 Claude Code，偶尔 Codex 拿第二意见，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍 —— 顺带把同一把 API key 也对同一个 agent 重新粘贴了第四遍。每天都在烧时间的是这七件事：跨 session 失忆、`/compact` 上反复烧 token、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子，还有每次 session 都要重新给 agent 配 key。AiPlus 就是我为治这七件事写的六个小 Rust 模块（Agent Team 同时治两件）。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
+我用 AI coding agent 全职写代码已经有大半年 —— 平时主要 Claude Code，偶尔 Codex 拿第二意见，长任务上 OpenCode。大约四个月之后，我发现自己在同一周里把同一个架构决策对同一个 agent 解释了第四遍 —— 顺带把同一把 API key 也对同一个 agent 重新粘贴了第四遍。每天都在烧时间的是这七件事：跨 session 失忆、`/compact` 上反复烧 token、几个 agent 互相抢着当头、估时锚在"人类工程师小时数"上、做 plan 时把安全和上手体验默默推到发版周、一个 agent 在同一个 context window 里同时戴所有帽子，还有每次 session 都要重新给 agent 配 key。AiPlus 就是我为治这七件事写的七个小 Rust 模块（Agent Team 同时治两件）。坦白讲这件事的元层：**我用 AI agent 构建了管理 AI agent 的工具链** —— 这句话听起来有多套娃就有多套娃，但这是这个 repo 存在的真实理由。今天能跑的就在这儿；还没做的事在 `docs/roadmap/`。
 
 ![AiPlus 30 秒演示](docs/demo.gif)
 
@@ -21,7 +21,7 @@
 7. **每次 agent session 都要重新给 agent 配 key。** 新项目、新对话、新 wrapper 脚本 —— 又一次要 copy-paste `OPENAI_API_KEY=...`、在新 shell 里 `export` env、改 `.env`，或者直接把 key 贴进 prompt"就这一次"。每次都从头来过，永远不能摊销。更糟的是 key 会留在 transcript、`.env`、shell history、截图、CI 日志里 —— 一次误 commit、一次共享屏幕，就泄出去了。
 8. **每开新项目，agent 都重新认识你。** 痛点 #1 是同一个项目内**跨 session** 忘事；这是**跨项目**的那一层。你花六个月把 agent 调教成懂你工作流的样子——naming 风格、review 语气、角色身份、工具偏好——下一个项目开张，agent 还是从零开始，没有"基线人格"跟你过来。`how I work` 这层东西没有比项目更高一级的家。
 
-AiPlus 是六个小模块治这**七件项目内**的事（Agent Team 同时治 #3 多 agent 互相踩脚 和 #6 单 agent 角色漂移）。第八件 —— 跨项目偏好失忆 —— 由下面会讲的 [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me) Companion 模板治。另加一个 opt-in 模块 AiEconLab，给应用经济学研究用，详见下。
+AiPlus 是七个小模块治这**七件项目内**的事（Agent Team 同时治 #3 多 agent 互相踩脚 和 #6 单 agent 角色漂移）。第八件 —— 跨项目偏好失忆 —— 由下面会讲的 [**AiPlus-Work-with-Me**](https://github.com/izhiwen/AiPlus-Work-with-Me) Companion 模板治。另加一个 opt-in 模块 AiEconLab，给应用经济学研究用，详见下。
 
 ## 你拿到什么
 
@@ -67,7 +67,9 @@ aiplus secret-broker run --aliases openai,anthropic -- python my_agent.py
 
 **Agent Velocity** —— Agent 不再瞎报工时。每次估时和实际完成时间记成本地 JSONL。Human-time bias 自动检测。后续估时用基于你自己历史校准过的 AI-native p50 / p90 数字。
 
-**Companion 模板：[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面六个模块都是 *项目本地*，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
+**Token Cost** —— `aiplus agent token-cost` 读取 dispatch log，按 1 小时 / 8 小时 / 24 小时统计 token 消耗和 USD 成本，并列出最贵 task。定价来自社区维护的 per-model 表，带离线兜底和本地 override；也可直接跑 standalone `aiplus-token-cost`。
+
+**Companion 模板：[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面七个模块都是 *项目本地*，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、角色身份、工具偏好——填一次，所有项目都继承。fork 它、填占位符、`aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。它 **不会**被 `aiplus install` 自动装上——是显式 fork-and-personalize 的 opt-in，解决跨**项目**（不只跨 session）的偏好记忆。
 
 所有数据都留在你项目里的 `.aiplus/`。**不上传，不云同步，不动你的全局 agent 配置。**
 
@@ -78,7 +80,7 @@ AiPlus 同时服务两类受众，底座（substrate）共享：
 - **软件工程师** —— 用 Claude Code / Codex / OpenCode 写代码的。`aiplus install` 默认装 SWE 团队（Advisor / CEO / Architect / PM / 2× Engineer / Reviewer / QA + 11 SWE expert）。
 - **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 [**AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab)：8 个研究角色（Advisor / PI / Theorist / PM / RA-Stata / RA-Python / Referee / Replicator）+ 12 个 expert（含 LLM-as-Measurement Specialist）。**替换** SWE consultant 团队为应用经济学专属版本。
 
-两类受众共用六个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity`。
+两类受众共用七个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity` / `aiplus-token-cost`。
 
 ## 安装
 
@@ -91,10 +93,10 @@ Intel Mac、Linux、Windows ARM **不再支持** —— 需要的话请从源码
 ```bash
 # Apple Silicon Mac (M1 / M2 / M3 / M4)
 curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv aiplus /usr/local/bin/
+sudo mv aiplus aiplus-token-cost /usr/local/bin/
 
 # Intel Windows (PowerShell)
-# 下载 aiplus-x86_64-pc-windows-msvc.zip，解压，加进 PATH
+# 下载 aiplus-x86_64-pc-windows-msvc.zip，解压 aiplus.exe + aiplus-token-cost.exe，加进 PATH
 ```
 
 校验和：`https://github.com/izhiwen/AiPlus/releases/latest/download/checksums.txt`
@@ -187,7 +189,7 @@ MyProject/
 └── AGENTS.md                    # Codex 托管块 (装了的话)
 ```
 
-## 六个独立子模块（bundled）
+## 七个独立子模块（bundled）
 
 每个模块也作为独立 GitHub repo 发布，方便你单独看或单独采用；
 同时 `aiplus install` 会自动把它们装到 `.aiplus/modules/aiplus-<name>/`：
@@ -198,6 +200,7 @@ MyProject/
 - [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team) —— 常驻 8 core + 11 expert 角色，带 persistent identity。
 - [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key) —— **不再每个 session 重配 key**。默认免费零配置，用 OS keyring 后端：`aiplus secret-broker set --alias openai` 一次，从此任何项目的任何 agent session 都自动拿到 key。需要多机同步/团队共享时 opt-in Bitwarden Secrets Manager 后端。
 - [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity) —— AI-native 工时估计（`aiplus velocity`，跟踪估时 vs 实际、学习 bias、给校准的 p50/p90）。
+- [AiPlus-Token-Cost](https://github.com/izhiwen/AiPlus-Token-Cost) —— 从 `.aiplus/agents/dispatch-log.jsonl` 统计 token 和 USD 成本；可直接运行 standalone `aiplus-token-cost`，也可用 bundled `aiplus agent token-cost`。
 
 ## 安全边界
 

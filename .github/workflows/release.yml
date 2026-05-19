@@ -1,6 +1,9 @@
 ---
 name: Release
 
+env:
+  TOKEN_COST_VERSION: v0.1.0
+
 on:
   push:
     tags:
@@ -73,13 +76,37 @@ jobs:
         if: matrix.cross
         run: cross build --release --target ${{ matrix.target }} -p aiplus-cli --locked
 
+      - name: Download token-cost binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          TOKEN_COST_ASSET="aiplus-token-cost-${{ matrix.target }}.tar.gz"
+          TOKEN_COST_URL="https://github.com/izhiwen/AiPlus-Token-Cost/releases/download/${TOKEN_COST_VERSION}/${TOKEN_COST_ASSET}"
+          mkdir -p token-cost-release
+          curl -fsSL "${TOKEN_COST_URL}" -o "${TOKEN_COST_ASSET}"
+          tar -xzf "${TOKEN_COST_ASSET}" -C token-cost-release
+          install -m 0755 token-cost-release/aiplus-token-cost target/${{ matrix.target }}/release/aiplus-token-cost
+          target/${{ matrix.target }}/release/aiplus-token-cost --version
+
+      - name: Download token-cost binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $asset = "aiplus-token-cost-${{ matrix.target }}.zip"
+          $url = "https://github.com/izhiwen/AiPlus-Token-Cost/releases/download/$env:TOKEN_COST_VERSION/$asset"
+          New-Item -ItemType Directory -Force token-cost-release | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $asset
+          Expand-Archive -Path $asset -DestinationPath token-cost-release -Force
+          Copy-Item token-cost-release\aiplus-token-cost.exe target\${{ matrix.target }}\release\aiplus-token-cost.exe -Force
+          target\${{ matrix.target }}\release\aiplus-token-cost.exe --version
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           BIN_NAME="aiplus"
+          TOKEN_COST_BIN="aiplus-token-cost"
           ASSET="aiplus-${{ matrix.target }}.tar.gz"
           cd target/${{ matrix.target }}/release
-          tar -czf "${GITHUB_WORKSPACE}/${ASSET}" "${BIN_NAME}"
+          tar -czf "${GITHUB_WORKSPACE}/${ASSET}" "${BIN_NAME}" "${TOKEN_COST_BIN}"
           cd "${GITHUB_WORKSPACE}"
           ls -la "${ASSET}"
 
@@ -99,8 +126,9 @@ jobs:
         shell: pwsh
         run: |
           $bin = "target\${{ matrix.target }}\release\aiplus.exe"
+          $tokenCostBin = "target\${{ matrix.target }}\release\aiplus-token-cost.exe"
           $asset = "aiplus-${{ matrix.target }}.zip"
-          Compress-Archive -Path $bin -DestinationPath $asset -Force
+          Compress-Archive -Path $bin, $tokenCostBin -DestinationPath $asset -Force
           Get-Item $asset
           $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLower()
           "$hash  $asset" | Out-File -Encoding ASCII -NoNewline "$asset.sha256"

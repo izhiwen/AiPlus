@@ -2598,6 +2598,12 @@ fn command_doctor(fix: bool) -> Result<()> {
             "semantic dispatch gate fixture/self-check failed; rerun focused G2 tests".to_string(),
         ),
     );
+    push_info_check(
+        &mut checks,
+        "aiplus-token-cost binary on PATH".to_string(),
+        command_exists("aiplus-token-cost"),
+        Some("install AiPlus from a dual-binary release archive or install AiPlus-Token-Cost standalone".to_string()),
+    );
     if runtimes.iter().any(|runtime| runtime == "opencode") {
         push_info_check(
             &mut checks,

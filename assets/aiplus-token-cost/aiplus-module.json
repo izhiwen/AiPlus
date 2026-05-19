@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "token-cost",
+  "displayName": "AiPlus Token Cost",
+  "version": "0.1.0",
+  "source": "bundled",
+  "license": "Apache-2.0",
+  "requiredFiles": [
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md",
+    "MODULES.md",
+    "RELEASE_CHECKLIST.md"
+  ],
+  "managedFiles": [
+    ".aiplus/modules/aiplus-token-cost"
+  ],
+  "binaryAssets": [
+    {
+      "name": "aiplus-token-cost",
+      "windowsName": "aiplus-token-cost.exe",
+      "installDir": "$HOME/.local/bin"
+    }
+  ],
+  "runtimeAdapters": ["codex", "claude-code", "opencode"],
+  "installHints": [
+    "AiPlus release archives install both `aiplus` and `aiplus-token-cost`.",
+    "Use `aiplus-token-cost` directly or `aiplus agent token-cost` through the bundled CLI."
+  ],
+  "doctorChecks": [
+    {
+      "id": "token-cost-binary",
+      "path": "README.md",
+      "description": "Standalone token-cost module docs are present."
+    }
+  ],
+  "publicPrivateBoundary": {
+    "status": "public",
+    "notes": [
+      "Bundled docs and metadata are public.",
+      "The runtime reads local AiPlus dispatch logs and writes local token-cost snapshots."
+    ]
+  },
+  "secretBoundary": {
+    "status": "forbidden",
+    "notes": [
+      "No API keys or secret values are bundled.",
+      "Token-cost reads usage counters, not prompts, task content, API responses, or secret payloads."
+    ]
+  },
+  "legacyStatus": {
+    "status": "standalone-round-1-bundle",
+    "notes": [
+      "Standalone source of truth is izhiwen/AiPlus-Token-Cost v0.1.0; this directory is the AiPlus bundled module metadata surface."
+    ]
+  }
+}

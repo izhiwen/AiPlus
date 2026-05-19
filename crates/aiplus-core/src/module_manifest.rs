@@ -110,6 +110,25 @@ pub const MODULES: &[ModuleSpec] = &[
         auto_install: true,
     },
     ModuleSpec {
+        name: "token-cost",
+        vendor_name: "aiplus-token-cost",
+        version: "0.1.0",
+        path: ".aiplus/modules/aiplus-token-cost",
+        required_files: &[
+            "README.md",
+            "README.zh-CN.md",
+            "CHANGELOG.md",
+            "LICENSE",
+            "SECURITY.md",
+            "MODULES.md",
+            "RELEASE_CHECKLIST.md",
+        ],
+        // Auto-installed: token-cost documents and supports the bundled
+        // `aiplus agent token-cost` subcommand while release archives
+        // install the standalone `aiplus-token-cost` binary beside `aiplus`.
+        auto_install: true,
+    },
+    ModuleSpec {
         name: "aieconlab",
         vendor_name: "aieconlab",
         version: "0.3.0",
@@ -155,6 +174,8 @@ pub struct ModuleManifest {
     pub requires: Option<ModuleRequires>,
     pub required_files: Vec<String>,
     pub managed_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_assets: Vec<BinaryAsset>,
     pub runtime_adapters: Vec<String>,
     pub install_hints: Vec<String>,
     pub doctor_checks: Vec<DoctorCheck>,
@@ -171,6 +192,16 @@ pub struct ModuleRequires {
     pub aiplus_min_version: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub substrate_modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryAsset {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows_name: Option<String>,
+    pub install_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -214,6 +245,7 @@ pub fn normalize_module(value: Option<&str>) -> Option<&'static str> {
         }
         "agent-memory" | "aiplus-agent-memory" | "memory" => Some("agent-memory"),
         "agent-team" | "aiplus-agent-team" => Some("agent-team"),
+        "token-cost" | "aiplus-token-cost" | "cost" => Some("token-cost"),
         "aieconlab"
         | "AiEconLab"
         | "ael"
@@ -344,6 +376,28 @@ pub fn validate_module_manifest(spec: ModuleSpec, manifest: &ModuleManifest) -> 
     for managed in &manifest.managed_files {
         validate_manifest_relative_path(spec.name, "managedFiles", managed)?;
     }
+    for asset in &manifest.binary_assets {
+        if asset.name.trim().is_empty() {
+            return Err(anyhow!(
+                "module manifest binaryAssets entry has empty name for {}",
+                spec.name
+            ));
+        }
+        if asset.install_dir.trim().is_empty() {
+            return Err(anyhow!(
+                "module manifest binaryAssets entry has empty installDir for {}",
+                spec.name
+            ));
+        }
+        if let Some(windows_name) = asset.windows_name.as_deref() {
+            if windows_name.trim().is_empty() {
+                return Err(anyhow!(
+                    "module manifest binaryAssets entry has empty windowsName for {}",
+                    spec.name
+                ));
+            }
+        }
+    }
     for check in &manifest.doctor_checks {
         if check.id.trim().is_empty() || check.description.trim().is_empty() {
             return Err(anyhow!(
@@ -428,6 +482,9 @@ mod tests {
             .any(|manifest| manifest.name == "agent-team"));
         assert!(manifests
             .iter()
+            .any(|manifest| manifest.name == "token-cost"));
+        assert!(manifests
+            .iter()
             .any(|manifest| manifest.name == "aieconlab"));
     }
 
@@ -502,6 +559,12 @@ mod tests {
             normalize_module(Some("aiplus-agent-team")),
             Some("agent-team")
         );
+        assert_eq!(normalize_module(Some("token-cost")), Some("token-cost"));
+        assert_eq!(
+            normalize_module(Some("aiplus-token-cost")),
+            Some("token-cost")
+        );
+        assert_eq!(normalize_module(Some("cost")), Some("token-cost"));
         assert_eq!(normalize_module(Some("aieconlab")), Some("aieconlab"));
         assert_eq!(normalize_module(Some("AiEconLab")), Some("aieconlab"));
         assert_eq!(normalize_module(Some("ael")), Some("aieconlab"));
