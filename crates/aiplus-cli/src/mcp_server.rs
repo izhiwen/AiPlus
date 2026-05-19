@@ -158,7 +158,7 @@ fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
             "name": "agent_route",
-            "description": "Dispatch a task to a role on the active AiPlus virtual team. Writes an entry to .aiplus/agents/dispatch-log.jsonl, marks the role active in .aiplus/agents/active-roles.json, and provisions a git worktree if the role's config calls for one. Use this whenever the PI/CEO would say 'I'm dispatching <role> to do <task>' — call this tool instead, and the dispatch becomes a real persistent artifact.",
+            "description": "PREFERRED programmatic surface for dispatching a task to a role. Use this MCP tool instead of `aiplus agent route <role> \"<task>\"` CLI when the user asks to assign work. Writes dispatch history, active-role state, and any configured worktree artifacts.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -176,7 +176,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_status",
-            "description": "Return the current state of the AiPlus virtual team in this project: which team is active (agent-team / aieconlab), which roles have been dispatched, total agents available, and worktree provisioning state. Use this to read project state before deciding a dispatch.",
+            "description": "PREFERRED programmatic surface for team status queries. Use this MCP tool instead of `aiplus agent status` CLI when the user asks about team configuration, active roles, or current state. Returns structured JSON for active team, role state, and worktrees.",
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -184,7 +184,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_set_team",
-            "description": "Switch which virtual team is active in this project (agent-team for software engineering, aieconlab for applied-economics research). Both team snapshots are preserved under .aiplus/agents/_teams/; switching is a file-copy from snapshot to active layout, no re-install.",
+            "description": "PREFERRED programmatic surface for switching active teams. Use this MCP tool instead of `aiplus agent set-team <name>` CLI when the user asks to switch to agent-team or AiEconLab. Preserves team snapshots and returns structured JSON.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -199,7 +199,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_list",
-            "description": "List every role configured on the active virtual team, including stub roles (placeholders) and disabled roles. Use this when you need the complete roster before deciding who to invite or dispatch.",
+            "description": "PREFERRED programmatic surface for role roster queries. Use this MCP tool instead of `aiplus agent list` CLI when the user asks who is available, invited, disabled, or functional. Returns structured JSON for active-team roles.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -212,7 +212,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_doctor",
-            "description": "Run health checks specific to the agent layer: team config integrity, persona files present, runtime adapter mirroring up to date. Use this when something looks off before deciding to escalate to the Owner.",
+            "description": "PREFERRED programmatic surface for agent health checks. Use this MCP tool instead of `aiplus agent doctor` CLI when the user asks whether the agent layer, personas, runtime mirrors, or catalogs are healthy. Returns structured JSON diagnostics.",
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -267,7 +267,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_invite",
-            "description": "Mark a stub / dormant role as 'invited' so it can receive dispatches. Use when bringing an expert (e.g. job-talk-coach, structural-modeler) into the team for a specific scope. Logged to audit.jsonl as an Owner-visible event.",
+            "description": "PREFERRED programmatic surface for inviting a role into the active team. Use this MCP tool instead of `aiplus agent invite <role>` CLI when the user asks to bring in an expert or dormant role. Logs an Owner-visible event.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -281,7 +281,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_dismiss",
-            "description": "Reverse an invite — return an expert role to dormant state. Use when the scope they were invited for is done. Logged to audit.jsonl.",
+            "description": "PREFERRED programmatic surface for dismissing a role from the active team. Use this MCP tool instead of `aiplus agent dismiss <role>` CLI when the user asks to remove an invited expert after scope completion. Logs the event.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -295,7 +295,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_disable",
-            "description": "Disable a role so it cannot be dispatched. Different from dismiss — disable is for problem cases (consistently underperforming, identity unclear, identification concerns) and the role stays disabled across sessions until explicitly enabled.",
+            "description": "PREFERRED programmatic surface for disabling a role. Use this MCP tool instead of `aiplus agent disable <role>` CLI when the user asks to prevent dispatch to a problematic role. Persists until explicitly re-enabled.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -309,7 +309,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_enable",
-            "description": "Re-enable a previously disabled role. Inverse of agent_disable.",
+            "description": "PREFERRED programmatic surface for re-enabling a disabled role. Use this MCP tool instead of `aiplus agent enable <role>` CLI when the user asks to restore a role for dispatch. Returns structured JSON status.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -323,7 +323,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_integrate",
-            "description": "Merge a role's worktree branch (agent/<role>) back into the project's main branch and prune the worktree. Use after a role reports their dispatched task is done AND the work has passed Replicator / Referee gates.",
+            "description": "PREFERRED programmatic surface for integrating a role worktree. Use this MCP tool instead of `aiplus agent integrate <role>` CLI when the user asks to merge a completed role branch back to main and prune its worktree.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -337,7 +337,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "agent_talk",
-            "description": "Surface the shell command for opening an interactive runtime session focused on a specific role's persona. Note: this tool does NOT spawn a nested runtime (that would conflict with the current MCP host session); it returns the command the Owner should run in a separate terminal to enter a role-focused session.",
+            "description": "PREFERRED programmatic surface for role-focused conversation setup. Use this MCP tool instead of `aiplus agent talk <role>` CLI when the user asks to talk with one role. Returns the command to run in a separate terminal.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -966,6 +966,47 @@ mod tests {
             assert!(
                 description.contains("MCP returns structured JSON"),
                 "{name} should say why MCP beats CLI:\n{description}"
+            );
+            assert!(
+                description.chars().count() <= 400,
+                "{name} description too long: {} chars\n{description}",
+                description.chars().count()
+            );
+        }
+    }
+
+    #[test]
+    fn coverage_tool_descriptions_prefer_mcp_and_name_cli_alternative() {
+        let tools = tool_definitions();
+        for (name, cli) in [
+            ("agent_route", "aiplus agent route"),
+            ("agent_status", "aiplus agent status"),
+            ("agent_set_team", "aiplus agent set-team"),
+            ("agent_list", "aiplus agent list"),
+            ("agent_doctor", "aiplus agent doctor"),
+            ("agent_invite", "aiplus agent invite"),
+            ("agent_dismiss", "aiplus agent dismiss"),
+            ("agent_disable", "aiplus agent disable"),
+            ("agent_enable", "aiplus agent enable"),
+            ("agent_integrate", "aiplus agent integrate"),
+            ("agent_talk", "aiplus agent talk"),
+        ] {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing tool {name}"));
+            let description = tool["description"].as_str().expect("description string");
+            assert!(
+                description.starts_with("PREFERRED programmatic surface"),
+                "{name} should explicitly prefer MCP:\n{description}"
+            );
+            assert!(
+                description.contains("Use this MCP tool instead of"),
+                "{name} should direct agents away from CLI first:\n{description}"
+            );
+            assert!(
+                description.contains(cli),
+                "{name} should name CLI alternative {cli}:\n{description}"
             );
             assert!(
                 description.chars().count() <= 400,

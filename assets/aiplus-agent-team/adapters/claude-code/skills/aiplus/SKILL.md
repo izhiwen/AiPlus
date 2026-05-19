@@ -22,6 +22,51 @@ Do NOT call `aiplus agent dispatch-history --json` to answer cost questions.
 Call `agent_token_cost` first. After the MCP result, shell or CLI verification
 is allowed only if it adds something the structured result does not contain.
 
+## Use These Tools First
+
+### Cost / spending / token usage (MCP tools, returns structured JSON)
+- `agent_token_cost` - token + USD rollups (1h / 8h / 24h windows)
+
+### Planning / task preview / scoring (MCP)
+- `agent_route_score_only` - pre-flight a task to see staffing + risk
+
+### Audit / log integrity (MCP)
+- `agent_audit_verify_log` - verify dispatch log hash chain
+
+### Dispatching / role management (MCP)
+- `agent_route` - assign a task to a specific role and start work
+- `agent_invite` - bring a role into the active team
+- `agent_dismiss` - remove a role from the active team
+- `agent_disable` / `agent_enable` - temporarily disable / re-enable a role
+- `agent_integrate` - merge a role's worktree back
+- `agent_talk` - single-turn chat setup with one role
+
+### Team status / configuration (MCP)
+- `agent_status` - current team status, active roles, recent activity
+- `agent_list` - list all available roles
+- `agent_set_team` - switch active team, e.g. to AiEconLab
+- `agent_doctor` - agent-specific health checks
+
+### Memory / context (non-MCP CLI, also preferred over shell grep)
+- `aiplus memory record` - store project conventions / naming rules / facts
+- `aiplus memory context --runtime <runtime>` - build memory context
+- `aiplus memory status` - see what's in memory
+
+### Compact / session token efficiency (non-MCP CLI)
+- `aiplus compact prepare` - build a handoff capsule before /compact
+- `aiplus compact resume` - restore state after /compact
+- `aiplus compact savings` - see token + cost savings from compact-prep
+
+### Velocity / time tracking (non-MCP CLI)
+- `aiplus velocity estimate --task-type <type> --human-estimate <hours>` - log an estimate
+- `aiplus velocity report` - see calibrated p50 / p90 from history
+
+### Identity / commit signing (non-MCP CLI)
+- `aiplus identity setup-signing [--dry-run]` - set up Mac Secure Enclave commit signing
+
+### Doctor (cross-cutting health)
+- `aiplus doctor [--quiet] [--check-keyring]` - full health check
+
 ## Example Flows
 
 ### Cost

@@ -11119,12 +11119,27 @@ Most important patterns:
 - "How much am I spending" / cost / burn / USD -> `agent_token_cost`
 - "Help me plan / implement X" -> `agent_route_score_only` FIRST, then surface to user
 - "Is my log intact" / audit / verify -> `agent_audit_verify_log`
+- "Assign this to <role>" / dispatch / route work -> `agent_route`
+- "Who is active" / team status / current roles -> `agent_status`
+- "Which roles exist" / roster / available experts -> `agent_list`
+- "Switch to AEL" / switch team -> `agent_set_team`
+- "Invite <role>" / bring in expert -> `agent_invite`
+- "Dismiss <role>" / remove invited expert -> `agent_dismiss`
+- "Disable / enable <role>" -> `agent_disable` or `agent_enable`
+- "Integrate <role>" / merge role worktree -> `agent_integrate`
+- "Talk to <role>" -> `agent_talk`
+- "Remember / recall project convention" -> `aiplus memory record|context|status`
+- "Prepare for compact" / resume after compact / savings -> `aiplus compact`
+- "Estimate velocity" / time report / p50 or p90 -> `aiplus velocity`
+- "Set up signing" / identity / Secure Enclave -> `aiplus identity setup-signing`
+- "Health check" / doctor / keyring -> `agent_doctor` or `aiplus doctor`
 
 For coding tasks: do NOT answer from training data first. Score the task via
 `agent_route_score_only`, surface the result, then ask whether to dispatch.
 
-Full tool list: 11 existing `agent_*` tools + 3 from v0.6.7. Run `tools/list`
-to enumerate."#;
+Full tool list: 14 `agent_*` MCP tools plus non-MCP AiPlus CLI surfaces for
+memory, compact, velocity, identity, and full doctor checks. Run `tools/list`
+to enumerate MCP tools."#;
 
 fn remove_managed_block(root: &Path, plan: &mut Plan) -> Result<()> {
     let rel = "AGENTS.md";
