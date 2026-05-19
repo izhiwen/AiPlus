@@ -15,6 +15,9 @@ fn run(cwd: &Path, args: &[&str], expected: i32) -> Output {
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
         .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
         .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
+        .env("AIPLUS_AUTOSUMMON_INTENT_MOCK", "1")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("OPENAI_API_KEY")
         .env_remove("BWS_ACCESS_TOKEN")
         .output()
         .expect("run aiplus");

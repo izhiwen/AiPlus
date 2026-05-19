@@ -300,7 +300,6 @@ pub fn apply_risk_forcing(staffing_roles: &mut Vec<String>, risk: f32) -> Vec<St
 
 fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan) -> Result<()> {
     let state = load_team_config(project_root)?;
-    let task_lower = task.to_ascii_lowercase();
     let cap = cluster_cap(plan.tier);
     let mut candidates = Vec::new();
 
@@ -308,24 +307,15 @@ fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan
         let Some(autosummon) = config.autosummon.as_ref() else {
             continue;
         };
-        if autosummon.keywords.is_empty()
+        let intent_hint = autosummon.intent_hint.trim();
+        if intent_hint.is_empty()
             || config.stub
             || contains_role(&plan.staffing_roles, &config.role)
         {
             continue;
         }
 
-        let matches: Vec<&String> = autosummon
-            .keywords
-            .iter()
-            .filter(|keyword| task_lower.contains(&keyword.to_ascii_lowercase()))
-            .collect();
-        let matched = if autosummon.match_mode.eq_ignore_ascii_case("all") {
-            matches.len() == autosummon.keywords.len()
-        } else {
-            !matches.is_empty()
-        };
-        if matched {
+        if expert_intent_match(task, intent_hint) {
             candidates.push((autosummon.priority, config.role.clone()));
         }
     }
@@ -342,6 +332,221 @@ fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan
         plan.auto_summoned.push(role);
     }
     Ok(())
+}
+
+fn expert_intent_match(task: &str, intent_hint: &str) -> bool {
+    let key = intent_cache_key(task, intent_hint);
+    if let Some(value) = intent_cache_get(&key) {
+        return value;
+    }
+
+    let value = classify_intent_match(task, intent_hint).unwrap_or(false);
+    intent_cache_put(key, value);
+    value
+}
+
+fn classify_intent_match(task: &str, intent_hint: &str) -> Option<bool> {
+    if env::var("AIPLUS_AUTOSUMMON_INTENT_MOCK").ok().as_deref() == Some("1") {
+        return Some(mock_intent_match(task, intent_hint));
+    }
+
+    let api_key = env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let model = env::var("AIPLUS_AUTOSUMMON_INTENT_MODEL")
+        .unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
+    let prompt = intent_prompt(task, intent_hint);
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": 4,
+        "temperature": 0,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    });
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "https://api.anthropic.com/v1/messages",
+            "-H",
+            "content-type: application/json",
+            "-H",
+            "anthropic-version: 2023-06-01",
+            "-H",
+            &format!("x-api-key: {api_key}"),
+            "-d",
+            &body.to_string(),
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let answer = response
+        .get("content")
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .find_map(|part| part.get("text").and_then(serde_json::Value::as_str))?
+        .trim()
+        .to_ascii_uppercase();
+    if answer.starts_with("YES") {
+        Some(true)
+    } else if answer.starts_with("NO") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn intent_prompt(task: &str, intent_hint: &str) -> String {
+    format!(
+        "You are classifying whether a software task matches an intent description.\n\nTask: \"{}\"\nIntent: \"{}\"\n\nDoes this task match this intent? Reply with a single word: YES or NO.",
+        task.replace('"', "\\\""),
+        intent_hint.replace('"', "\\\"")
+    )
+}
+
+fn mock_intent_match(task: &str, intent_hint: &str) -> bool {
+    let task = task.to_ascii_lowercase();
+    let intent = intent_hint.to_ascii_lowercase();
+    if intent.contains("credentials") || intent.contains("安全") {
+        return contains_any(
+            &task,
+            &[
+                "payment",
+                "billing",
+                "auth",
+                "security",
+                "secure",
+                "secret",
+                "token",
+                "credential",
+                "privacy",
+                "vulnerability",
+                "csrf",
+                "xss",
+                "encryption",
+                "支付",
+                "认证",
+                "敏感",
+                "凭据",
+                "密钥",
+                "安全",
+                "隐私",
+            ],
+        );
+    }
+    if intent.contains("readme") || intent.contains("文档") {
+        return contains_any(
+            &task,
+            &[
+                "docs",
+                "documentation",
+                "readme",
+                "guide",
+                "manual",
+                "onboarding",
+                "api docs",
+                "release notes",
+                "tutorial",
+                "文档",
+                "说明",
+                "指南",
+                "教程",
+            ],
+        );
+    }
+    if intent.contains("llm") || intent.contains("大模型") {
+        return contains_any(
+            &task,
+            &[
+                "llm",
+                "ai",
+                "model",
+                "prompt",
+                "rag",
+                "embedding",
+                "openai",
+                "anthropic",
+                "claude",
+                "codex",
+                "agent",
+                "token budget",
+                "大模型",
+                "模型",
+                "提示词",
+                "智能体",
+            ],
+        );
+    }
+    false
+}
+
+fn intent_cache_key(task: &str, intent_hint: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(task.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(intent_hint.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn intent_cache_get(key: &str) -> Option<bool> {
+    let mut cache = intent_cache().lock().ok()?;
+    let value = cache.entries.get(key).copied();
+    if value.is_some() {
+        cache.hits += 1;
+    }
+    value
+}
+
+fn intent_cache_put(key: String, value: bool) {
+    let Ok(mut cache) = intent_cache().lock() else {
+        return;
+    };
+    if !cache.entries.contains_key(&key) {
+        if cache.order.len() >= INTENT_CACHE_CAP {
+            if let Some(oldest) = cache.order.pop_front() {
+                cache.entries.remove(&oldest);
+            }
+        }
+        cache.order.push_back(key.clone());
+    }
+    cache.entries.insert(key, value);
+    cache.misses += 1;
+}
+
+fn intent_cache() -> &'static Mutex<IntentCache> {
+    INTENT_CACHE.get_or_init(|| Mutex::new(IntentCache::default()))
+}
+
+#[derive(Debug, Default)]
+struct IntentCache {
+    entries: HashMap<String, bool>,
+    order: VecDeque<String>,
+    hits: usize,
+    misses: usize,
+}
+
+const INTENT_CACHE_CAP: usize = 1000;
+static INTENT_CACHE: OnceLock<Mutex<IntentCache>> = OnceLock::new();
+
+#[cfg(test)]
+fn reset_autosummon_intent_cache_for_tests() {
+    if let Ok(mut cache) = intent_cache().lock() {
+        *cache = IntentCache::default();
+    }
+}
+
+#[cfg(test)]
+fn autosummon_intent_cache_metrics_for_tests() -> (usize, usize, usize) {
+    let cache = intent_cache().lock().expect("intent cache lock");
+    (cache.entries.len(), cache.hits, cache.misses)
 }
 
 fn cluster_cap(tier: CoordinatorTier) -> usize {
@@ -448,7 +653,29 @@ mod tests {
         assert_eq!(light, str_vec(&["engineer-a"]));
         assert!(forced.is_empty());
     }
+
+    #[test]
+    fn intent_match_cache_hits_on_repeat_task_and_intent() {
+        reset_autosummon_intent_cache_for_tests();
+        std::env::set_var("AIPLUS_AUTOSUMMON_INTENT_MOCK", "1");
+
+        let task = "实现支付接口";
+        let intent = "支付、认证、敏感数据、credentials、凭据、安全漏洞或隐私相关的软件工作";
+        assert!(expert_intent_match(task, intent));
+        assert!(expert_intent_match(task, intent));
+
+        let (entries, hits, misses) = autosummon_intent_cache_metrics_for_tests();
+        assert_eq!(entries, 1);
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 1);
+        std::env::remove_var("AIPLUS_AUTOSUMMON_INTENT_MOCK");
+    }
 }
 use crate::agent::core::load_team_config;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, VecDeque};
+use std::env;
 use std::path::Path;
+use std::process::Command;
+use std::sync::{Mutex, OnceLock};

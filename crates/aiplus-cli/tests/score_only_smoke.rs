@@ -8,7 +8,12 @@ fn bin() -> &'static str {
 }
 
 fn run(cwd: &Path, args: &[&str], expected: i32) -> Output {
-    let output = Command::new(bin())
+    run_with_env(cwd, args, expected, &[])
+}
+
+fn run_with_env(cwd: &Path, args: &[&str], expected: i32, envs: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(bin());
+    command
         .args(args)
         .current_dir(cwd)
         .env("HOME", cwd.join("fake-home"))
@@ -17,9 +22,11 @@ fn run(cwd: &Path, args: &[&str], expected: i32) -> Output {
         .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("OPENAI_API_KEY")
-        .env_remove("BWS_ACCESS_TOKEN")
-        .output()
-        .expect("run aiplus");
+        .env_remove("BWS_ACCESS_TOKEN");
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("run aiplus");
     assert_eq!(
         output.status.code(),
         Some(expected),
@@ -166,7 +173,12 @@ fn score_only_prints_auto_summoned_experts_without_dispatch() {
     run(target, &["install", "codex"], 0);
 
     let task = "write secure payment API docs";
-    let out = stdout(&run(target, &["agent", "route", "--score-only", task], 0));
+    let out = stdout(&run_with_env(
+        target,
+        &["agent", "route", "--score-only", task],
+        0,
+        &[("AIPLUS_AUTOSUMMON_INTENT_MOCK", "1")],
+    ));
     assert!(
         out.contains("Would staff: [pm,architect,engineer-a,engineer-b,reviewer,qa,security-reviewer,tech-writer]"),
         "score-only should include autosummoned experts:\n{out}"

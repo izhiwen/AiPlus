@@ -28,6 +28,5 @@ chinese_aliases = ["安全审查", "安全专家", "安全审计", "代码安全
 english_aliases = ["security-reviewer", "security", "sec-audit", "security-expert", "sec-reviewer"]
 
 [autosummon]
-keywords = ["security", "secure", "auth", "secret", "token", "credential", "payment", "billing", "privacy", "vulnerability", "csrf", "xss", "encryption", "安全", "认证", "密钥", "支付", "隐私"]
-match_mode = "any"
+intent_hint = "支付、认证、敏感数据、credentials、凭据、安全漏洞或隐私相关的软件工作"
 priority = 90

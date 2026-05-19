@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -13,6 +14,7 @@ struct Case {
     expected_complexity: u8,
     expected_risk_max: f32,
     expected_tier: String,
+    expected_auto_summoned: Option<Vec<String>>,
     #[allow(dead_code)]
     notes: Option<String>,
 }
@@ -29,6 +31,7 @@ fn run(cwd: &Path, args: &[&str]) -> Output {
         .env("CODEX_HOME", cwd.join("fake-codex-home"))
         .env("XDG_CONFIG_HOME", cwd.join("fake-xdg"))
         .env("AIPLUS_SECRET_BROKER_DISABLE_KEYCHAIN", "1")
+        .env("AIPLUS_AUTOSUMMON_INTENT_MOCK", "1")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("OPENAI_API_KEY")
         .env_remove("BWS_ACCESS_TOKEN")
@@ -72,6 +75,46 @@ fn parse_score_line(output: &str) -> (u8, f32, String) {
     )
 }
 
+fn parse_auto_summoned(output: &str) -> Vec<String> {
+    let Some(line) = output
+        .lines()
+        .find(|line| line.starts_with("Auto-summoned experts: ["))
+    else {
+        return Vec::new();
+    };
+    let Some(values) = line
+        .strip_prefix("Auto-summoned experts: [")
+        .and_then(|value| value.strip_suffix(']'))
+    else {
+        return Vec::new();
+    };
+    if values.trim().is_empty() {
+        return Vec::new();
+    }
+    values
+        .split(',')
+        .map(|value| value.trim().to_string())
+        .collect()
+}
+
+fn init_git_repo(target: &Path) {
+    Command::new("git")
+        .args(["init"])
+        .current_dir(target)
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(target)
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(target)
+        .output()
+        .expect("git config name");
+}
+
 #[test]
 fn coordinator_scores_match_calibration_fixture() {
     let fixture_text = include_str!("fixtures/coordinator_calibration.toml");
@@ -83,6 +126,9 @@ fn coordinator_scores_match_calibration_fixture() {
 
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path();
+    fs::write(target.join("README.md"), "# Coordinator Calibration\n").unwrap();
+    init_git_repo(target);
+    run(target, &["install", "codex"]);
     for case in fixture.task {
         let output = stdout(&run(
             target,
@@ -105,5 +151,13 @@ fn coordinator_scores_match_calibration_fixture() {
             "tier drift for {:?}\n{output}",
             case.input
         );
+        if let Some(expected_auto_summoned) = case.expected_auto_summoned {
+            assert_eq!(
+                parse_auto_summoned(&output),
+                expected_auto_summoned,
+                "auto-summon drift for {:?}\n{output}",
+                case.input
+            );
+        }
     }
 }

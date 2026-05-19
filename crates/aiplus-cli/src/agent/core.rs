@@ -111,15 +111,9 @@ pub struct InvocationSection {
 #[allow(dead_code)]
 pub struct AutosummonSection {
     #[serde(default)]
-    pub keywords: Vec<String>,
-    #[serde(default = "default_autosummon_match_mode")]
-    pub match_mode: String,
+    pub intent_hint: String,
     #[serde(default)]
     pub priority: i32,
-}
-
-fn default_autosummon_match_mode() -> String {
-    "any".to_string()
 }
 
 /// S5: per-role declaration of secret-broker aliases needed for

@@ -28,6 +28,5 @@ chinese_aliases = ["技术写作", "技术文档", "文档专家", "写文档", 
 english_aliases = ["tech-writer", "writer", "documentation", "docs-specialist", "technical-writer"]
 
 [autosummon]
-keywords = ["docs", "documentation", "readme", "guide", "manual", "onboarding", "copy", "release notes", "spec", "tutorial", "文档", "说明", "指南", "README"]
-match_mode = "any"
+intent_hint = "文档、README、教程、用户指南、API 文档、发布说明或技术写作相关的工作"
 priority = 60
