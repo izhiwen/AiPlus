@@ -1,6 +1,7 @@
 use crate::agent::coordinator;
 use crate::agent::core::load_team_config;
 use anyhow::Result;
+use std::process::Command;
 
 pub fn handle_doctor() -> Result<()> {
     let project_root = std::env::current_dir()?;
@@ -8,6 +9,18 @@ pub fn handle_doctor() -> Result<()> {
 
     println!("Running agent team doctor...");
     println!("Checking .aiplus/agents/ directory...");
+    match crate::agent::audit::verify_log::verify_dispatch_log(&project_root) {
+        Ok(report) => println!("  INFO dispatch_log_chain={}", report.doctor_status()),
+        Err(e) => println!("  INFO dispatch_log_chain=unavailable reason={e}"),
+    }
+    println!(
+        "  INFO auditor_provider_configured={}",
+        std::env::var("AIPLUS_AUDITOR_PROVIDER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "disabled".to_string())
+    );
+    println!("  INFO commit_signing={}", detect_commit_signing());
 
     if !agents_dir.exists() {
         println!("  WARNING: .aiplus/agents/ does not exist");
@@ -121,4 +134,43 @@ fn env_present(name: &str) -> bool {
     std::env::var(name)
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false)
+}
+
+fn detect_commit_signing() -> &'static str {
+    let format = git_config_get("gpg.format");
+    let signing_key = git_config_get("user.signingkey");
+    if format
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("ssh"))
+        .unwrap_or(false)
+    {
+        if signing_key
+            .as_deref()
+            .map(|value| value.contains("id_ecdsa_sk_aiplus"))
+            .unwrap_or(false)
+        {
+            return "secure_enclave";
+        }
+        return "ssh";
+    }
+    if format.is_some() || git_config_get("commit.gpgsign").as_deref() == Some("true") {
+        return "gpg";
+    }
+    "none"
+}
+
+fn git_config_get(key: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["config", "--global", "--get", key])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }

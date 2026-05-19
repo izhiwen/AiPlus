@@ -75,6 +75,7 @@ use std::process::{self, Command};
 use std::time::SystemTime;
 
 mod agent;
+mod identity;
 mod mcp_server;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1021,6 +1022,7 @@ fn run(command: Commands) -> Result<()> {
             subcommand,
             trailing_args,
             project,
+            setup_signing_dry_run: false,
             role,
             runtime,
             with_memory,
@@ -4405,6 +4407,7 @@ struct IdentityCommandArgs {
     subcommand: Option<String>,
     trailing_args: Vec<String>,
     project: bool,
+    setup_signing_dry_run: bool,
     role: Option<String>,
     runtime: Option<String>,
     with_memory: bool,
@@ -4419,6 +4422,9 @@ fn command_identity(args: IdentityCommandArgs) -> Result<()> {
         Some("status") => identity_status(),
         Some("list") => identity_list(),
         Some("init") => identity_init_command(args.project),
+        Some("setup-signing") => {
+            identity::setup_signing::handle_setup_signing(args.setup_signing_dry_run)
+        }
         Some("context") => identity_context(IdentityContextArgs {
             role: args.role,
             runtime: args.runtime,
@@ -4429,7 +4435,7 @@ fn command_identity(args: IdentityCommandArgs) -> Result<()> {
         }),
         _ => {
             println!(
-                "Usage: aiplus identity status|list|init --project|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all] [--emit-role-activated]"
+                "Usage: aiplus identity status|list|init --project|setup-signing [--dry-run]|context --role advisor|ceo [--runtime codex] [--with-memory] [--memory-budget N] [--memory-scope project|team|personal|role-personal|all] [--emit-role-activated]"
             );
             process::exit(2);
         }
@@ -4439,6 +4445,21 @@ fn command_identity(args: IdentityCommandArgs) -> Result<()> {
 fn normalize_identity_command_args(mut args: IdentityCommandArgs) -> Result<IdentityCommandArgs> {
     if args.trailing_args.is_empty() {
         return Ok(args);
+    }
+    if args.subcommand.as_deref() == Some("setup-signing") {
+        if args.trailing_args == ["--dry-run"] {
+            args.setup_signing_dry_run = true;
+            args.trailing_args.clear();
+            return Ok(args);
+        }
+        return Err(CliError::new(
+            2,
+            format!(
+                "ERROR unexpected identity setup-signing arguments: {}",
+                args.trailing_args.join(" ")
+            ),
+        )
+        .into());
     }
     if args.subcommand.as_deref() != Some("context") {
         return Err(CliError::new(

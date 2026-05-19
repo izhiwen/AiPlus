@@ -10,6 +10,7 @@ pub mod replay;
 pub mod run;
 pub mod setup_gpg;
 pub mod status;
+pub mod verify_log;
 pub mod weekly_spot_check;
 
 #[derive(Parser)]
@@ -69,6 +70,10 @@ pub enum AuditSub {
     #[command(visible_aliases = ["配gpg", "密钥"])]
     SetupGpg,
 
+    /// Verify tamper-evident dispatch-log hash chain
+    #[command(name = "verify-log")]
+    VerifyLog,
+
     /// Weekly spot check
     #[command(visible_aliases = ["周检", "抽查"])]
     WeeklySpotCheck,
@@ -101,6 +106,7 @@ pub fn dispatch(args: AuditArgs) -> anyhow::Result<()> {
         AuditSub::ForceSkip { gate_id, reason } => force_skip::handle_force_skip(&gate_id, &reason),
         AuditSub::ReSignManifest => re_sign_manifest::handle_re_sign_manifest(),
         AuditSub::SetupGpg => setup_gpg::handle_setup_gpg(),
+        AuditSub::VerifyLog => verify_log::handle_verify_log(),
         AuditSub::WeeklySpotCheck => weekly_spot_check::handle_weekly_spot_check(),
         AuditSub::Status => status::handle_status(),
     }

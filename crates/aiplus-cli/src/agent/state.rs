@@ -200,9 +200,9 @@ fn record_dispatch_inner(
         error_reason,
         error_detail,
     };
-    let line = serde_json::to_string(&entry)?;
     let log_path = project_root.join(DISPATCH_LOG_PATH);
-    aiplus_core::append_jsonl_atomic(&log_path, &line)?;
+    let mut log_value = serde_json::to_value(&entry)?;
+    crate::agent::audit::verify_log::append_chained_jsonl_value(&log_path, &mut log_value)?;
 
     // Only mark role active on success — a failed/canceled dispatch
     // should not light up `aiplus agent status`'s active-roles list.
