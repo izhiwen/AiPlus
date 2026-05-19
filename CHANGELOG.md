@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+## 0.6.2
+
+### Adaptive coordinator polish (v0.3.1 P1)
+
+- **Expert auto-summoning**: the coordinator now scans task text for
+  domain-expert trigger keywords and adds matching experts to the team
+  on top of the tier baseline. Initial trigger sets ship for three
+  experts — `security-reviewer` (payment / auth / credentials / OWASP
+  / CVE / vulnerability), `tech-writer` (README / doc / tutorial / API
+  docs), and `ai-integration-specialist` (LLM / prompt / embedding /
+  RAG / fine-tune / API key). Task "实现支付接口" now auto-summons
+  `security-reviewer` on top of the HEAVY-tier baseline. New optional
+  `[autosummon]` section in role TOML lets you add trigger sets for
+  more experts without code changes.
+- **Risk-based forced summoning**: high-risk tasks now staff a
+  `reviewer` (risk ≥ 0.7) and `qa` (risk ≥ 0.85) even when the tier
+  baseline wouldn't normally include them. `coordinator_decision`
+  events expose which roles came from this gate via the new
+  `forced_by_risk` array field.
+- **TTL honoring (opt-in)**: disk-warm cache entries older than the
+  role's `warm_bench_ttl_seconds` are now invalidated and cold-started.
+  Disabled by default to preserve current dogfood behavior — enable
+  with `[cache] enforce_ttl = true` in `.aiplus/agent-team.toml`. New
+  `ttl_expired` field in the `coordinator_decision` log; `aiplus
+  doctor` now reports cache age vs TTL per role.
+
+### Internal
+
+- Coordinator calibration regression suite extended from 16 to 26
+  entries, covering all three new staffing dimensions
+  (auto-summon / risk-forced / TTL). The original 16 entries are
+  locked as scorer-rubric regression baseline.
+- `install.sh` fallback version bumped to `v0.6.2` to maintain
+  parity with `aiplus-cli` Cargo version (parity test enforces this).
+
+### Migration notes
+
+- No breaking CLI changes.
+- Existing role TOMLs without an `[autosummon]` section continue to
+  work unchanged (no auto-summon for that role).
+- TTL enforcement is opt-in; existing disk-warm cache is not
+  affected until you set `enforce_ttl = true`.
+- Existing dispatch-log consumers see new `forced_by_risk`,
+  `auto_summoned`, and `ttl_expired` fields on
+  `coordinator_decision` rows. Older readers can ignore them.
+
 ## 0.6.1
 
 ### Quality + observability
