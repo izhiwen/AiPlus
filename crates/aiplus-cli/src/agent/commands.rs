@@ -124,4 +124,14 @@ pub enum AgentSub {
 
     #[command(visible_aliases = ["审计", "查"])]
     Audit(audit::AuditArgs),
+
+    #[command(name = "token-cost", visible_aliases = ["成本", "token成本"])]
+    TokenCost {
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        by_role: bool,
+        #[arg(long, value_name = "1h|8h|24h")]
+        window: Option<String>,
+        #[arg(long, default_value_t = 5)]
+        top_n: usize,
+    },
 }

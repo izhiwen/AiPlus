@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/aiplus-cli", "crates/aiplus-core"]
+members = ["crates/aiplus-cli", "crates/aiplus-core", "crates/aiplus-token-cost"]
 resolver = "2"
 
 [workspace.package]
