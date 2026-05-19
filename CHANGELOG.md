@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+## 0.6.4
+
+### Layer-7 security upgrades (G-AT-SEC-1)
+
+- **Tamper-evident dispatch log**: every new `coordinator_decision`
+  row in `.aiplus/agents/dispatch-log.jsonl` is now chained via
+  sha256 hash. New `aiplus agent audit verify-log` walks the chain
+  and reports `VERIFY_LOG=PASS` or `VERIFY_LOG=FAIL line=N` if
+  anything was tampered with. Legacy pre-genesis rows (from before
+  this release) are ignored until the first chained row. `aiplus
+  doctor` adds an `INFO dispatch_log_chain=<status>` line.
+- **Cross-provider auditor (Layer 7)** via `aiplus agent route
+  --auditor-provider <provider> "<task>"`: after the primary
+  dispatch completes, the named provider (different from primary,
+  enforced) is invoked via its non-interactive command (`codex
+  exec`, `claude --print`, `opencode run`) to review the result and
+  emit a structured verdict (`agree` / `disagree` / `flag`). The
+  verdict lands in dispatch-log as a new `auditor_verdict` event.
+  Catches single-provider hallucinations and bias even when both
+  providers are otherwise capable.
+- **Hardware-backed commit signing** via `aiplus identity setup-signing`:
+  on macOS, configures git to sign commits with a Secure Enclave-
+  backed SSH key (`ssh-keygen -t ecdsa-sk -O resident -O
+  verify-required`); passwordless, biometric-gated, no YubiKey
+  required. Supports `--dry-run` preview. Refuses to clobber any
+  existing signing configuration. Non-macOS platforms degrade with
+  a clear `SETUP_SIGNING_STATUS=UNSUPPORTED` message. `aiplus
+  doctor` adds an `INFO commit_signing=<secure_enclave|ssh|gpg|none>`
+  line.
+
+### Internal
+
+- Concurrent dispatch-log append race discovered during auditor
+  integration testing and fixed with a process-local append mutex
+  around hash-chain read + append; this affects parallel adaptive
+  coordinator dispatches (introduced in v0.6.3).
+- `aiplus-cli` gains a new top-level `identity` module for
+  identity-related subcommands (currently `setup-signing`).
+- Three new integration test files: `sec_1_tamper_evident_smoke.rs`,
+  `sec_1_auditor_smoke.rs`, `sec_1_setup_signing_smoke.rs` (11 new
+  tests). `cargo test --package aiplus-cli`: 363 passed (was 352);
+  `cargo test --workspace`: 558 passed (was 547). All tests isolate
+  `HOME` and `GIT_CONFIG_GLOBAL`; the test suite never touches the
+  Owner's global git config.
+- `install.sh` fallback bumped to `v0.6.4` for parity.
+
+### Known deviations
+
+- The cross-provider auditor currently receives the task + dispatch
+  summary, not the primary's structured `final_text` / `tool_calls`
+  output. This is a limitation of the current adapter-to-route
+  return plumbing rather than a SEC-1 design choice; future
+  AdapterResult plumbing improvement (v0.6.5+) will let the auditor
+  review actual primary content.
+
+### Migration notes
+
+- No breaking CLI changes.
+- The new hash chain starts at the first dispatch after upgrading;
+  old log entries are preserved verbatim and skipped by `verify-log`.
+- `aiplus identity setup-signing` is the only subcommand that
+  modifies Owner's global git config, and only when explicitly run;
+  use `--dry-run` to preview.
+
 ## 0.6.3
 
 ### Performance — HEAVY task dispatch now parallel
