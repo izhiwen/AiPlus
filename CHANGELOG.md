@@ -2,6 +2,103 @@
 
 ## Unreleased
 
+## 0.6.5
+
+### Removed
+
+- **Cross-provider auditor (`--auditor-provider`)** — the feature
+  shipped in v0.6.4 G-AT-SEC-1 D2 has been removed before public
+  dogfood. After honest re-evaluation: solo-Owner value was marginal
+  (manual provider-swap covers the same need), per-task token cost
+  doubled, and no monitoring layer existed. Tamper-evident dispatch
+  log and Mac Secure Enclave commit signing (the other two SEC-1
+  features) remain shipped and supported. Removed: `--auditor-provider`
+  CLI flag, route auditor invocation path, `auditor_verdict` event
+  emission, and the `auditor_provider_configured` doctor INFO line.
+  3 auditor smoke tests deleted. Legacy v0.1 Auditor (acceptance-mode
+  weekly_spot_check) is a different subsystem and is unaffected.
+
+### Features
+
+- **Auto-summoned experts now classified by LLM intent**, not brittle
+  keywords. Each role with an `[autosummon]` section declares an
+  `intent_hint` natural-language description; the coordinator asks a
+  lightweight LLM "does this task match this intent?" per dispatched
+  task and joins matching experts to staffing. Reuses the v0.6.0 G2
+  semantic dispatch gate's LLM-call plumbing. Decisions are cached
+  in-process (FIFO, default 1000 entries) so a repeat task in the
+  same process incurs no second LLM call. Initial trigger sets ship
+  for `security-reviewer` (intent: 支付 / auth / credentials / OWASP /
+  CVE / 漏洞), `tech-writer` (intent: docs / README / API docs /
+  tutorial), and `ai-integration-specialist` (intent: LLM / prompt /
+  embedding / RAG / fine-tune). Migration: replace `keywords = [...]`
+  with `intent_hint = "..."` in role TOML; previous keyword fields
+  are no longer read.
+- **`aiplus agent token-cost`** — new subcommand showing token
+  consumption and USD cost in rolling 1-hour / 8-hour / 24-hour
+  windows, plus a top-5 most-expensive-tasks list. Per-task primary
+  view + per-role detail view via `--by-role`. Pricing source:
+  community-maintained LiteLLM JSON
+  (`model_prices_and_context_window.json`), fetched once per day and
+  cached at `~/.cache/aiplus-token-cost/pricing.json`; falls back to
+  embedded constants if the fetch fails; a local
+  `.aiplus/pricing.toml` overrides both for project-specific or
+  enterprise rates. Each invocation also appends an hourly snapshot
+  row to `.aiplus/agents/token-cost-snapshots.jsonl`. Lives in the
+  new sibling crate `aiplus-token-cost/`.
+- **`aiplus doctor --quiet`** — suppresses the INFO chatter, shows
+  only WARN+ and FAIL. Useful for CI gates and noisy-day debugging.
+
+### Internal
+
+- **`AdapterResult` return-value plumbing** — `route_known_role` and
+  friends now return `Result<AdapterResult>` instead of `Result<()>`,
+  threading the primary adapter's structured output back to callers.
+  This unblocks any future feature that needs to act on adapter
+  output programmatically.
+- **Dispatch-log rows now carry `schemaVersion: "0.4.0"`** — every
+  JSONL row written to `.aiplus/agents/dispatch-log.jsonl` includes
+  this field so downstream consumers can branch on schema cleanly
+  instead of feature-detecting each individual field. Field is
+  purely additive; old parsers ignoring unknown fields continue to
+  work.
+- **Pre-existing clippy lint debt cleaned up** —
+  `cargo clippy --workspace --all-targets -- -D warnings` now PASSES.
+  Roughly a dozen historical `aiplus-core` and older `aiplus-cli`
+  lint issues fixed cosmetically (no semantic changes). This means
+  clippy `-D warnings` can now be a binding CI gate.
+- **install.sh / Cargo parity pre-commit hook** — `scripts/install-hooks.sh`
+  installs a pre-commit hook at `.git/hooks/pre-commit` that refuses
+  to commit if `aiplus-cli` Cargo.toml version field changes without
+  the matching `install.sh` fallback bump. Prevents the parity drift
+  that silently broke v0.6.0 → v0.6.1.
+- **Briefing template Skill** — recurring CEO-briefing structure
+  (worktree isolation / ownership matrix / day-0 narrow STOP rule /
+  retry-once gate / phase structure / scope fence / deliverables /
+  handoff endpoint) extracted into `aiplus-agent-team/skills/aiplus-ceo-briefing.md`
+  for future Advisor reuse. Captures the proven pattern across 8
+  prior briefings.
+- Existing 16-entry calibration baseline preserved byte-identical;
+  v0.3.1 auto-summon entries rewritten to assert intent-based
+  matching.
+- `install.sh` fallback bumped to `v0.6.5` (parity test enforced by
+  new pre-commit hook).
+- Test growth: 555 → 569 aiplus-cli + workspace tests
+  (3 auditor smoke tests removed; ~17 new tests across intent /
+  token-cost / polish smoke files).
+
+### Migration notes
+
+- Role TOML `[autosummon] keywords = [...]` → `[autosummon] intent_hint = "..."`.
+  No fallback path: the keyword field is silently ignored after this
+  release. Customized role configs need manual migration.
+- `--auditor-provider` flag is no longer recognized; scripts using
+  it will error.
+- Dispatch-log consumers will see new `schemaVersion: "0.4.0"` field
+  on all new rows. Old rows pre-upgrade are unaffected.
+- Run `scripts/install-hooks.sh` once after pulling this version to
+  activate the parity pre-commit hook.
+
 ## 0.6.4
 
 ### Layer-7 security upgrades (G-AT-SEC-1)
