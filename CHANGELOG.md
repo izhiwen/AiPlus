@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.6.6
+
+### Features
+
+- **`aiplus-token-cost` is now a 7th bundled substrate module** with
+  its own source-of-truth repo at
+  [github.com/izhiwen/AiPlus-Token-Cost](https://github.com/izhiwen/AiPlus-Token-Cost).
+  Two usage modes: (a) standalone via `curl -L
+  .../AiPlus-Token-Cost/releases/latest/download/aiplus-token-cost-aarch64-apple-darwin.tar.gz
+  | tar xz` then `aiplus-token-cost`, or (b) bundled — `aiplus
+  install` now deploys both `aiplus` and `aiplus-token-cost`
+  binaries from the same release tar.gz, and `aiplus agent
+  token-cost` continues to work as the subcommand path. Module
+  manifest (`assets/aiplus-token-cost/aiplus-module.json`) extends
+  the schema with a new `binaryAssets` array field signaling
+  binary-shipping modules vs data/template substrate modules.
+- **`aiplus doctor` adds `aiplus-token-cost` PATH check** —
+  INFO-level confirmation that the standalone binary is reachable
+  from PATH after bundle install.
+
 ### Platform support narrowed
 
 - **Pre-built binaries now ship for two platforms only**: Apple
@@ -17,6 +37,34 @@
   to work; this only affects future pre-built downloads.
 - `install.sh` now refuses non-Apple-Silicon-Mac platforms with a
   clear unsupported message + source-build instructions.
+
+### Internal
+
+- Release workflow assembles a dual-binary tar.gz per supported
+  platform: builds `aiplus` natively, downloads the matching
+  `aiplus-token-cost` binary from
+  AiPlus-Token-Cost releases, and packages both into one archive
+  per target.
+- `install.sh` + `install.ps1` extract and deploy both binaries;
+  backward-compatible with older single-binary archives (silently
+  skips the second-binary step if not present).
+- `crates/aiplus-core/src/module_manifest.rs` parser supports the
+  new `binaryAssets` field; `crates/aiplus-core/schemas/aiplus-module.schema.json`
+  documents the schema extension.
+- `install.sh` fallback version bumped to `v0.6.6` (parity test).
+- README + README.zh-CN updated from "6 bundled modules" to "7"
+  with token-cost entry pointing at both standalone and bundled
+  install paths.
+
+### Migration notes
+
+- No breaking CLI changes.
+- Existing `aiplus install` users will see the new
+  `aiplus-token-cost` binary land in `~/.local/bin/` alongside
+  `aiplus`. If you don't want it on PATH, the standalone binary is
+  inert when not invoked.
+- Standalone-only users (never running `aiplus install`) can use
+  `aiplus-token-cost` directly without changes.
 
 ## 0.6.5
 
