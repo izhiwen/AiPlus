@@ -2,6 +2,90 @@
 
 ## Unreleased
 
+## 0.6.9
+
+### Agent autoflow — natural-language → aiplus MCP tools
+
+When a user asks about token costs, planning, or audit in natural language,
+the agent (Codex / Claude Code / OpenCode) now reaches for AiPlus MCP tools
+instead of bypassing aiplus with shell grep or training-data answers. Two
+mechanisms together make this work:
+
+- **Per-runtime SKILL.md files** written to
+  `.claude/skills/aiplus/SKILL.md`, `.codex/skills/aiplus/SKILL.md`, and
+  `.opencode/skills/aiplus/SKILL.md` during `aiplus install`. Each file
+  explicitly steers the agent toward MCP tools, lists prefer-MCP-over-CLI
+  patterns, and includes concrete dialogue examples ("user says 'implement
+  X' → call `agent_route_score_only` first, not internal knowledge").
+- **Project-root preamble** in `CLAUDE.md` / `AGENTS.md` /
+  `.opencode/instructions/aiplus.md` with a small `<!-- aiplus-discovery-block
+  -->` managed-block summarizing the intent → tool mapping. Idempotent on
+  re-install.
+- **MCP tool descriptions for `agent_token_cost`, `agent_audit_verify_log`,
+  `agent_route_score_only`** updated to start with "PREFERRED programmatic
+  surface" and reference the CLI alternative, so the agent picks MCP over
+  `aiplus agent <verb>` CLI subcommands.
+
+Multi-runtime empirical validation (Advisor independent live re-test, 6
+prompts):
+- OpenCode: 3/3 prompts triggered the expected MCP tool (cost prompt
+  fully executed and returned structured result; planning prompt
+  triggered then rejected by opencode non-interactive permission gate;
+  audit triggered).
+- Codex: 3/3 prompts triggered the expected MCP tool, but codex
+  non-interactive mode cancels MCP calls mid-flight before the tool
+  returns. This is a codex runtime limitation, not an AiPlus issue;
+  interactive codex sessions and Claude Code are unaffected.
+
+### Behind the scenes
+
+This release lands **two iterations** of discovery work:
+
+- v1 (G-AT-AGENT-AUTOFLOW-DISCOVERY-1) shipped initial SKILL.md +
+  preamble. Independent Advisor re-test showed only 1/3 prompts
+  triggered the expected MCP tool: cost went to CLI subcommand,
+  planning bypassed aiplus entirely, audit triggered then cancelled.
+  v1 was STOPPED at Phase C ratification per spec strict rule.
+- v2 (G-AT-AGENT-AUTOFLOW-DISCOVERY-2) diagnosed three root causes
+  and redesigned: explicit prefer-MCP-over-CLI language, concrete
+  dialogue examples for non-trivial coding tasks, enhanced MCP tool
+  descriptions. Independent re-test confirms 5-6/6 MCP triggered.
+
+### Internal
+
+- `crates/aiplus-cli/src/main.rs`: install logic extended to emit
+  SKILL.md + project-root preamble per runtime.
+- `crates/aiplus-cli/src/mcp_server.rs`: descriptions of three new
+  MCP tools enhanced to encourage agent to prefer MCP over CLI.
+- `assets/aiplus-agent-team/adapters/<runtime>/skills/aiplus/SKILL.md`:
+  three new asset files (claude-code, codex, opencode), shipped via
+  `aiplus install`.
+- `crates/aiplus-cli/tests/agent_autoflow_discovery.rs`: new
+  regression tests for file content + idempotency.
+- Test growth: 579 → 581 workspace tests.
+- `install.sh` fallback bumped to `v0.6.9` (parity test).
+
+### Known limitations
+
+- **Codex non-interactive mode** cancels MCP calls mid-flight. The
+  agent does correctly try the right MCP tool, but the runtime
+  doesn't return the structured result. Interactive codex works
+  fine. Documented in SKILL.md.
+- **OpenCode non-interactive mode** uses a permission gate that may
+  reject MCP tool calls when no interactive user is present.
+  Interactive opencode works fine.
+
+### Migration notes
+
+- No breaking CLI changes.
+- Re-run `aiplus install <runtime>` once after upgrading to land the
+  SKILL.md + preamble files in your projects. Existing projects
+  continue to work without the new discovery layer until you re-run
+  install.
+- The `<!-- aiplus-discovery-block -->` managed-block in CLAUDE.md /
+  AGENTS.md is idempotent: re-running `aiplus install` replaces the
+  block content but doesn't duplicate.
+
 ## 0.6.8
 
 ### Bug fixes (userland-test discoveries)
