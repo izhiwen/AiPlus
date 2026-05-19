@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 aiplus-core = { path = "../aiplus-core" }
+aiplus-token-cost = { path = "../aiplus-token-cost" }
 anyhow.workspace = true
 clap.workspace = true
 ctrlc.workspace = true

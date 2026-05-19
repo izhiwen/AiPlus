@@ -77,5 +77,20 @@ pub fn dispatch(args: AgentArgs) -> Result<()> {
         ),
         AgentSub::PruneWorktrees { yes } => prune_worktrees::handle_prune_worktrees(yes),
         AgentSub::Audit(args) => audit::dispatch(args),
+        AgentSub::TokenCost {
+            by_role,
+            window,
+            top_n,
+        } => {
+            let project_root = std::env::current_dir()?;
+            let options = aiplus_token_cost::TokenCostOptions {
+                by_role,
+                window,
+                top_n,
+            };
+            let report = aiplus_token_cost::run_token_cost(&project_root, &options)?;
+            print!("{}", aiplus_token_cost::format_report(&report, by_role));
+            Ok(())
+        }
     }
 }
