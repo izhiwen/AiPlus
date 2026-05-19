@@ -219,6 +219,53 @@ fn tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "agent_audit_verify_log",
+            "description": "Verify the integrity of .aiplus/agents/dispatch-log.jsonl hash chain. Reports PASS or FAIL with the first bad line and reason. Use this before relying on dispatch history.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "agent_route_score_only",
+            "description": "Pre-flight a task by running the adaptive coordinator scorer and tier classifier without dispatching roles. Returns complexity, risk, tier, staffing, forced-by-risk roles, and auto-summoned experts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "Task description in natural language."
+                    }
+                },
+                "required": ["task"]
+            }
+        }),
+        json!({
+            "name": "agent_token_cost",
+            "description": "Show token consumption and USD cost rollups for AiPlus dispatch logs in 1-hour / 8-hour / 24-hour windows, with optional per-role breakdown and top-N most expensive tasks.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "window": {
+                        "type": "string",
+                        "enum": ["1h", "8h", "24h"],
+                        "description": "Single window to restrict to. Omit to get all three."
+                    },
+                    "by_role": {
+                        "type": "boolean",
+                        "description": "Include per-role breakdown. Default false."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Top-N most expensive tasks per window. Default 5."
+                    }
+                },
+                "required": []
+            }
+        }),
+        json!({
             "name": "agent_invite",
             "description": "Mark a stub / dormant role as 'invited' so it can receive dispatches. Use when bringing an expert (e.g. job-talk-coach, structural-modeler) into the team for a specific scope. Logged to audit.jsonl as an Owner-visible event.",
             "inputSchema": {
@@ -316,6 +363,9 @@ fn handle_tools_call(id: Value, params: Value, project_root: &std::path::Path) -
         "agent_set_team" => call_agent_set_team(&args, project_root),
         "agent_list" => call_agent_list(&args, project_root),
         "agent_doctor" => call_agent_doctor(project_root),
+        "agent_audit_verify_log" => call_agent_audit_verify_log(project_root),
+        "agent_route_score_only" => call_agent_route_score_only(&args, project_root),
+        "agent_token_cost" => call_agent_token_cost(&args, project_root),
         "agent_invite" => call_agent_single_role(&args, "invite", project_root),
         "agent_dismiss" => call_agent_single_role(&args, "dismiss", project_root),
         "agent_disable" => call_agent_single_role(&args, "disable", project_root),
@@ -410,6 +460,69 @@ fn call_agent_doctor(project_root: &std::path::Path) -> Result<String> {
     run_cli(project_root, &["agent", "doctor"])
 }
 
+fn call_agent_audit_verify_log(project_root: &std::path::Path) -> Result<String> {
+    let (stdout, stderr, success) =
+        run_cli_capture(project_root, &["agent", "audit", "verify-log"])?;
+    if let Some(value) = parse_audit_verify_log_output(&stdout)? {
+        return Ok(value.to_string());
+    }
+    if success {
+        Err(anyhow!(
+            "aiplus agent audit verify-log output missing VERIFY_LOG line:\n{stdout}"
+        ))
+    } else {
+        Err(anyhow!(
+            "aiplus agent audit verify-log exited non-zero:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        ))
+    }
+}
+
+fn call_agent_route_score_only(args: &Value, project_root: &std::path::Path) -> Result<String> {
+    let task = args
+        .get("task")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("agent_route_score_only requires 'task' (non-empty string)"))?;
+    let output = run_cli(project_root, &["agent", "route", "--score-only", task])?;
+    Ok(parse_route_score_only_output(&output)?.to_string())
+}
+
+fn call_agent_token_cost(args: &Value, project_root: &std::path::Path) -> Result<String> {
+    let mut command_args = vec![
+        "agent".to_string(),
+        "token-cost".to_string(),
+        "--top-n".to_string(),
+    ];
+    let top_n = match args.get("top_n").and_then(|v| v.as_u64()) {
+        Some(value @ 1..=50) => value,
+        Some(_) => return Err(anyhow!("agent_token_cost 'top_n' must be between 1 and 50")),
+        None => 5,
+    };
+    command_args.push(top_n.to_string());
+
+    if let Some(window) = args.get("window").and_then(|v| v.as_str()) {
+        if !["1h", "8h", "24h"].contains(&window) {
+            return Err(anyhow!(
+                "agent_token_cost 'window' must be one of: 1h, 8h, 24h"
+            ));
+        }
+        command_args.push("--window".to_string());
+        command_args.push(window.to_string());
+    }
+
+    let by_role = args
+        .get("by_role")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if by_role {
+        command_args.push("--by-role".to_string());
+    }
+
+    let output = run_cli_owned(project_root, &command_args)?;
+    Ok(parse_token_cost_output(&output)?.to_string())
+}
+
 /// Shared helper for agent subcommands that take a single `role` arg and
 /// no other options: invite / dismiss / disable / enable / integrate.
 fn call_agent_single_role(
@@ -444,6 +557,21 @@ fn call_agent_talk(args: &Value, _project_root: &std::path::Path) -> Result<Stri
 /// args. Centralises the success/failure plumbing so each call_agent_X stays
 /// a 2-line wrapper.
 fn run_cli(project_root: &std::path::Path, args: &[&str]) -> Result<String> {
+    let (stdout, stderr, success) = run_cli_capture(project_root, args)?;
+    if !success {
+        return Err(anyhow!(
+            "aiplus {} exited non-zero:\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            args.join(" ")
+        ));
+    }
+    Ok(if stderr.trim().is_empty() {
+        stdout
+    } else {
+        format!("{stdout}\n--- stderr ---\n{stderr}")
+    })
+}
+
+fn run_cli_owned(project_root: &std::path::Path, args: &[String]) -> Result<String> {
     let self_exe = std::env::current_exe()?;
     let output = std::process::Command::new(self_exe)
         .args(args)
@@ -464,6 +592,312 @@ fn run_cli(project_root: &std::path::Path, args: &[&str]) -> Result<String> {
     })
 }
 
+fn run_cli_capture(
+    project_root: &std::path::Path,
+    args: &[&str],
+) -> Result<(String, String, bool)> {
+    let self_exe = std::env::current_exe()?;
+    let output = std::process::Command::new(self_exe)
+        .args(args)
+        .current_dir(project_root)
+        .output()?;
+    Ok((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        output.status.success(),
+    ))
+}
+
+fn parse_audit_verify_log_output(output: &str) -> Result<Option<Value>> {
+    let Some(line) = output.lines().find(|line| line.starts_with("VERIFY_LOG=")) else {
+        return Ok(None);
+    };
+    if let Some(rest) = line.strip_prefix("VERIFY_LOG=PASS") {
+        let checked_lines = find_key_value(rest, "checked_lines")
+            .unwrap_or("0")
+            .parse::<usize>()?;
+        return Ok(Some(json!({
+            "verdict": "PASS",
+            "checked_lines": checked_lines,
+            "first_bad_line": Value::Null,
+            "reason": Value::Null
+        })));
+    }
+    if let Some(rest) = line.strip_prefix("VERIFY_LOG=FAIL") {
+        let line_number = find_key_value(rest, "line")
+            .ok_or_else(|| anyhow!("VERIFY_LOG=FAIL missing line=N"))?
+            .parse::<usize>()?;
+        let reason = rest
+            .split_once(" reason=")
+            .map(|(_, value)| value.trim())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("VERIFY_LOG=FAIL missing reason"))?;
+        return Ok(Some(json!({
+            "verdict": "FAIL",
+            "checked_lines": Value::Null,
+            "first_bad_line": line_number,
+            "reason": reason
+        })));
+    }
+    Err(anyhow!("unsupported VERIFY_LOG line: {line}"))
+}
+
+fn parse_route_score_only_output(output: &str) -> Result<Value> {
+    let line = output
+        .lines()
+        .find(|line| line.starts_with("Adaptive coordinator:"))
+        .ok_or_else(|| anyhow!("score-only output missing Adaptive coordinator line"))?;
+    let mut complexity = None;
+    let mut risk = None;
+    let mut tier = None;
+    let mut code_change = None;
+    let mut design_impact = None;
+    let mut consultant = None;
+    for part in line.split_whitespace() {
+        if let Some(value) = part.strip_prefix("complexity=") {
+            complexity = Some(value.parse::<u8>()?);
+        } else if let Some(value) = part.strip_prefix("risk=") {
+            risk = Some(value.parse::<f64>()?);
+        } else if let Some(value) = part.strip_prefix("tier=") {
+            tier = Some(value.to_string());
+        } else if let Some(value) = part.strip_prefix("code_change=") {
+            code_change = Some(parse_bool_text(value)?);
+        } else if let Some(value) = part.strip_prefix("design_impact=") {
+            design_impact = Some(parse_bool_text(value)?);
+        } else if let Some(value) = part.strip_prefix("consultant=") {
+            consultant = Some(value.to_string());
+        }
+    }
+    let staffing_roles = output
+        .lines()
+        .find_map(|line| parse_bracket_list_line(line, "Would staff: "))
+        .unwrap_or_default();
+    let forced_by_risk = output
+        .lines()
+        .find_map(|line| parse_bracket_list_line(line, "Forced by risk: "))
+        .unwrap_or_default();
+    let auto_summoned = output
+        .lines()
+        .find_map(|line| parse_bracket_list_line(line, "Auto-summoned experts: "))
+        .unwrap_or_default();
+
+    Ok(json!({
+        "complexity": complexity.ok_or_else(|| anyhow!("score-only output missing complexity"))?,
+        "risk": risk.ok_or_else(|| anyhow!("score-only output missing risk"))?,
+        "tier": tier.ok_or_else(|| anyhow!("score-only output missing tier"))?,
+        "code_change": code_change.ok_or_else(|| anyhow!("score-only output missing code_change"))?,
+        "design_impact": design_impact.ok_or_else(|| anyhow!("score-only output missing design_impact"))?,
+        "consultant": consultant.ok_or_else(|| anyhow!("score-only output missing consultant"))?,
+        "staffing_roles": staffing_roles,
+        "forced_by_risk": forced_by_risk,
+        "auto_summoned": auto_summoned
+    }))
+}
+
+fn parse_token_cost_output(output: &str) -> Result<Value> {
+    let mut pricing_source = None;
+    let mut pricing_entries = None;
+    let mut dispatch_log = None;
+    let mut snapshot_path = None;
+    let mut snapshot_written = None;
+    let mut warnings: Vec<String> = Vec::new();
+    let mut windows: Vec<Value> = Vec::new();
+    let mut current: Option<serde_json::Map<String, Value>> = None;
+    let mut section = TokenCostSection::None;
+
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if line == "AIPLUS_TOKEN_COST" {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("pricing_source=") {
+            pricing_source = Some(value.to_string());
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("pricing_entries=") {
+            pricing_entries = Some(value.parse::<usize>()?);
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("dispatch_log=") {
+            dispatch_log = Some(value.to_string());
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("snapshot_path=") {
+            snapshot_path = Some(value.to_string());
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("snapshot_written=") {
+            snapshot_written = Some(parse_bool_text(value)?);
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("WARN ") {
+            if let Some(window) = current.as_mut() {
+                push_json_array_item(window, "warnings", json!(value));
+            } else {
+                warnings.push(value.to_string());
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("WINDOW ") {
+            if let Some(window) = current.take() {
+                windows.push(Value::Object(window));
+            }
+            current = Some(parse_token_cost_window(rest)?);
+            section = TokenCostSection::None;
+            continue;
+        }
+        if line == "TOP_TASKS" {
+            section = TokenCostSection::TopTasks;
+            continue;
+        }
+        if line == "BY_ROLE" {
+            section = TokenCostSection::ByRole;
+            continue;
+        }
+        if line == "(none)" {
+            continue;
+        }
+        let Some(window) = current.as_mut() else {
+            continue;
+        };
+        match section {
+            TokenCostSection::TopTasks => {
+                push_json_array_item(window, "top_tasks", parse_token_cost_top_task(line)?);
+            }
+            TokenCostSection::ByRole => {
+                push_json_array_item(window, "by_role", parse_token_cost_role(line)?);
+            }
+            TokenCostSection::None => {}
+        }
+    }
+    if let Some(window) = current.take() {
+        windows.push(Value::Object(window));
+    }
+
+    Ok(json!({
+        "pricing_source": pricing_source.ok_or_else(|| anyhow!("token-cost output missing pricing_source"))?,
+        "pricing_entries": pricing_entries.ok_or_else(|| anyhow!("token-cost output missing pricing_entries"))?,
+        "dispatch_log": dispatch_log.ok_or_else(|| anyhow!("token-cost output missing dispatch_log"))?,
+        "snapshot_path": snapshot_path.ok_or_else(|| anyhow!("token-cost output missing snapshot_path"))?,
+        "snapshot_written": snapshot_written.ok_or_else(|| anyhow!("token-cost output missing snapshot_written"))?,
+        "warnings": warnings,
+        "windows": windows
+    }))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TokenCostSection {
+    None,
+    TopTasks,
+    ByRole,
+}
+
+fn parse_token_cost_window(rest: &str) -> Result<serde_json::Map<String, Value>> {
+    let mut parts = rest.split_whitespace();
+    let label = parts
+        .next()
+        .ok_or_else(|| anyhow!("WINDOW line missing label"))?;
+    let mut total_tokens = None;
+    let mut total_usd = None;
+    for part in parts {
+        if let Some(value) = part.strip_prefix("total_tokens=") {
+            total_tokens = Some(value.parse::<u64>()?);
+        } else if let Some(value) = part.strip_prefix("total_usd=") {
+            total_usd = Some(value.parse::<f64>()?);
+        }
+    }
+    let mut window = serde_json::Map::new();
+    window.insert("window".to_string(), json!(label));
+    window.insert(
+        "total_tokens".to_string(),
+        json!(total_tokens.ok_or_else(|| anyhow!("WINDOW line missing total_tokens"))?),
+    );
+    window.insert(
+        "total_usd".to_string(),
+        json!(total_usd.ok_or_else(|| anyhow!("WINDOW line missing total_usd"))?),
+    );
+    window.insert("top_tasks".to_string(), json!([]));
+    window.insert("by_role".to_string(), json!([]));
+    window.insert("warnings".to_string(), json!([]));
+    Ok(window)
+}
+
+fn parse_token_cost_top_task(line: &str) -> Result<Value> {
+    let (rank_text, rest) = line
+        .split_once(". ")
+        .ok_or_else(|| anyhow!("TOP_TASKS row missing rank: {line}"))?;
+    let rank = rank_text.parse::<usize>()?;
+    let (fields, task) = rest
+        .split_once(" task=\"")
+        .ok_or_else(|| anyhow!("TOP_TASKS row missing task text: {line}"))?;
+    let task = task
+        .strip_suffix('"')
+        .ok_or_else(|| anyhow!("TOP_TASKS task text missing closing quote: {line}"))?;
+    Ok(json!({
+        "rank": rank,
+        "usd": required_field(fields, "usd")?.parse::<f64>()?,
+        "tokens": required_field(fields, "tokens")?.parse::<u64>()?,
+        "role": required_field(fields, "role")?,
+        "provider": required_field(fields, "provider")?,
+        "model": required_field(fields, "model")?,
+        "key": required_field(fields, "key")?,
+        "task": task
+    }))
+}
+
+fn parse_token_cost_role(line: &str) -> Result<Value> {
+    let (role, fields) = line
+        .split_once(' ')
+        .ok_or_else(|| anyhow!("BY_ROLE row missing fields: {line}"))?;
+    Ok(json!({
+        "role": role,
+        "tokens": required_field(fields, "tokens")?.parse::<u64>()?,
+        "input": required_field(fields, "input")?.parse::<u64>()?,
+        "output": required_field(fields, "output")?.parse::<u64>()?,
+        "usd": required_field(fields, "usd")?.parse::<f64>()?
+    }))
+}
+
+fn push_json_array_item(map: &mut serde_json::Map<String, Value>, key: &str, item: Value) {
+    if let Some(values) = map.get_mut(key).and_then(Value::as_array_mut) {
+        values.push(item);
+    }
+}
+
+fn parse_bool_text(value: &str) -> Result<bool> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(anyhow!("expected boolean true/false, got {value}")),
+    }
+}
+
+fn parse_bracket_list_line(line: &str, prefix: &str) -> Option<Vec<String>> {
+    let values = line.strip_prefix(prefix)?;
+    let values = values.strip_prefix('[')?.strip_suffix(']')?;
+    if values.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    Some(
+        values
+            .split(',')
+            .map(|value| value.trim().to_string())
+            .collect(),
+    )
+}
+
+fn find_key_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.split_whitespace()
+        .find_map(|part| part.strip_prefix(&format!("{key}=")))
+}
+
+fn required_field<'a>(text: &'a str, key: &str) -> Result<&'a str> {
+    find_key_value(text, key).ok_or_else(|| anyhow!("missing {key}= field in: {text}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,21 +913,21 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_advertises_eleven_tools_with_required_fields() {
+    fn tools_list_advertises_fourteen_tools_with_required_fields() {
         let resp = handle_tools_list(json!(1));
         let result = resp.result.expect("tools/list must return result");
         let tools = result["tools"].as_array().expect("tools is array");
         assert_eq!(
             tools.len(),
-            11,
-            "expected 3 original + 8 new agent tools = 11"
+            14,
+            "expected 11 existing + 3 agent-autoflow tools = 14"
         );
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         // Original 3.
         assert!(names.contains(&"agent_route"));
         assert!(names.contains(&"agent_status"));
         assert!(names.contains(&"agent_set_team"));
-        // New 8 (P0.3 of v0.5.11 close-out).
+        // P0.3 of v0.5.11 close-out.
         assert!(names.contains(&"agent_list"));
         assert!(names.contains(&"agent_doctor"));
         assert!(names.contains(&"agent_invite"));
@@ -502,6 +936,10 @@ mod tests {
         assert!(names.contains(&"agent_enable"));
         assert!(names.contains(&"agent_integrate"));
         assert!(names.contains(&"agent_talk"));
+        // Agent-autoflow MCP.
+        assert!(names.contains(&"agent_audit_verify_log"));
+        assert!(names.contains(&"agent_route_score_only"));
+        assert!(names.contains(&"agent_token_cost"));
         for tool in tools {
             assert!(tool["description"].is_string());
             assert!(tool["inputSchema"]["type"].as_str() == Some("object"));
@@ -567,6 +1005,96 @@ mod tests {
         let tmp = std::env::temp_dir();
         let err = call_agent_set_team(&json!({}), &tmp).unwrap_err();
         assert!(err.to_string().contains("team"));
+    }
+
+    #[test]
+    fn agent_autoflow_args_validated_before_subprocess() {
+        let tmp = std::env::temp_dir();
+        let err = call_agent_route_score_only(&json!({}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("task"));
+        let err = call_agent_route_score_only(&json!({"task": ""}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("task"));
+        let err = call_agent_token_cost(&json!({"window": "2h"}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("window"));
+        let err = call_agent_token_cost(&json!({"top_n": 0}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("top_n"));
+        let err = call_agent_token_cost(&json!({"top_n": 51}), &tmp).unwrap_err();
+        assert!(err.to_string().contains("top_n"));
+    }
+
+    #[test]
+    fn audit_verify_log_output_parser_handles_pass_and_fail() {
+        let pass = parse_audit_verify_log_output("VERIFY_LOG=PASS checked_lines=7\n")
+            .unwrap()
+            .unwrap();
+        assert_eq!(pass["verdict"], "PASS");
+        assert_eq!(pass["checked_lines"], 7);
+        assert!(pass["first_bad_line"].is_null());
+
+        let fail = parse_audit_verify_log_output("VERIFY_LOG=FAIL line=42 reason=hash mismatch\n")
+            .unwrap()
+            .unwrap();
+        assert_eq!(fail["verdict"], "FAIL");
+        assert_eq!(fail["first_bad_line"], 42);
+        assert_eq!(fail["reason"], "hash mismatch");
+    }
+
+    #[test]
+    fn route_score_only_output_parser_handles_optional_lists() {
+        let parsed = parse_route_score_only_output(
+            "Adaptive coordinator: complexity=5 risk=0.85 tier=HEAVY code_change=true design_impact=true consultant=fire\n\
+             Plan step: would fire consultant for HEAVY task\n\
+             Would staff: [pm,architect,engineer-a,reviewer,qa]\n\
+             Forced by risk: [qa]\n\
+             Auto-summoned experts: [security-reviewer,tech-writer]\n",
+        )
+        .unwrap();
+        assert_eq!(parsed["complexity"], 5);
+        assert_eq!(parsed["risk"], 0.85);
+        assert_eq!(parsed["tier"], "HEAVY");
+        assert_eq!(parsed["code_change"], true);
+        assert_eq!(parsed["design_impact"], true);
+        assert_eq!(parsed["consultant"], "fire");
+        assert_eq!(
+            parsed["staffing_roles"],
+            json!(["pm", "architect", "engineer-a", "reviewer", "qa"])
+        );
+        assert_eq!(parsed["forced_by_risk"], json!(["qa"]));
+        assert_eq!(
+            parsed["auto_summoned"],
+            json!(["security-reviewer", "tech-writer"])
+        );
+    }
+
+    #[test]
+    fn token_cost_output_parser_handles_windows_tasks_roles_and_warnings() {
+        let parsed = parse_token_cost_output(
+            "AIPLUS_TOKEN_COST\n\
+             pricing_source=litellm_cache\n\
+             pricing_entries=3967\n\
+             dispatch_log=/tmp/project/.aiplus/agents/dispatch-log.jsonl\n\
+             snapshot_path=/tmp/project/.aiplus/agents/token-cost-snapshots.jsonl\n\
+             snapshot_written=true\n\
+             WARN pricing stale\n\
+             \n\
+             WINDOW 1h total_tokens=110 total_usd=0.012300\n\
+             TOP_TASKS\n\
+             1. usd=0.012300 tokens=110 role=engineer-a provider=anthropic model=claude key=dispatch-1 task=\"implement payment\"\n\
+             BY_ROLE\n\
+             engineer-a tokens=110 input=100 output=10 usd=0.012300\n",
+        )
+        .unwrap();
+        assert_eq!(parsed["pricing_source"], "litellm_cache");
+        assert_eq!(parsed["pricing_entries"], 3967);
+        assert_eq!(parsed["snapshot_written"], true);
+        assert_eq!(parsed["warnings"], json!(["pricing stale"]));
+        assert_eq!(parsed["windows"][0]["window"], "1h");
+        assert_eq!(parsed["windows"][0]["total_tokens"], 110);
+        assert_eq!(
+            parsed["windows"][0]["top_tasks"][0]["task"],
+            "implement payment"
+        );
+        assert_eq!(parsed["windows"][0]["by_role"][0]["role"], "engineer-a");
     }
 
     #[test]
