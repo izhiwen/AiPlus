@@ -2,6 +2,74 @@
 
 ## Unreleased
 
+## 0.6.10
+
+### Autoflow discovery — full feature coverage
+
+v0.6.9 wired the discovery layer for 3 MCP tools (cost / planning / audit).
+This release extends it to **the full aiplus feature surface**: all 14 MCP
+tools plus 6 categories of non-MCP CLI features. Agents now have natural-
+language → aiplus routing guidance for memory recording, compact prep,
+velocity tracking, hardware signing setup, doctor checks, and team switching
+— not just the 3 v0.6.9 cases.
+
+**SKILL.md "Use These Tools First" extended** (in `.claude/skills/aiplus/`,
+`.codex/skills/aiplus/`, `.opencode/skills/aiplus/`) now groups guidance by
+topic:
+
+- Cost / spending / token usage → `agent_token_cost` MCP
+- Planning / task preview → `agent_route_score_only` MCP
+- Audit / log integrity → `agent_audit_verify_log` MCP
+- Dispatching / role management → `agent_route`, `agent_invite`, `agent_dismiss`,
+  `agent_disable` / `agent_enable`, `agent_integrate`, `agent_talk` (all MCP)
+- Team status / configuration → `agent_status`, `agent_list`, `agent_set_team`,
+  `agent_doctor` (all MCP)
+- Memory / context → `aiplus memory record / context / status` (CLI)
+- Compact / session token efficiency → `aiplus compact prepare / resume / savings`
+- Velocity / time tracking → `aiplus velocity estimate / report`
+- Identity / commit signing → `aiplus identity setup-signing`
+- Doctor (cross-cutting health) → `aiplus doctor [--quiet] [--check-keyring]`
+
+**MCP tool descriptions** for the 11 previously-generic-described tools
+(`agent_route`, `agent_status`, `agent_set_team`, `agent_list`, `agent_doctor`,
+`agent_invite`, `agent_dismiss`, `agent_disable`, `agent_enable`,
+`agent_integrate`, `agent_talk`) now all start with "PREFERRED programmatic
+surface for <intent>" plus a CLI-alternative reference, matching the v0.6.9
+pattern for the 3 new tools.
+
+**Multi-turn dispatch flow** — SKILL.md now has explicit "Dispatch Flow" and
+"Multi-turn Patterns" sections showing the 4-step pattern (score → confirm →
+dispatch → integrate) and common multi-turn conversation patterns (follow-up
+questions, mid-flight scope change, ambiguous intent disambiguation).
+
+**Project-root preamble** (in `CLAUDE.md` / `AGENTS.md` /
+`.opencode/instructions/aiplus.md`) extended to cover the full intent list +
+a compact dispatch-flow summary appended after the intent list.
+
+### What this enables
+
+Owner's vision "user 自然语言 → agent 主动调 aiplus 各种功能" is now wired
+across the full feature surface. Empirical validation across runtimes happens
+in v0.6.11 G-AT-AUTOFLOW-VALIDATE-1 (next).
+
+### Internal
+
+- 2 parallel CEO sessions on `feat/autoflow-coverage` (Session A) +
+  `feat/autoflow-multiturn` (Session B) implemented this release. Ownership
+  matrix per CONTRACT v1.1 App D Rule D.3 cleanly separated work areas;
+  one merge conflict in a shared test file resolved by keeping both
+  branches' assertions. 582 workspace tests pass (was 581 in v0.6.9; net
+  +1 from Session A's expanded coverage assertions).
+- `install.sh` fallback bumped to `v0.6.10` (parity test).
+
+### Migration notes
+
+- No breaking CLI changes.
+- Re-run `aiplus install <runtime>` to land the v0.6.10 SKILL.md and
+  preamble content in existing projects. The discovery-block managed-block
+  is idempotent — re-running replaces but does not duplicate.
+- Existing v0.6.9 discovery still works; this release is additive.
+
 ## 0.6.9
 
 ### Agent autoflow — natural-language → aiplus MCP tools
