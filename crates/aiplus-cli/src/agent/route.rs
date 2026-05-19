@@ -11,7 +11,6 @@ use aiplus_core::consult;
 use anyhow::{anyhow, Result};
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -22,18 +21,12 @@ pub fn handle_route(
     owner_approved: &[String],
     workflow: Option<&str>,
     score_only: bool,
-    auditor_provider: Option<&str>,
 ) -> Result<()> {
     let workflow = parse_route_workflow(workflow)?;
     maybe_print_route_first_run_hint();
     if score_only {
         if workflow.is_some() {
             return Err(anyhow!("--score-only cannot be combined with --workflow"));
-        }
-        if auditor_provider.is_some() {
-            return Err(anyhow!(
-                "--score-only cannot be combined with --auditor-provider"
-            ));
         }
         let project_root = std::env::current_dir()?;
         let full_task = joined_route_task(role, task);
@@ -59,11 +52,6 @@ pub fn handle_route(
                 }
 
                 if let Some(RouteWorkflow::AuthorCriticFixer) = workflow {
-                    if auditor_provider.is_some() {
-                        return Err(anyhow!(
-                            "--auditor-provider cannot be combined with --workflow author-critic-fixer"
-                        ));
-                    }
                     let gate_state = enforce_gates(&project_root, canonical_role, task, &approved)?;
                     if gate_state == GateOutcome::PendingBlocked {
                         let _ = state::record_dispatch_with_outcome(
@@ -132,10 +120,6 @@ pub fn handle_route(
                         sidecars,
                     )?;
                 }
-                if let Some(provider) = auditor_provider {
-                    let decision_id = format!("manual-{}", aiplus_core::epoch_millis());
-                    record_auditor_verdict(&project_root, provider, task, &decision_id)?;
-                }
                 return Ok(());
             }
             Err(_) => {
@@ -152,7 +136,7 @@ pub fn handle_route(
                     format!("{candidate} {task}")
                 };
                 let project_root = std::env::current_dir()?;
-                return run_adaptive_route(&project_root, &full_task, &approved, auditor_provider);
+                return run_adaptive_route(&project_root, &full_task, &approved);
             }
         }
     }
@@ -162,15 +146,10 @@ pub fn handle_route(
         ));
     }
     let project_root = std::env::current_dir()?;
-    run_adaptive_route(&project_root, task, &approved, auditor_provider)
+    run_adaptive_route(&project_root, task, &approved)
 }
 
-fn run_adaptive_route(
-    project_root: &Path,
-    task: &str,
-    approved: &BTreeSet<String>,
-    auditor_provider: Option<&str>,
-) -> Result<()> {
+fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<String>) -> Result<()> {
     let task = task.trim();
     if task.is_empty() {
         return Err(anyhow!("agent route requires a task when ROLE is omitted"));
@@ -198,7 +177,7 @@ fn run_adaptive_route(
     if !plan.auto_summoned.is_empty() {
         println!("Auto-summoned experts: [{}]", plan.auto_summoned.join(","));
     }
-    let decision_id = record_coordinator_decision(project_root, task, &plan, "route")?;
+    record_coordinator_decision(project_root, task, &plan, "route")?;
 
     let gate_state = enforce_gates(project_root, "ceo", task, approved)?;
     if gate_state == GateOutcome::PendingBlocked {
@@ -225,9 +204,6 @@ fn run_adaptive_route(
             task,
             "aiplus agent route adaptive-coordinator",
         );
-        if let Some(provider) = auditor_provider {
-            record_auditor_verdict(project_root, provider, task, &decision_id)?;
-        }
         return Ok(());
     }
 
@@ -245,9 +221,6 @@ fn run_adaptive_route(
         "Adaptive coordinator dispatch complete: tier={}",
         plan.tier.as_str()
     );
-    if let Some(provider) = auditor_provider {
-        record_auditor_verdict(project_root, provider, task, &decision_id)?;
-    }
     Ok(())
 }
 
@@ -337,229 +310,6 @@ fn record_coordinator_decision(
     let mut line = line;
     crate::agent::audit::verify_log::append_chained_jsonl_value(&path, &mut line)?;
     Ok(decision_id)
-}
-
-fn record_auditor_verdict(
-    project_root: &Path,
-    auditor_provider: &str,
-    task: &str,
-    decision_id: &str,
-) -> Result<()> {
-    let auditor_provider = normalize_auditor_provider(auditor_provider)?;
-    let primary_provider = detect_primary_provider(project_root);
-    if auditor_provider == primary_provider {
-        return Err(anyhow!(
-            "--auditor-provider must differ from primary provider `{primary_provider}`"
-        ));
-    }
-    let review = run_auditor_provider_review(&auditor_provider, &primary_provider, task)?;
-    let path = project_root.join(".aiplus/agents/dispatch-log.jsonl");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut line = serde_json::json!({
-        "schemaVersion": "0.6.4",
-        "event": "auditor_verdict",
-        "decisionId": decision_id,
-        "timestamp": aiplus_core::now_iso(),
-        "auditor_provider": auditor_provider,
-        "primary_provider": primary_provider,
-        "verdict": review.verdict,
-        "reasoning_summary": review.reasoning_summary,
-        "auditor_runtime_status": review.runtime_status,
-        "secretValues": "none"
-    });
-    crate::agent::audit::verify_log::append_chained_jsonl_value(&path, &mut line)?;
-    println!(
-        "Auditor verdict recorded: provider={} verdict={}",
-        auditor_provider, review.verdict
-    );
-    Ok(())
-}
-
-struct AuditorReview {
-    verdict: String,
-    reasoning_summary: String,
-    runtime_status: String,
-}
-
-fn normalize_auditor_provider(provider: &str) -> Result<String> {
-    let normalized = match provider.trim() {
-        "claude" | "claude-code" => "claude-code",
-        "codex" => "codex",
-        "opencode" => "opencode",
-        other => {
-            return Err(anyhow!(
-                "invalid auditor provider `{other}`; allowed=[codex,claude-code,opencode]"
-            ))
-        }
-    };
-    Ok(normalized.to_string())
-}
-
-fn detect_primary_provider(project_root: &Path) -> String {
-    if let Ok(provider) = std::env::var("AIPLUS_PRIMARY_PROVIDER") {
-        if let Ok(provider) = normalize_auditor_provider(&provider) {
-            return provider;
-        }
-    }
-    let manifest = project_root.join(".aiplus/install-manifest.json");
-    if let Ok(text) = std::fs::read_to_string(manifest) {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(runtime) = value
-                .get("runtimeAdapters")
-                .or_else(|| value.get("runtime_adapters"))
-                .and_then(|runtimes| runtimes.as_array())
-                .and_then(|runtimes| runtimes.first())
-                .and_then(|runtime| runtime.as_str())
-            {
-                if let Ok(provider) = normalize_auditor_provider(runtime) {
-                    return provider;
-                }
-            }
-        }
-    }
-    "local-cli".to_string()
-}
-
-fn run_auditor_provider_review(
-    auditor_provider: &str,
-    primary_provider: &str,
-    task: &str,
-) -> Result<AuditorReview> {
-    let prompt = auditor_prompt(auditor_provider, primary_provider, task);
-    let output = auditor_command(auditor_provider, &prompt)
-        .output()
-        .map_err(|e| anyhow!("failed to run auditor provider `{auditor_provider}`: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!(
-            "auditor provider `{auditor_provider}` failed status={} stderr={}",
-            output
-                .status
-                .code()
-                .map(|code| code.to_string())
-                .unwrap_or_else(|| "signal".to_string()),
-            task_excerpt(&stderr)
-        ));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let fallback = classify_auditor_verdict(task);
-    let verdict = parse_auditor_verdict(&stdout).unwrap_or_else(|| fallback.0.to_string());
-    let reasoning_summary = auditor_reasoning_summary(&stdout).unwrap_or(fallback.1);
-    Ok(AuditorReview {
-        verdict,
-        reasoning_summary,
-        runtime_status: "success".to_string(),
-    })
-}
-
-fn auditor_prompt(auditor_provider: &str, primary_provider: &str, task: &str) -> String {
-    format!(
-        "SEC-1 cross-provider audit.\n\
-         Auditor provider: {auditor_provider}\n\
-         Primary provider: {primary_provider}\n\n\
-         Original task:\n{task}\n\n\
-         Primary output summary:\n\
-         AiPlus route completed and recorded the primary dispatch. \
-         If final output is unavailable in this dispatch-only path, review the task risk and dispatch plan.\n\n\
-         Return exactly one verdict line: VERDICT: agree|disagree|flag\n\
-         Then one concise line: REASON: <200 chars>"
-    )
-}
-
-fn auditor_command(auditor_provider: &str, prompt: &str) -> Command {
-    let mut command = match auditor_provider {
-        "codex" => {
-            let mut command = Command::new("codex");
-            command.arg("exec").arg("--skip-git-repo-check").arg(prompt);
-            command
-        }
-        "claude-code" => {
-            let mut command = Command::new("claude");
-            command.arg("--print").arg(prompt);
-            command
-        }
-        "opencode" => {
-            let mut command = Command::new("opencode");
-            command.arg("run").arg(prompt);
-            command
-        }
-        _ => unreachable!("auditor provider normalized before command selection"),
-    };
-    command.env("AIPLUS_AUDITOR_PROMPT_SCHEMA", "sec-1-v1");
-    command
-}
-
-fn parse_auditor_verdict(output: &str) -> Option<String> {
-    for line in output.lines() {
-        let trimmed = line.trim();
-        let lower = trimmed.to_ascii_lowercase();
-        let candidate = lower
-            .strip_prefix("verdict:")
-            .map(str::trim)
-            .unwrap_or(lower.as_str());
-        for verdict in ["disagree", "flag", "agree"] {
-            if candidate == verdict || candidate.starts_with(&format!("{verdict} ")) {
-                return Some(verdict.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn auditor_reasoning_summary(output: &str) -> Option<String> {
-    for line in output.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.to_ascii_lowercase().starts_with("verdict:") {
-            continue;
-        }
-        let summary = trimmed
-            .strip_prefix("REASON:")
-            .or_else(|| trimmed.strip_prefix("Reason:"))
-            .unwrap_or(trimmed)
-            .trim();
-        if !summary.is_empty() {
-            return Some(task_excerpt(summary));
-        }
-    }
-    None
-}
-
-fn classify_auditor_verdict(task: &str) -> (&'static str, String) {
-    let lower = task.to_ascii_lowercase();
-    let risky_or_ambiguous = [
-        "ambiguous",
-        "unclear",
-        "maybe",
-        "security",
-        "secure",
-        "payment",
-        "billing",
-        "auth",
-        "secret",
-        "token",
-        "含糊",
-        "不确定",
-        "支付",
-        "安全",
-        "认证",
-        "密钥",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle));
-    if risky_or_ambiguous {
-        (
-            "flag",
-            "Auditor flagged ambiguity or security-sensitive terms for Owner review.".to_string(),
-        )
-    } else {
-        (
-            "agree",
-            "Auditor found no cross-provider disagreement signal in the dispatch summary."
-                .to_string(),
-        )
-    }
 }
 
 fn coordinator_decision_ttl_expired(

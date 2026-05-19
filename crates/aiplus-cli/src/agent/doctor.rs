@@ -13,13 +13,6 @@ pub fn handle_doctor() -> Result<()> {
         Ok(report) => println!("  INFO dispatch_log_chain={}", report.doctor_status()),
         Err(e) => println!("  INFO dispatch_log_chain=unavailable reason={e}"),
     }
-    println!(
-        "  INFO auditor_provider_configured={}",
-        std::env::var("AIPLUS_AUDITOR_PROVIDER")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "disabled".to_string())
-    );
     println!("  INFO commit_signing={}", detect_commit_signing());
 
     if !agents_dir.exists() {

@@ -63,10 +63,6 @@ pub enum AgentSub {
         /// by the trailing-var-arg task parser.
         #[arg(long = "owner-approved", action = clap::ArgAction::Append)]
         owner_approved: Vec<String>,
-        /// Run a sequential cross-provider auditor after primary dispatch.
-        /// Provider must differ from the detected primary provider.
-        #[arg(long = "auditor-provider", value_name = "PROVIDER")]
-        auditor_provider: Option<String>,
         role: Option<String>,
         #[arg(long)]
         role_opt: Option<String>,
