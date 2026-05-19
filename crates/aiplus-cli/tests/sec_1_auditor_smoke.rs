@@ -45,22 +45,55 @@ fn dispatch_entries(target: &Path) -> Vec<Value> {
         .collect()
 }
 
+#[cfg(unix)]
+fn install_fake_codex(target: &Path) -> String {
+    let fake_bin = target.join("fake-bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let codex = fake_bin.join("codex");
+    fs::write(
+        &codex,
+        "#!/bin/sh\nprintf 'VERDICT: flag\\nREASON: ambiguous payment and auth risk\\n'\n",
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&codex).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&codex, perms).unwrap();
+    }
+    format!(
+        "{}:{}",
+        fake_bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+#[cfg(unix)]
 #[test]
 fn auditor_provider_records_flag_verdict_event() {
     let temp = tempfile::tempdir().unwrap();
     let target = temp.path();
+    let path_env = install_fake_codex(target);
 
-    let output = stdout(&run(
-        target,
-        &[
+    let output = command(target)
+        .env("PATH", path_env)
+        .args([
             "agent",
             "route",
             "--auditor-provider",
             "codex",
             "review ambiguous secure payment plan",
-        ],
-        0,
-    ));
+        ])
+        .output()
+        .expect("run audited route");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = stdout(&output);
     assert!(
         output.contains("Auditor verdict recorded: provider=codex verdict=flag"),
         "{output}"
@@ -80,6 +113,16 @@ fn auditor_provider_records_flag_verdict_event() {
         Some("local-cli")
     );
     assert_eq!(verdict.get("verdict").and_then(Value::as_str), Some("flag"));
+    assert_eq!(
+        verdict
+            .get("auditor_runtime_status")
+            .and_then(Value::as_str),
+        Some("success")
+    );
+    assert_eq!(
+        verdict.get("reasoning_summary").and_then(Value::as_str),
+        Some("ambiguous payment and auth risk")
+    );
     assert!(verdict.get("prev_hash").is_some());
     assert!(verdict.get("entry_hash").is_some());
 

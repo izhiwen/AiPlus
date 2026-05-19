@@ -101,7 +101,18 @@ Primary output summary:
 Return verdict agree, disagree, or flag with concise reasoning.
 ```
 
-Deterministic local verdict classifier for this round:
+Auditor execution:
+
+- `codex` runs `codex exec --skip-git-repo-check <prompt>`.
+- `claude-code` runs `claude --print <prompt>`.
+- `opencode` runs `opencode run <prompt>`.
+- The auditor output is parsed for `VERDICT: agree|disagree|flag` and
+  `REASON: <summary>`.
+- If the provider output omits a structured verdict, AiPlus falls back to a
+  deterministic risk classifier for the verdict only and records
+  `auditor_runtime_status=success`.
+
+Fallback verdict classifier:
 
 - `flag` for ambiguity, uncertainty, security, payment, auth, secret, or token
   risk terms.
@@ -120,6 +131,7 @@ Event schema:
   "primary_provider": "claude-code",
   "verdict": "agree|disagree|flag",
   "reasoning_summary": "<=200 chars",
+  "auditor_runtime_status": "success",
   "secretValues": "none",
   "prev_hash": "<sha256>",
   "entry_hash": "<sha256>"
@@ -229,6 +241,9 @@ Implementation completed in worktree
 - D2 cross-provider auditor: _IMPL-OK_.
   - `aiplus agent route --auditor-provider <provider> "<task>"` records
     `auditor_verdict` after the primary route path.
+  - The selected auditor provider is invoked via its non-interactive command
+    (`codex exec`, `claude --print`, or `opencode run`) and structured verdict
+    output is parsed.
   - Same-provider auditor is rejected.
   - `aiplus doctor` prints `INFO auditor_provider_configured=<provider|disabled>`.
 - D3 hardware-backed signing setup: _IMPL-OK_.
@@ -262,8 +277,9 @@ rtk cargo test
 - Fresh chained dispatch log verifies successfully.
 - Mutating a chained row causes `VERIFY_LOG=FAIL line=2`.
 - Legacy pre-genesis rows are ignored until the first SEC-1 chained row.
-- `--auditor-provider codex` writes a chained `auditor_verdict` event with a
-  `flag` verdict for an intentionally ambiguous secure payment prompt.
+- `--auditor-provider codex` invokes a fake `codex` binary in test PATH,
+  parses `VERDICT: flag`, and writes a chained `auditor_verdict` event with
+  `auditor_runtime_status=success`.
 - `identity setup-signing --dry-run` previews Secure Enclave key generation and
   global git config without writing.
 - Fake-keygen signing setup writes isolated SSH signing config and doctor reports
@@ -271,8 +287,13 @@ rtk cargo test
 
 ### Deviations / Notes
 
-- The auditor implementation is deterministic and local in this round rather
-  than adapter-live. It preserves the event schema and provider-separation
-  policy while avoiding live provider cost/flakiness in regression tests.
+- Auditor tests use fake provider binaries to avoid live API cost/flakiness.
+  Live opt-in execution uses installed provider CLIs and should be wrapped with
+  `aiplus secret-broker run --aliases anthropic,openai -- <cmd>` when runtime
+  auth is needed.
+- Primary final text/tool-call capture is still limited by the existing
+  dispatch-only `agent route` path. The auditor receives the original task and
+  dispatch summary in this round; richer AdapterResult plumbing remains future
+  work.
 - No CONTRACT, adapter, coordinator scoring, calibration fixture, version,
   CHANGELOG, or install.sh files were edited.

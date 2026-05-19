@@ -11,6 +11,7 @@ use aiplus_core::consult;
 use anyhow::{anyhow, Result};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -351,7 +352,7 @@ fn record_auditor_verdict(
             "--auditor-provider must differ from primary provider `{primary_provider}`"
         ));
     }
-    let (verdict, reasoning_summary) = classify_auditor_verdict(task);
+    let review = run_auditor_provider_review(&auditor_provider, &primary_provider, task)?;
     let path = project_root.join(".aiplus/agents/dispatch-log.jsonl");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -363,16 +364,23 @@ fn record_auditor_verdict(
         "timestamp": aiplus_core::now_iso(),
         "auditor_provider": auditor_provider,
         "primary_provider": primary_provider,
-        "verdict": verdict,
-        "reasoning_summary": reasoning_summary,
+        "verdict": review.verdict,
+        "reasoning_summary": review.reasoning_summary,
+        "auditor_runtime_status": review.runtime_status,
         "secretValues": "none"
     });
     crate::agent::audit::verify_log::append_chained_jsonl_value(&path, &mut line)?;
     println!(
         "Auditor verdict recorded: provider={} verdict={}",
-        auditor_provider, verdict
+        auditor_provider, review.verdict
     );
     Ok(())
+}
+
+struct AuditorReview {
+    verdict: String,
+    reasoning_summary: String,
+    runtime_status: String,
 }
 
 fn normalize_auditor_provider(provider: &str) -> Result<String> {
@@ -412,6 +420,110 @@ fn detect_primary_provider(project_root: &Path) -> String {
         }
     }
     "local-cli".to_string()
+}
+
+fn run_auditor_provider_review(
+    auditor_provider: &str,
+    primary_provider: &str,
+    task: &str,
+) -> Result<AuditorReview> {
+    let prompt = auditor_prompt(auditor_provider, primary_provider, task);
+    let output = auditor_command(auditor_provider, &prompt)
+        .output()
+        .map_err(|e| anyhow!("failed to run auditor provider `{auditor_provider}`: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "auditor provider `{auditor_provider}` failed status={} stderr={}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string()),
+            task_excerpt(&stderr)
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let fallback = classify_auditor_verdict(task);
+    let verdict = parse_auditor_verdict(&stdout).unwrap_or_else(|| fallback.0.to_string());
+    let reasoning_summary = auditor_reasoning_summary(&stdout).unwrap_or(fallback.1);
+    Ok(AuditorReview {
+        verdict,
+        reasoning_summary,
+        runtime_status: "success".to_string(),
+    })
+}
+
+fn auditor_prompt(auditor_provider: &str, primary_provider: &str, task: &str) -> String {
+    format!(
+        "SEC-1 cross-provider audit.\n\
+         Auditor provider: {auditor_provider}\n\
+         Primary provider: {primary_provider}\n\n\
+         Original task:\n{task}\n\n\
+         Primary output summary:\n\
+         AiPlus route completed and recorded the primary dispatch. \
+         If final output is unavailable in this dispatch-only path, review the task risk and dispatch plan.\n\n\
+         Return exactly one verdict line: VERDICT: agree|disagree|flag\n\
+         Then one concise line: REASON: <200 chars>"
+    )
+}
+
+fn auditor_command(auditor_provider: &str, prompt: &str) -> Command {
+    let mut command = match auditor_provider {
+        "codex" => {
+            let mut command = Command::new("codex");
+            command.arg("exec").arg("--skip-git-repo-check").arg(prompt);
+            command
+        }
+        "claude-code" => {
+            let mut command = Command::new("claude");
+            command.arg("--print").arg(prompt);
+            command
+        }
+        "opencode" => {
+            let mut command = Command::new("opencode");
+            command.arg("run").arg(prompt);
+            command
+        }
+        _ => unreachable!("auditor provider normalized before command selection"),
+    };
+    command.env("AIPLUS_AUDITOR_PROMPT_SCHEMA", "sec-1-v1");
+    command
+}
+
+fn parse_auditor_verdict(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        let candidate = lower
+            .strip_prefix("verdict:")
+            .map(str::trim)
+            .unwrap_or(lower.as_str());
+        for verdict in ["disagree", "flag", "agree"] {
+            if candidate == verdict || candidate.starts_with(&format!("{verdict} ")) {
+                return Some(verdict.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn auditor_reasoning_summary(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.to_ascii_lowercase().starts_with("verdict:") {
+            continue;
+        }
+        let summary = trimmed
+            .strip_prefix("REASON:")
+            .or_else(|| trimmed.strip_prefix("Reason:"))
+            .unwrap_or(trimmed)
+            .trim();
+        if !summary.is_empty() {
+            return Some(task_excerpt(summary));
+        }
+    }
+    None
 }
 
 fn classify_auditor_verdict(task: &str) -> (&'static str, String) {
