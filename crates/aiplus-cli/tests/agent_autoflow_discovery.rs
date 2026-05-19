@@ -71,6 +71,9 @@ fn assert_discovery_block_once(path: &Path) {
         "agent_token_cost",
         "agent_route_score_only",
         "agent_audit_verify_log",
+        "**Dispatch flow**",
+        "call `agent_route_score_only` to preview staffing",
+        "call `agent_integrate <role>`",
         "prefer aiplus `agent_*` MCP tools over shell grep",
         "do NOT answer from training data first",
         "Full tool list: 11 existing `agent_*` tools + 3 from v0.6.7",
@@ -81,6 +84,12 @@ fn assert_discovery_block_once(path: &Path) {
             path.display()
         );
     }
+    assert_eq!(
+        text.matches("**Dispatch flow**").count(),
+        1,
+        "{} should contain one dispatch-flow paragraph:\n{text}",
+        path.display()
+    );
 }
 
 fn assert_skill(path: &Path) {
@@ -98,6 +107,13 @@ fn assert_skill(path: &Path) {
         "Do NOT immediately answer with design checklists from training data",
         "aiplus agent dispatch-history --json",
         "Known Runtime Limitation",
+        "## Dispatch Flow",
+        "call `agent_route_score_only` with the user's current task",
+        "call `agent_integrate <role>` per completed role",
+        "## Multi-turn Patterns",
+        "### Follow-up Cost Question",
+        "### Mid-flight Scope Change",
+        "### Ambiguous Audit Intent",
     ] {
         assert!(
             text.contains(expected),
@@ -105,6 +121,18 @@ fn assert_skill(path: &Path) {
             path.display()
         );
     }
+    assert_eq!(
+        text.matches("## Dispatch Flow").count(),
+        1,
+        "{} should contain one Dispatch Flow section:\n{text}",
+        path.display()
+    );
+    assert_eq!(
+        text.matches("## Multi-turn Patterns").count(),
+        1,
+        "{} should contain one Multi-turn Patterns section:\n{text}",
+        path.display()
+    );
 }
 
 #[test]

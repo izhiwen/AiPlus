@@ -69,3 +69,59 @@ Codex non-interactive runs may show "user cancelled MCP tool call" after a tool
 starts. If that happens, say the MCP call was cancelled by the harness and offer
 to retry interactively. Treat it as a runtime limitation, not an AiPlus tool
 failure.
+
+## Dispatch Flow
+
+For non-trivial coding tasks, do not jump straight to implementation advice.
+Use the AiPlus team dispatch loop:
+
+1. Preview: call `agent_route_score_only` with the user's current task.
+2. Surface: report tier, complexity, risk, would-staff roles, forced-by-risk
+   roles, and auto-summoned experts.
+3. Confirm: ask whether the user wants to dispatch that staffed team.
+4. Dispatch: on "yes", "go", or equivalent, call `agent_route` with the task.
+5. Integrate: when role work completes, call `agent_integrate <role>` for each
+   completed role, then verify with `agent_status`.
+
+Example:
+
+User: "Help me refactor the user authentication module to support OAuth2."
+You: call `agent_route_score_only` with
+task="refactor user authentication module to support OAuth2".
+Then say: "Coordinator scored this MEDIUM tier (complexity 3, risk 0.6).
+Would staff engineer-a, reviewer, and security-reviewer. Proceed?"
+User: "Yes."
+You: call `agent_route` with the same task and report the dispatched roles.
+Later, when work is ready, call `agent_integrate <role>` per completed role.
+
+## Multi-turn Patterns
+
+### Follow-up Cost Question
+
+Turn 1 user: "How much have I spent today?"
+Turn 1 you: call `agent_token_cost`; report the total.
+Turn 2 user: "What about by role?"
+Turn 2 you: call `agent_token_cost` again with `by_role=true`; report per-role.
+
+Do not grep dispatch logs between turns. MCP calls fetch fresh data.
+
+### Mid-flight Scope Change
+
+Turn 1 user: "Plan a payment API for me."
+Turn 1 you: call `agent_route_score_only`, surface the plan, and ask whether to
+dispatch.
+Turn 2 user: "Actually, change it to refunds instead."
+Turn 2 you: call `agent_route_score_only` with the new refunds task. Do not
+dispatch the old payment task.
+
+### Ambiguous Audit Intent
+
+User: "Audit my project."
+If multiple tools could apply, ask which audit they mean:
+
+- code/runtime health: `agent_doctor`
+- dispatch log integrity: `agent_audit_verify_log`
+- current team or work state: `agent_status`
+
+If unsure between two tools, list the options and ask the user to pick. Do not
+silently call the wrong tool.

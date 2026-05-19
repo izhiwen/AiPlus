@@ -11120,6 +11120,11 @@ Most important patterns:
 - "Help me plan / implement X" -> `agent_route_score_only` FIRST, then surface to user
 - "Is my log intact" / audit / verify -> `agent_audit_verify_log`
 
+**Dispatch flow**: For non-trivial coding tasks, do not answer directly. First
+call `agent_route_score_only` to preview staffing, surface the plan and ask for
+confirmation, then call `agent_route` only after confirm. When role work is
+ready, call `agent_integrate <role>` and verify with `agent_status`.
+
 For coding tasks: do NOT answer from training data first. Score the task via
 `agent_route_score_only`, surface the result, then ask whether to dispatch.
 
