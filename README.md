@@ -226,21 +226,17 @@ and `aiplus-agent-velocity`.
 
 ### Option A — pre-built binary (recommended, v0.6.0+)
 
-Pre-built binaries for macOS (Intel + Apple Silicon), Linux (x86_64 +
-aarch64), and Windows ship with every release.
+Pre-built binaries ship for two platforms: **Apple Silicon Mac**
+(`aarch64-apple-darwin`) and **Intel Windows**
+(`x86_64-pc-windows-msvc`). Intel Mac, Linux, and Windows ARM are
+not supported — build from source if you need them.
 
 ```bash
-# macOS Apple Silicon
+# Apple Silicon Mac (M1 / M2 / M3 / M4)
 curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv aiplus /usr/local/bin/
 
-# macOS Intel
-curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-apple-darwin.tar.gz | tar xz
-
-# Linux x86_64
-curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-unknown-linux-gnu.tar.gz | tar xz
-
-# Windows (PowerShell)
+# Intel Windows (PowerShell)
 # Download aiplus-x86_64-pc-windows-msvc.zip from the latest release, extract, add to PATH
 ```
 

@@ -82,22 +82,18 @@ AiPlus 同时服务两类受众，底座（substrate）共享：
 
 ## 安装
 
-### 方法 A —— 预编译二进制（推荐，v0.5.10+）
+### 方法 A —— 预编译二进制（推荐，v0.6.0+）
 
-每个 release 都包 macOS（Intel + Apple Silicon）、Linux（x86_64 + aarch64）、Windows 预编译二进制。
+每个 release 包 **两个平台** 的预编译二进制：**Apple Silicon Mac**
+（`aarch64-apple-darwin`）和 **Intel Windows**（`x86_64-pc-windows-msvc`）。
+Intel Mac、Linux、Windows ARM **不再支持** —— 需要的话请从源码构建。
 
 ```bash
-# macOS Apple Silicon
+# Apple Silicon Mac (M1 / M2 / M3 / M4)
 curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv aiplus /usr/local/bin/
 
-# macOS Intel
-curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-apple-darwin.tar.gz | tar xz
-
-# Linux x86_64
-curl -L https://github.com/izhiwen/AiPlus/releases/latest/download/aiplus-x86_64-unknown-linux-gnu.tar.gz | tar xz
-
-# Windows (PowerShell)
+# Intel Windows (PowerShell)
 # 下载 aiplus-x86_64-pc-windows-msvc.zip，解压，加进 PATH
 ```
 

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Platform support narrowed
+
+- **Pre-built binaries now ship for two platforms only**: Apple
+  Silicon Mac (`aarch64-apple-darwin`) and Intel Windows
+  (`x86_64-pc-windows-msvc`). Owner decision: focus distribution
+  on the two platforms actually maintained.
+- **Dropped from CI release matrix**: `x86_64-apple-darwin` (Intel
+  Mac), `x86_64-unknown-linux-gnu` (Linux), `aarch64-unknown-linux-gnu`
+  (Linux ARM). The CI release workflow no longer cross-builds these.
+- **Users on dropped platforms** can still build from source:
+  `git clone https://github.com/izhiwen/AiPlus && cargo build
+  --release -p aiplus-cli`. Existing installed binaries continue
+  to work; this only affects future pre-built downloads.
+- `install.sh` now refuses non-Apple-Silicon-Mac platforms with a
+  clear unsupported message + source-build instructions.
+
 ## 0.6.5
 
 ### Removed

@@ -100,20 +100,10 @@ detect_asset() {
     Darwin:arm64|Darwin:aarch64)
       echo "aiplus-aarch64-apple-darwin.tar.gz"
       ;;
-    Darwin:x86_64)
-      echo "aiplus-x86_64-apple-darwin.tar.gz"
-      ;;
-    Linux:x86_64)
-      echo "aiplus-x86_64-unknown-linux-gnu.tar.gz"
-      ;;
-    Linux:aarch64|Linux:arm64)
-      echo "aiplus-aarch64-unknown-linux-gnu.tar.gz"
-      ;;
     *)
       echo "ERROR no verified AiPlus $VERSION binary asset for: $os $arch" >&2
-      echo "Supported platforms (v0.5.8+): Darwin arm64/x86_64, Linux x86_64/aarch64." >&2
-      echo "Windows users: see Developer Build instructions until the Windows binary lands in v0.6.x." >&2
-      echo "Source build fallback: clone https://github.com/$REPO and run 'cargo build --release -p aiplus-cli'." >&2
+      echo "Supported pre-built platforms (v0.6.6+): Apple Silicon Mac (Darwin arm64) and Intel Windows (use install.ps1)." >&2
+      echo "Intel Mac / Linux / Windows ARM: not supported — build from source: clone https://github.com/$REPO and run 'cargo build --release -p aiplus-cli'." >&2
       exit 1
       ;;
   esac
