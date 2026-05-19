@@ -186,6 +186,10 @@ enum Commands {
         /// runtime adapters, including adapter files and managed blocks.
         #[arg(long = "fix", action = ArgAction::SetTrue)]
         fix: bool,
+        /// Suppress successful/INFO doctor detail lines. Still prints
+        /// NEEDS_FIX items and the final DOCTOR_STATUS line.
+        #[arg(short, long, action = ArgAction::SetTrue)]
+        quiet: bool,
         /// Probe the OS keyring backend (Keychain / Secret Service /
         /// Credential Manager) by writing, reading, and deleting a
         /// scratch entry. Reports the detected backend, each probe
@@ -208,9 +212,16 @@ enum Commands {
     /// agent_set_team as native tools. Without --runtime, registers for
     /// all detected runtimes. Idempotent: re-running is safe.
     McpRegister {
-        /// Runtime to register: codex, claude, or opencode. Omit for all.
+        /// Runtime to register: codex, claude-code (or claude), or opencode. Omit for all.
         #[arg(long, value_name = "RUNTIME")]
         runtime: Option<String>,
+        /// Override the runtime config directory. Codex writes config.toml
+        /// below this directory; Claude Code writes .mcp.json below it;
+        /// OpenCode writes opencode.json below it. When omitted, codex honors
+        /// CODEX_HOME, Claude Code honors CLAUDE_CONFIG_DIR, then both fall
+        /// back to their runtime defaults.
+        #[arg(long = "config-dir", value_name = "DIR")]
+        config_dir: Option<PathBuf>,
         /// Print the config diff without writing files.
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
@@ -905,7 +916,11 @@ fn run(command: Commands) -> Result<()> {
                 command_add(module, dry_run, verbose)
             }
         }
-        Commands::Doctor { fix, check_keyring } => {
+        Commands::Doctor {
+            fix,
+            quiet,
+            check_keyring,
+        } => {
             if fix && check_keyring {
                 return Err(CliError::new(
                     1,
@@ -916,7 +931,7 @@ fn run(command: Commands) -> Result<()> {
             if check_keyring {
                 command_doctor_check_keyring()
             } else {
-                command_doctor(fix)
+                command_doctor(fix, quiet)
             }
         }
         Commands::McpServe => mcp_server::run_server(),
@@ -925,7 +940,8 @@ fn run(command: Commands) -> Result<()> {
             dry_run,
             force,
             scope,
-        } => command_mcp_register(runtime, dry_run, force, scope),
+            config_dir,
+        } => command_mcp_register(runtime, dry_run, force, scope, config_dir.as_deref()),
         Commands::Status { terse } => command_status(terse),
         Commands::Refresh { trigger, terse } => command_refresh(trigger, terse),
         Commands::Uninstall {
@@ -2456,7 +2472,7 @@ fn dispatch_gate_doctor_status() -> String {
     dispatch_gate_doctor_status_from_fixture(G2_DISPATCH_GATE_FIXTURE)
 }
 
-fn command_doctor(fix: bool) -> Result<()> {
+fn command_doctor(fix: bool, quiet: bool) -> Result<()> {
     let root = target_root()?;
     let fix_report = if fix {
         Some(command_doctor_fix(&root))
@@ -2916,36 +2932,37 @@ fn command_doctor(fix: bool) -> Result<()> {
     let pass = checks
         .iter()
         .all(|item| item.ok || item.severity == CheckSeverity::Info);
-    println!("AIPLUS_DOCTOR");
-    println!("status={}", if pass { "PASS" } else { "NEEDS_FIX" });
-    println!(
-        "installed={}",
-        if parsed.as_ref().and_then(|m| m.installer.as_deref()) == Some(INSTALLER) {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!("runtimeAdapters=[{}]", runtimes.join(","));
-    let module_text: Vec<String> = modules
-        .iter()
-        .map(|(name, module)| {
-            format!(
-                "{name}@{}",
-                module
-                    .version
-                    .as_deref()
-                    .unwrap_or_else(|| module_spec(name).map_or("unknown", |spec| spec.version))
-            )
-        })
-        .collect();
-    println!("modules=[{}]", module_text.join(","));
-    print_continuity_status_lines(&continuity);
-    println!("nl_role_triggers={nl_role_trigger_status}");
-    println!("dispatch_gate={dispatch_gate_status}");
-    println!("refreshPrompt={REFRESH_PROMPT}");
-    println!("globalConfig=untouched");
-    println!("target={}", root.display());
+    if !quiet {
+        println!("AIPLUS_DOCTOR");
+        println!("status={}", if pass { "PASS" } else { "NEEDS_FIX" });
+        println!(
+            "installed={}",
+            if parsed.as_ref().and_then(|m| m.installer.as_deref()) == Some(INSTALLER) {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+        println!("runtimeAdapters=[{}]", runtimes.join(","));
+        let module_text: Vec<String> = modules
+            .iter()
+            .map(|(name, module)| {
+                format!(
+                    "{name}@{}",
+                    module.version.as_deref().unwrap_or_else(|| {
+                        module_spec(name).map_or("unknown", |spec| spec.version)
+                    })
+                )
+            })
+            .collect();
+        println!("modules=[{}]", module_text.join(","));
+        print_continuity_status_lines(&continuity);
+        println!("nl_role_triggers={nl_role_trigger_status}");
+        println!("dispatch_gate={dispatch_gate_status}");
+        println!("refreshPrompt={REFRESH_PROMPT}");
+        println!("globalConfig=untouched");
+        println!("target={}", root.display());
+    }
     // Issue #74: only NeedsFix-severity failures count toward the
     // "next: see the NEEDS_FIX items below" message. INFO checks
     // surface their own hint via the `fix` field already.
@@ -2955,40 +2972,50 @@ fn command_doctor(fix: bool) -> Result<()> {
         .map(|c| c.label.as_str())
         .collect();
     if let Some(report) = fix_report.as_ref() {
-        println!(
-            "fixAttempted={}",
-            if report.attempted { "yes" } else { "no" }
-        );
-        println!(
-            "fixReconciledModules=[{}]",
-            report.reconciled_modules.join(",")
-        );
-        println!(
-            "fixReconciledRuntimes=[{}]",
-            report.reconciled_runtimes.join(",")
-        );
-        println!("fixChangedItems={}", report.changed_items);
+        if !quiet {
+            println!(
+                "fixAttempted={}",
+                if report.attempted { "yes" } else { "no" }
+            );
+            println!(
+                "fixReconciledModules=[{}]",
+                report.reconciled_modules.join(",")
+            );
+            println!(
+                "fixReconciledRuntimes=[{}]",
+                report.reconciled_runtimes.join(",")
+            );
+            println!("fixChangedItems={}", report.changed_items);
+        }
         let mut unsupported = report.unsupported.clone();
         unsupported.extend(failing.iter().map(|item| (*item).to_string()));
         unsupported.sort();
         unsupported.dedup();
-        println!("fixRemainingUnsupported=[{}]", unsupported.join("; "));
-    }
-    println!(
-        "next={}",
-        if pass {
-            "send AiPlus 刷新, 刷新 AiPlus, aiplus refresh, or aiplus status to the current agent session".to_string()
-        } else if !manifest_diag.exists {
-            "run `aiplus install <runtime>` first (no manifest found in this project)".to_string()
-        } else {
-            format!(
-                "see the NEEDS_FIX items below ({}) and run the suggested fix command for each",
-                failing.len()
-            )
+        if !quiet {
+            println!("fixRemainingUnsupported=[{}]", unsupported.join("; "));
         }
-    );
-    println!();
+    }
+    if !quiet {
+        println!(
+            "next={}",
+            if pass {
+                "send AiPlus 刷新, 刷新 AiPlus, aiplus refresh, or aiplus status to the current agent session".to_string()
+            } else if !manifest_diag.exists {
+                "run `aiplus install <runtime>` first (no manifest found in this project)"
+                    .to_string()
+            } else {
+                format!(
+                    "see the NEEDS_FIX items below ({}) and run the suggested fix command for each",
+                    failing.len()
+                )
+            }
+        );
+        println!();
+    }
     for item in &checks {
+        if quiet && (item.ok || item.severity == CheckSeverity::Info) {
+            continue;
+        }
         if item.ok {
             println!("PASS {}", item.label);
         } else {
@@ -18149,20 +18176,14 @@ fn command_mcp_register(
     dry_run: bool,
     force: bool,
     scope: Option<String>,
+    config_dir: Option<&Path>,
 ) -> Result<()> {
     let bin = std::env::current_exe().context("locate current aiplus binary path")?;
     let bin_str = bin.to_string_lossy().into_owned();
 
     let runtimes: Vec<&str> = match runtime.as_deref() {
         None => vec!["codex", "claude", "opencode"],
-        Some("codex") => vec!["codex"],
-        Some("claude") => vec!["claude"],
-        Some("opencode") => vec!["opencode"],
-        Some(other) => {
-            return Err(anyhow!(
-                "unknown --runtime '{other}'. Valid: codex, claude, opencode."
-            ));
-        }
+        Some(value) => vec![normalize_mcp_runtime(value)?],
     };
 
     if dry_run {
@@ -18177,9 +18198,9 @@ fn command_mcp_register(
     for rt in runtimes {
         let rt_scope = resolve_scope_for(rt, scope.as_deref())?;
         let changed = match rt {
-            "codex" => register_mcp_codex(&bin_str, dry_run, force, rt_scope)?,
-            "claude" => register_mcp_claude(&bin_str, dry_run, force, rt_scope)?,
-            "opencode" => register_mcp_opencode(&bin_str, dry_run, force, rt_scope)?,
+            "codex" => register_mcp_codex(&bin_str, dry_run, force, rt_scope, config_dir)?,
+            "claude" => register_mcp_claude(&bin_str, dry_run, force, rt_scope, config_dir)?,
+            "opencode" => register_mcp_opencode(&bin_str, dry_run, force, rt_scope, config_dir)?,
             _ => unreachable!(),
         };
         any_change = any_change || changed;
@@ -18195,41 +18216,66 @@ fn command_mcp_register(
     Ok(())
 }
 
-fn register_mcp_codex(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+fn normalize_mcp_runtime(value: &str) -> Result<&'static str> {
+    match value {
+        "codex" => Ok("codex"),
+        "claude" | "claude-code" => Ok("claude"),
+        "opencode" => Ok("opencode"),
+        other => Err(anyhow!(
+            "unknown --runtime '{other}'. Valid: codex, claude-code, claude, opencode."
+        )),
+    }
+}
+
+fn register_mcp_codex(
+    bin: &str,
+    dry_run: bool,
+    force: bool,
+    scope: McpScope,
+    config_dir: Option<&Path>,
+) -> Result<bool> {
     // P1.5: scope selects whether to write user-global or project-local
     // codex config. The project-local case is rare (codex itself reads
     // config from ~/.codex), but we support it for users who want a
     // project-scoped aiplus-only codex setup.
-    let codex_dir: PathBuf = match scope {
-        McpScope::Global => {
-            let home = match std::env::var_os("HOME").map(PathBuf::from) {
-                Some(h) => h,
-                None => {
-                    println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME scope=global");
+    let codex_dir: PathBuf = if let Some(dir) = config_dir {
+        dir.to_path_buf()
+    } else {
+        match scope {
+            McpScope::Global => {
+                if let Some(dir) = std::env::var_os("CODEX_HOME").map(PathBuf::from) {
+                    dir
+                } else {
+                    let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                        Some(h) => h,
+                        None => {
+                            println!("MCP_REGISTER_CODEX=SKIP reason=no_HOME scope=global");
+                            return Ok(false);
+                        }
+                    };
+                    let dir = home.join(".codex");
+                    if !dir.exists() {
+                        println!(
+                            "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed scope=global \
+                             hint=run `codex --version` to verify install"
+                        );
+                        return Ok(false);
+                    }
+                    dir
+                }
+            }
+            McpScope::Project => {
+                let cwd = std::env::current_dir().context("get cwd for codex project scope")?;
+                let dir = cwd.join(".codex");
+                if !dir.exists() {
+                    println!(
+                        "MCP_REGISTER_CODEX=SKIP reason=no_project_codex_dir scope=project \
+                         hint=create ./.codex/ to opt into project-scoped codex config"
+                    );
                     return Ok(false);
                 }
-            };
-            let dir = home.join(".codex");
-            if !dir.exists() {
-                println!(
-                    "MCP_REGISTER_CODEX=SKIP reason=codex_not_installed scope=global \
-                     hint=run `codex --version` to verify install"
-                );
-                return Ok(false);
+                dir
             }
-            dir
-        }
-        McpScope::Project => {
-            let cwd = std::env::current_dir().context("get cwd for codex project scope")?;
-            let dir = cwd.join(".codex");
-            if !dir.exists() {
-                println!(
-                    "MCP_REGISTER_CODEX=SKIP reason=no_project_codex_dir scope=project \
-                     hint=create ./.codex/ to opt into project-scoped codex config"
-                );
-                return Ok(false);
-            }
-            dir
         }
     };
     let config_path = codex_dir.join("config.toml");
@@ -18298,6 +18344,10 @@ fn register_mcp_codex(bin: &str, dry_run: bool, force: bool, scope: McpScope) ->
         );
         println!("--- proposed config.toml ---\n{serialized}--- end ---");
     } else {
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
         write_file_atomic(&config_path, serialized.as_bytes())
             .with_context(|| format!("write {}", config_path.display()))?;
         println!("MCP_REGISTER_CODEX=WROTE path={}", config_path.display());
@@ -18305,30 +18355,41 @@ fn register_mcp_codex(bin: &str, dry_run: bool, force: bool, scope: McpScope) ->
     Ok(true)
 }
 
-fn register_mcp_claude(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+fn register_mcp_claude(
+    bin: &str,
+    dry_run: bool,
+    force: bool,
+    scope: McpScope,
+    config_dir: Option<&Path>,
+) -> Result<bool> {
     // P1.5: scope selects ./.mcp.json (project) vs ~/.claude/.mcp.json
     // (global). Project is the natural home for claude-code MCP config,
     // but a power user might want a global default that every project
     // inherits — we support both.
-    let config_path: PathBuf = match scope {
-        McpScope::Project => {
-            let cwd = std::env::current_dir().context("get cwd for claude project scope")?;
-            cwd.join(".mcp.json")
-        }
-        McpScope::Global => {
-            let home = match std::env::var_os("HOME").map(PathBuf::from) {
-                Some(h) => h,
-                None => {
-                    println!("MCP_REGISTER_CLAUDE=SKIP reason=no_HOME scope=global");
-                    return Ok(false);
-                }
-            };
-            // ~/.claude/ may not exist on a fresh machine. Create it so
-            // global registration is self-contained — claude itself will
-            // create the dir on first run otherwise.
-            let dir = home.join(".claude");
-            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-            dir.join(".mcp.json")
+    let config_path: PathBuf = if let Some(dir) = config_dir {
+        dir.join(".mcp.json")
+    } else {
+        match scope {
+            McpScope::Project => {
+                let cwd = std::env::current_dir().context("get cwd for claude project scope")?;
+                cwd.join(".mcp.json")
+            }
+            McpScope::Global => {
+                let dir =
+                    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from) {
+                        dir
+                    } else {
+                        let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                            Some(h) => h,
+                            None => {
+                                println!("MCP_REGISTER_CLAUDE=SKIP reason=no_HOME scope=global");
+                                return Ok(false);
+                            }
+                        };
+                        home.join(".claude")
+                    };
+                dir.join(".mcp.json")
+            }
         }
     };
     let existing = if config_path.exists() {
@@ -18389,6 +18450,10 @@ fn register_mcp_claude(bin: &str, dry_run: bool, force: bool, scope: McpScope) -
         );
         println!("--- proposed .mcp.json ---\n{serialized}\n--- end ---");
     } else {
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
         write_file_atomic(&config_path, format!("{serialized}\n").as_bytes())
             .with_context(|| format!("write {}", config_path.display()))?;
         println!("MCP_REGISTER_CLAUDE=WROTE path={}", config_path.display());
@@ -18396,26 +18461,34 @@ fn register_mcp_claude(bin: &str, dry_run: bool, force: bool, scope: McpScope) -
     Ok(true)
 }
 
-fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool, scope: McpScope) -> Result<bool> {
+fn register_mcp_opencode(
+    bin: &str,
+    dry_run: bool,
+    force: bool,
+    scope: McpScope,
+    config_dir: Option<&Path>,
+) -> Result<bool> {
     // P1.5: scope selects ./opencode.json (project) vs
     // ~/.opencode/opencode.json (global). Project is the default and
     // matches opencode's auto-discovery.
-    let config_path: PathBuf = match scope {
-        McpScope::Project => {
-            let cwd = std::env::current_dir().context("get cwd for opencode project scope")?;
-            cwd.join("opencode.json")
-        }
-        McpScope::Global => {
-            let home = match std::env::var_os("HOME").map(PathBuf::from) {
-                Some(h) => h,
-                None => {
-                    println!("MCP_REGISTER_OPENCODE=SKIP reason=no_HOME scope=global");
-                    return Ok(false);
-                }
-            };
-            let dir = home.join(".opencode");
-            std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-            dir.join("opencode.json")
+    let config_path: PathBuf = if let Some(dir) = config_dir {
+        dir.join("opencode.json")
+    } else {
+        match scope {
+            McpScope::Project => {
+                let cwd = std::env::current_dir().context("get cwd for opencode project scope")?;
+                cwd.join("opencode.json")
+            }
+            McpScope::Global => {
+                let home = match std::env::var_os("HOME").map(PathBuf::from) {
+                    Some(h) => h,
+                    None => {
+                        println!("MCP_REGISTER_OPENCODE=SKIP reason=no_HOME scope=global");
+                        return Ok(false);
+                    }
+                };
+                home.join(".opencode").join("opencode.json")
+            }
         }
     };
     let existing = if config_path.exists() {
@@ -18477,6 +18550,10 @@ fn register_mcp_opencode(bin: &str, dry_run: bool, force: bool, scope: McpScope)
         );
         println!("--- proposed opencode.json ---\n{serialized}\n--- end ---");
     } else {
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
         write_file_atomic(&config_path, format!("{serialized}\n").as_bytes())
             .with_context(|| format!("write {}", config_path.display()))?;
         println!("MCP_REGISTER_OPENCODE=WROTE path={}", config_path.display());

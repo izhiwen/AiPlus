@@ -130,6 +130,12 @@ aiplus status
 aiplus doctor
 ```
 
+MCP 注册命令使用同一套 runtime 名字：
+
+```bash
+aiplus mcp-register --runtime claude-code  # 也可用 codex / opencode；claude 仍作为兼容 alias
+```
+
 ## 支持的 runtime
 
 | Runtime     | 安装命令                       | adapter 落到哪里                          |

@@ -378,6 +378,10 @@ Two verbs, two distinct purposes:
 - **`aiplus install <runtime>`** — wire a runtime adapter (Claude Code /
   Codex / OpenCode) into your project's `.claude/` / `.codex/` /
   `.opencode/` directories. Run once per project per runtime.
+- **`aiplus mcp-register --runtime <runtime>`** — register the AiPlus MCP
+  server with a local runtime config. Runtime names match install:
+  `claude-code`, `codex`, or `opencode` (`claude` remains an accepted
+  alias for older scripts).
 - **`aiplus add <module>`** — add a bundled module (agent-memory,
   compact-reminder, auto-team-consultant, agent-team, agent-key,
   agent-velocity, token-cost, aieconlab). The 7 substrate modules are

@@ -181,6 +181,9 @@ fn run_adaptive_route(
     if !plan.auto_summoned.is_empty() {
         println!("Auto-summoned experts: [{}]", plan.auto_summoned.join(","));
     }
+    for warning in &plan.intent_classifier_warnings {
+        println!("Autosummon intent warning: {warning}");
+    }
     record_coordinator_decision(project_root, task, &plan, "route")?;
 
     let gate_state = enforce_gates(project_root, "ceo", task, approved)?;
@@ -267,6 +270,9 @@ fn run_score_only_route(project_root: &Path, task: &str) -> Result<()> {
     if !plan.auto_summoned.is_empty() {
         println!("Auto-summoned experts: [{}]", plan.auto_summoned.join(","));
     }
+    for warning in &plan.intent_classifier_warnings {
+        println!("Autosummon intent warning: {warning}");
+    }
     record_coordinator_decision(project_root, task, &plan, "score_only")?;
     Ok(())
 }
@@ -307,6 +313,8 @@ fn record_coordinator_decision(
         "staffingRoles": plan.staffing_roles,
         "forced_by_risk": plan.forced_by_risk,
         "auto_summoned": plan.auto_summoned,
+        "intent_classifier_status": plan.intent_classifier_status,
+        "intent_classifier_warnings": plan.intent_classifier_warnings,
         "ttl_expired": ttl_expired,
         "dispatched": mode == "route" && !plan.staffing_roles.is_empty(),
         "secretValues": "none"

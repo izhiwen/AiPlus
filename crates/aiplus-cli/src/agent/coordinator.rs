@@ -33,6 +33,8 @@ pub struct CoordinatorPlan {
     pub staffing_roles: Vec<String>,
     pub forced_by_risk: Vec<String>,
     pub auto_summoned: Vec<String>,
+    pub intent_classifier_status: String,
+    pub intent_classifier_warnings: Vec<String>,
 }
 
 pub fn plan_task(task: &str) -> CoordinatorPlan {
@@ -48,6 +50,8 @@ pub fn plan_task(task: &str) -> CoordinatorPlan {
         staffing_roles,
         forced_by_risk,
         auto_summoned: Vec::new(),
+        intent_classifier_status: "not_applicable".to_string(),
+        intent_classifier_warnings: Vec::new(),
     }
 }
 
@@ -302,6 +306,7 @@ fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan
     let state = load_team_config(project_root)?;
     let cap = cluster_cap(plan.tier);
     let mut candidates = Vec::new();
+    let mut evaluated = false;
 
     for config in state.agents.values() {
         let Some(autosummon) = config.autosummon.as_ref() else {
@@ -315,9 +320,37 @@ fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan
             continue;
         }
 
-        if expert_intent_match(task, intent_hint) {
-            candidates.push((autosummon.priority, config.role.clone()));
+        evaluated = true;
+        match expert_intent_match(task, intent_hint) {
+            IntentMatchOutcome::Match(value) => {
+                if value {
+                    candidates.push((autosummon.priority, config.role.clone()));
+                }
+                if plan.intent_classifier_status == "not_applicable" {
+                    plan.intent_classifier_status = "ok".to_string();
+                }
+            }
+            IntentMatchOutcome::Mock(value) => {
+                if value {
+                    candidates.push((autosummon.priority, config.role.clone()));
+                }
+                plan.intent_classifier_status = "mock".to_string();
+            }
+            IntentMatchOutcome::Skipped(reason) => {
+                if plan.intent_classifier_status == "not_applicable" {
+                    plan.intent_classifier_status = "skipped".to_string();
+                }
+                push_intent_warning(plan, &reason);
+            }
+            IntentMatchOutcome::Failed(reason) => {
+                plan.intent_classifier_status = "failed".to_string();
+                push_intent_warning(plan, &reason);
+            }
         }
+    }
+
+    if !evaluated {
+        plan.intent_classifier_status = "not_applicable".to_string();
     }
 
     candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
@@ -334,26 +367,71 @@ fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan
     Ok(())
 }
 
-fn expert_intent_match(task: &str, intent_hint: &str) -> bool {
-    let key = intent_cache_key(task, intent_hint);
-    if let Some(value) = intent_cache_get(&key) {
-        return value;
-    }
-
-    let value = classify_intent_match(task, intent_hint).unwrap_or(false);
-    intent_cache_put(key, value);
-    value
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum IntentMatchOutcome {
+    Match(bool),
+    Mock(bool),
+    Skipped(String),
+    Failed(String),
 }
 
-fn classify_intent_match(task: &str, intent_hint: &str) -> Option<bool> {
-    if env::var("AIPLUS_AUTOSUMMON_INTENT_MOCK").ok().as_deref() == Some("1") {
-        return Some(mock_intent_match(task, intent_hint));
+fn expert_intent_match(task: &str, intent_hint: &str) -> IntentMatchOutcome {
+    let key = intent_cache_key(task, intent_hint);
+    if let Some(value) = intent_cache_get(&key) {
+        return IntentMatchOutcome::Match(value);
     }
 
-    let api_key = env::var("ANTHROPIC_API_KEY")
+    match classify_intent_match(task, intent_hint) {
+        IntentMatchOutcome::Match(value) => {
+            intent_cache_put(key, value);
+            IntentMatchOutcome::Match(value)
+        }
+        IntentMatchOutcome::Mock(value) => {
+            intent_cache_put(key, value);
+            IntentMatchOutcome::Mock(value)
+        }
+        other => other,
+    }
+}
+
+fn push_intent_warning(plan: &mut CoordinatorPlan, warning: &str) {
+    let warning = warning.to_string();
+    if !plan.intent_classifier_warnings.contains(&warning) {
+        plan.intent_classifier_warnings.push(warning);
+    }
+}
+
+fn classify_intent_match(task: &str, intent_hint: &str) -> IntentMatchOutcome {
+    if env::var("AIPLUS_AUTOSUMMON_INTENT_MOCK").ok().as_deref() == Some("1") {
+        return IntentMatchOutcome::Mock(mock_intent_match(task, intent_hint));
+    }
+
+    if let Some(api_key) = env::var("ANTHROPIC_API_KEY")
         .ok()
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())?;
+        .filter(|value| !value.is_empty())
+    {
+        return classify_intent_with_anthropic(task, intent_hint, &api_key);
+    }
+
+    if let Some(api_key) = env::var("OPENAI_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return classify_intent_with_openai(task, intent_hint, &api_key);
+    }
+
+    IntentMatchOutcome::Skipped(
+        "intent_classifier skipped: no ANTHROPIC_API_KEY or OPENAI_API_KEY".to_string(),
+    )
+}
+
+fn classify_intent_with_anthropic(
+    task: &str,
+    intent_hint: &str,
+    api_key: &str,
+) -> IntentMatchOutcome {
     let model = env::var("AIPLUS_AUTOSUMMON_INTENT_MODEL")
         .unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
     let prompt = intent_prompt(task, intent_hint);
@@ -361,46 +439,138 @@ fn classify_intent_match(task: &str, intent_hint: &str) -> Option<bool> {
         "model": model,
         "max_tokens": 4,
         "temperature": 0,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+        "messages": [{"role": "user", "content": prompt}]
     });
-    let output = Command::new("curl")
-        .args([
-            "-fsS",
-            "https://api.anthropic.com/v1/messages",
-            "-H",
-            "content-type: application/json",
-            "-H",
-            "anthropic-version: 2023-06-01",
-            "-H",
-            &format!("x-api-key: {api_key}"),
-            "-d",
-            &body.to_string(),
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+    let url = env::var("AIPLUS_AUTOSUMMON_INTENT_URL")
+        .unwrap_or_else(|_| "https://api.anthropic.com/v1/messages".to_string());
+    let headers = vec![
+        "content-type: application/json".to_string(),
+        "anthropic-version: 2023-06-01".to_string(),
+        format!("x-api-key: {api_key}"),
+    ];
+    let response = match fetch_intent_response(&url, headers, &body.to_string(), "anthropic") {
+        Ok(response) => response,
+        Err(reason) => return IntentMatchOutcome::Failed(reason),
+    };
+    parse_anthropic_intent_response(&response)
+}
+
+fn classify_intent_with_openai(task: &str, intent_hint: &str, api_key: &str) -> IntentMatchOutcome {
+    let model = env::var("AIPLUS_AUTOSUMMON_INTENT_OPENAI_MODEL")
+        .or_else(|_| env::var("AIPLUS_AUTOSUMMON_INTENT_MODEL"))
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let prompt = intent_prompt(task, intent_hint);
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": 4,
+        "temperature": 0,
+        "messages": [{"role": "user", "content": prompt}]
+    });
+    let url = env::var("AIPLUS_AUTOSUMMON_INTENT_URL")
+        .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
+    let headers = vec![
+        "content-type: application/json".to_string(),
+        format!("authorization: Bearer {api_key}"),
+    ];
+    let response = match fetch_intent_response(&url, headers, &body.to_string(), "openai") {
+        Ok(response) => response,
+        Err(reason) => return IntentMatchOutcome::Failed(reason),
+    };
+    parse_openai_intent_response(&response)
+}
+
+fn fetch_intent_response(
+    url: &str,
+    headers: Vec<String>,
+    body: &str,
+    provider: &str,
+) -> Result<String, String> {
+    if let Some(path) = url.strip_prefix("file://") {
+        return fs::read_to_string(path)
+            .map_err(|error| format!("intent_classifier {provider} failed: {error}"));
     }
 
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    let answer = response
+    let mut command = Command::new("curl");
+    command.args(["-fsS", url]);
+    for header in headers {
+        command.args(["-H", &header]);
+    }
+    let output = command
+        .args(["-d", body])
+        .output()
+        .map_err(|error| format!("intent_classifier {provider} failed: {error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let suffix = if detail.is_empty() {
+            String::new()
+        } else {
+            format!(" detail={detail}")
+        };
+        return Err(format!("intent_classifier {provider} failed:{suffix}"));
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|error| format!("intent_classifier {provider} failed: invalid utf8: {error}"))
+}
+
+fn parse_anthropic_intent_response(response: &str) -> IntentMatchOutcome {
+    let response: serde_json::Value = match serde_json::from_str(response) {
+        Ok(response) => response,
+        Err(error) => {
+            return IntentMatchOutcome::Failed(format!(
+                "intent_classifier anthropic failed: invalid json: {error}"
+            ))
+        }
+    };
+    let Some(answer) = response
         .get("content")
-        .and_then(serde_json::Value::as_array)?
-        .iter()
-        .find_map(|part| part.get("text").and_then(serde_json::Value::as_str))?
-        .trim()
-        .to_ascii_uppercase();
+        .and_then(serde_json::Value::as_array)
+        .and_then(|parts| {
+            parts
+                .iter()
+                .find_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+        })
+    else {
+        return IntentMatchOutcome::Failed(
+            "intent_classifier anthropic failed: missing content text".to_string(),
+        );
+    };
+    parse_intent_answer(answer, "anthropic")
+}
+
+fn parse_openai_intent_response(response: &str) -> IntentMatchOutcome {
+    let response: serde_json::Value = match serde_json::from_str(response) {
+        Ok(response) => response,
+        Err(error) => {
+            return IntentMatchOutcome::Failed(format!(
+                "intent_classifier openai failed: invalid json: {error}"
+            ))
+        }
+    };
+    let Some(answer) = response
+        .get("choices")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return IntentMatchOutcome::Failed(
+            "intent_classifier openai failed: missing choice message content".to_string(),
+        );
+    };
+    parse_intent_answer(answer, "openai")
+}
+
+fn parse_intent_answer(answer: &str, provider: &str) -> IntentMatchOutcome {
+    let answer = answer.trim().to_ascii_uppercase();
     if answer.starts_with("YES") {
-        Some(true)
+        IntentMatchOutcome::Match(true)
     } else if answer.starts_with("NO") {
-        Some(false)
+        IntentMatchOutcome::Match(false)
     } else {
-        None
+        IntentMatchOutcome::Failed(format!(
+            "intent_classifier {provider} failed: expected YES or NO"
+        ))
     }
 }
 
@@ -661,8 +831,14 @@ mod tests {
 
         let task = "实现支付接口";
         let intent = "支付、认证、敏感数据、credentials、凭据、安全漏洞或隐私相关的软件工作";
-        assert!(expert_intent_match(task, intent));
-        assert!(expert_intent_match(task, intent));
+        assert_eq!(
+            expert_intent_match(task, intent),
+            IntentMatchOutcome::Mock(true)
+        );
+        assert_eq!(
+            expert_intent_match(task, intent),
+            IntentMatchOutcome::Match(true)
+        );
 
         let (entries, hits, misses) = autosummon_intent_cache_metrics_for_tests();
         assert_eq!(entries, 1);
@@ -676,6 +852,7 @@ use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
