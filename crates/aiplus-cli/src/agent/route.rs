@@ -155,7 +155,7 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         return Err(anyhow!("agent route requires a task when ROLE is omitted"));
     }
 
-    let plan = coordinator::plan_task(task);
+    let plan = coordinator::plan_task_for_project(project_root, task)?;
     let staffing = if plan.staffing_roles.is_empty() {
         "[]".to_string()
     } else {
@@ -171,6 +171,12 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         if plan.fire_consultant { "fire" } else { "skip" },
     );
     println!("Staffing roles: {staffing}");
+    if !plan.forced_by_risk.is_empty() {
+        println!("Forced by risk: [{}]", plan.forced_by_risk.join(","));
+    }
+    if !plan.auto_summoned.is_empty() {
+        println!("Auto-summoned experts: [{}]", plan.auto_summoned.join(","));
+    }
     record_coordinator_decision(project_root, task, &plan, "route")?;
 
     let gate_state = enforce_gates(project_root, "ceo", task, approved)?;
@@ -243,7 +249,7 @@ fn run_score_only_route(project_root: &Path, task: &str) -> Result<()> {
         return Err(anyhow!("agent route --score-only requires a task"));
     }
 
-    let plan = coordinator::plan_task(task);
+    let plan = coordinator::plan_task_for_project(project_root, task)?;
     let staffing = if plan.staffing_roles.is_empty() {
         "[]".to_string()
     } else {
@@ -270,6 +276,12 @@ fn run_score_only_route(project_root: &Path, task: &str) -> Result<()> {
         );
     }
     println!("Would staff: {staffing}");
+    if !plan.forced_by_risk.is_empty() {
+        println!("Forced by risk: [{}]", plan.forced_by_risk.join(","));
+    }
+    if !plan.auto_summoned.is_empty() {
+        println!("Auto-summoned experts: [{}]", plan.auto_summoned.join(","));
+    }
     record_coordinator_decision(project_root, task, &plan, "score_only")?;
     Ok(())
 }
@@ -292,6 +304,7 @@ fn record_coordinator_decision(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let ttl_expired = coordinator_decision_ttl_expired(project_root, plan, mode);
     let line = serde_json::json!({
         "schemaVersion": "0.3.0",
         "event": "coordinator_decision",
@@ -306,11 +319,39 @@ fn record_coordinator_decision(
         "designImpact": plan.score.design_impact,
         "consultant": if plan.fire_consultant { "fire" } else { "skip" },
         "staffingRoles": plan.staffing_roles,
+        "forced_by_risk": plan.forced_by_risk,
+        "auto_summoned": plan.auto_summoned,
+        "ttl_expired": ttl_expired,
         "dispatched": mode == "route" && !plan.staffing_roles.is_empty(),
         "secretValues": "none"
     });
     aiplus_core::append_jsonl_atomic(&path, &line.to_string())?;
     Ok(())
+}
+
+fn coordinator_decision_ttl_expired(
+    project_root: &Path,
+    plan: &coordinator::CoordinatorPlan,
+    mode: &str,
+) -> serde_json::Value {
+    if mode == "score_only" {
+        return serde_json::Value::Null;
+    }
+    let mut any_expired = false;
+    for role in &plan.staffing_roles {
+        let Ok(config) = get_role_config_for_project(project_root, role) else {
+            continue;
+        };
+        let Ok(Some(expired)) = cache::disk_cache_ttl_expired_for_role(
+            project_root,
+            role,
+            config.warm_bench_ttl_seconds,
+        ) else {
+            continue;
+        };
+        any_expired |= expired;
+    }
+    serde_json::Value::Bool(any_expired)
 }
 
 fn task_excerpt(task: &str) -> String {

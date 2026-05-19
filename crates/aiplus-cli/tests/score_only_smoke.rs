@@ -156,3 +156,44 @@ fn light_no_code_route_logs_coordinator_decision_for_no_dispatch_path() {
         "normal LIGHT_NO_CODE route should still record CEO handling:\n{body}"
     );
 }
+
+#[test]
+fn score_only_prints_auto_summoned_experts_without_dispatch() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path();
+    fs::write(target.join("README.md"), "# Score Only Autosummon\n").unwrap();
+    init_git_repo(target);
+    run(target, &["install", "codex"], 0);
+
+    let task = "write secure payment API docs";
+    let out = stdout(&run(target, &["agent", "route", "--score-only", task], 0));
+    assert!(
+        out.contains("Would staff: [pm,architect,engineer-a,engineer-b,reviewer,qa,security-reviewer,tech-writer]"),
+        "score-only should include autosummoned experts:\n{out}"
+    );
+    assert!(
+        out.contains("Auto-summoned experts: [security-reviewer,tech-writer]"),
+        "score-only should report autosummoned experts:\n{out}"
+    );
+
+    let log_path = target.join(".aiplus/agents/dispatch-log.jsonl");
+    let body = fs::read_to_string(&log_path).expect("dispatch log should exist");
+    let decision: Value = body
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("jsonl line"))
+        .find(|entry: &Value| {
+            entry.get("event").and_then(Value::as_str) == Some("coordinator_decision")
+        })
+        .expect("coordinator decision");
+    assert_eq!(
+        decision.get("auto_summoned").and_then(Value::as_array),
+        Some(&vec![
+            Value::String("security-reviewer".to_string()),
+            Value::String("tech-writer".to_string())
+        ])
+    );
+    assert!(body.lines().all(|line| {
+        let entry: Value = serde_json::from_str(line).expect("jsonl line");
+        entry.get("role").and_then(Value::as_str).is_none()
+    }));
+}

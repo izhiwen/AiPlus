@@ -26,3 +26,8 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["安全审查", "安全专家", "安全审计", "代码安全", "安全Reviewer"]
 english_aliases = ["security-reviewer", "security", "sec-audit", "security-expert", "sec-reviewer"]
+
+[autosummon]
+keywords = ["security", "secure", "auth", "secret", "token", "credential", "payment", "billing", "privacy", "vulnerability", "csrf", "xss", "encryption", "安全", "认证", "密钥", "支付", "隐私"]
+match_mode = "any"
+priority = 90

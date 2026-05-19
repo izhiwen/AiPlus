@@ -19,14 +19,35 @@ pub fn handle_doctor() -> Result<()> {
     match crate::agent::cache::disk_cache_status(&project_root) {
         Ok(status) => {
             println!(
-                "  Disk cache: {} ({})",
+                "  Disk cache: {} enforce_ttl={} ({})",
                 if status.enabled {
                     "enabled"
                 } else {
                     "disabled"
                 },
+                status.enforce_ttl,
                 status.project_dir.display()
             );
+            if let Some(meta) = &status.meta {
+                let now = crate::agent::cache::current_epoch_millis();
+                for (role, entry) in &meta.roles {
+                    let age_ms = now.saturating_sub(entry.last_used_at_ms);
+                    println!(
+                        "    INFO cache_age role={} age_seconds={} ttl_seconds={}",
+                        role,
+                        age_ms / 1000,
+                        entry.ttl_seconds
+                    );
+                    if status.enforce_ttl && age_ms > entry.ttl_seconds as u128 * 1000 {
+                        println!(
+                            "    WARN cache_ttl_expired role={} age_seconds={} ttl_seconds={}",
+                            role,
+                            age_ms / 1000,
+                            entry.ttl_seconds
+                        );
+                    }
+                }
+            }
             if let Some(warning) = status.sync_warning {
                 println!("    WARNING: {warning}");
             }

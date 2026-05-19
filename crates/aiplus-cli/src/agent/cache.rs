@@ -107,11 +107,15 @@ pub struct DiskCacheConfig {
 #[serde(default)]
 pub struct DiskCacheConfigSection {
     pub enable_disk: bool,
+    pub enforce_ttl: bool,
 }
 
 impl Default for DiskCacheConfigSection {
     fn default() -> Self {
-        Self { enable_disk: false }
+        Self {
+            enable_disk: false,
+            enforce_ttl: false,
+        }
     }
 }
 
@@ -152,6 +156,7 @@ pub struct DiskCacheRoleMeta {
 #[derive(Debug, Clone)]
 pub struct DiskCacheStatus {
     pub enabled: bool,
+    pub enforce_ttl: bool,
     pub project: String,
     pub project_dir: PathBuf,
     pub meta: Option<DiskCacheMeta>,
@@ -210,6 +215,7 @@ pub fn print_cache_status(project_root: &Path) -> Result<()> {
             "disabled"
         }
     );
+    println!("enforce_ttl={}", status.enforce_ttl);
     println!("project={}", status.project);
     println!("cache_dir={}", status.project_dir.display());
     if let Some(meta) = status.meta {
@@ -227,13 +233,16 @@ pub fn print_cache_status(project_root: &Path) -> Result<()> {
 }
 
 pub fn disk_cache_status(project_root: &Path) -> Result<DiskCacheStatus> {
-    let enabled = disk_cache_enabled(project_root)?;
+    let config = read_disk_cache_config(project_root)?;
+    let enabled = config.cache.enable_disk;
+    let enforce_ttl = config.cache.enforce_ttl;
     let project_dir = project_cache_dir(project_root)?;
     let project = project_basename(project_root);
     let meta = read_meta_if_exists(&project_dir)?;
     let sync_warning = cache_sync_warning(&cache_root_dir()?);
     Ok(DiskCacheStatus {
         enabled,
+        enforce_ttl,
         project,
         project_dir,
         meta,
@@ -242,14 +251,20 @@ pub fn disk_cache_status(project_root: &Path) -> Result<DiskCacheStatus> {
 }
 
 pub fn disk_cache_enabled(project_root: &Path) -> Result<bool> {
+    Ok(read_disk_cache_config(project_root)?.cache.enable_disk)
+}
+
+pub fn disk_cache_enforce_ttl(project_root: &Path) -> Result<bool> {
+    Ok(read_disk_cache_config(project_root)?.cache.enforce_ttl)
+}
+
+fn read_disk_cache_config(project_root: &Path) -> Result<DiskCacheConfig> {
     let path = project_root.join(DISK_CACHE_CONFIG_PATH);
     if !path.exists() {
-        return Ok(false);
+        return Ok(DiskCacheConfig::default());
     }
     let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-    let config: DiskCacheConfig =
-        toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
-    Ok(config.cache.enable_disk)
+    toml::from_str(&text).with_context(|| format!("parse {}", path.display()))
 }
 
 pub fn write_disk_cache_enabled(project_root: &Path, enabled: bool) -> Result<()> {
@@ -257,7 +272,12 @@ pub fn write_disk_cache_enabled(project_root: &Path, enabled: bool) -> Result<()
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let text = format!("[cache]\nenable_disk = {enabled}\n");
+    let mut config = read_disk_cache_config(project_root).unwrap_or_default();
+    config.cache.enable_disk = enabled;
+    let text = format!(
+        "[cache]\nenable_disk = {}\nenforce_ttl = {}\n",
+        config.cache.enable_disk, config.cache.enforce_ttl
+    );
     aiplus_core::write_file_atomic(&path, text.as_bytes())?;
     Ok(())
 }
@@ -267,7 +287,8 @@ pub fn lookup_disk_snapshot(
     role: &str,
     ttl_seconds: u64,
 ) -> Result<CacheSource> {
-    if !disk_cache_enabled(project_root)? {
+    let cache_config = read_disk_cache_config(project_root)?;
+    if !cache_config.cache.enable_disk {
         return Ok(CacheSource::Disabled);
     }
     if is_owner_facing_role(role) {
@@ -323,7 +344,11 @@ pub fn lookup_disk_snapshot(
     };
 
     let now = epoch_millis();
-    if now.saturating_sub(snapshot.written_at_ms) > (ttl_seconds as u128 * 1000) {
+    let ttl_expired = disk_cache_ttl_expired_for_role(project_root, role, ttl_seconds)?
+        .unwrap_or_else(|| {
+            now.saturating_sub(snapshot.written_at_ms) > (ttl_seconds as u128 * 1000)
+        });
+    if cache_config.cache.enforce_ttl && ttl_expired {
         remember_cache_source(project_root, role, ttl_seconds, CacheSource::ColdStart)?;
         return Ok(CacheSource::ColdStart);
     }
@@ -348,6 +373,39 @@ pub fn lookup_disk_snapshot(
         snapshot.written_at_ms,
     )?;
     Ok(CacheSource::DiskWarm)
+}
+
+pub fn disk_cache_ttl_expired_for_role(
+    project_root: &Path,
+    role: &str,
+    ttl_seconds: u64,
+) -> Result<Option<bool>> {
+    let config = read_disk_cache_config(project_root)?;
+    if !config.cache.enable_disk || !config.cache.enforce_ttl || is_owner_facing_role(role) {
+        return Ok(Some(false));
+    }
+    let project_dir = project_cache_dir(project_root)?;
+    let meta = match read_meta_if_exists(&project_dir)? {
+        Some(meta) => meta,
+        None => return Ok(Some(false)),
+    };
+    let entry = match meta.roles.get(role) {
+        Some(entry) => entry,
+        None => return Ok(Some(false)),
+    };
+    let snapshot_path = role_snapshot_path(&project_dir, role);
+    let checksum_path = role_checksum_path(&project_dir, role);
+    if !snapshot_path.exists() || !checksum_path.exists() {
+        return Ok(Some(false));
+    }
+    let ttl_ms = ttl_seconds as u128 * 1000;
+    Ok(Some(
+        epoch_millis().saturating_sub(entry.last_used_at_ms) > ttl_ms,
+    ))
+}
+
+pub fn current_epoch_millis() -> u128 {
+    epoch_millis()
 }
 
 pub fn write_disk_snapshot(

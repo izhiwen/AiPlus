@@ -72,6 +72,22 @@ fn project_cache_dir(cache_root: &Path, project: &Path) -> PathBuf {
     cache_root.join(project.file_name().unwrap())
 }
 
+fn set_enforce_ttl(project: &Path, enabled: bool) {
+    fs::write(
+        project.join(".aiplus/agent-team.toml"),
+        format!("[cache]\nenable_disk = true\nenforce_ttl = {enabled}\n"),
+    )
+    .unwrap();
+}
+
+fn set_last_used_at_ms(cache_root: &Path, project: &Path, role: &str, value: u128) {
+    let path = project_cache_dir(cache_root, project).join("_cache_meta.json");
+    let mut meta: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    meta["roles"][role]["lastUsedAtMs"] = serde_json::json!(value);
+    fs::write(path, serde_json::to_string_pretty(&meta).unwrap()).unwrap();
+}
+
 #[test]
 fn enabled_disk_cache_reports_disk_warm_on_second_route() {
     let temp = tempfile::tempdir().unwrap();
@@ -101,6 +117,101 @@ fn enabled_disk_cache_reports_disk_warm_on_second_route() {
 
     let status = run(&project, &cache_root, &["agent", "status", "--verbose"], 0);
     assert!(stdout(&status).contains("role=engineer-a cache_source=disk_warm"));
+}
+
+#[test]
+fn ttl_enforcement_cold_starts_expired_cache_when_enabled() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("repo-ttl-expired");
+    let cache_root = temp.path().join("cache-root");
+    prepare_project(&project);
+
+    run(
+        &project,
+        &cache_root,
+        &["agent", "cache", "--enable-disk"],
+        0,
+    );
+    set_enforce_ttl(&project, true);
+    run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "write ttl cache"],
+        0,
+    );
+    set_last_used_at_ms(&cache_root, &project, "engineer-a", 0);
+
+    let routed = run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "expired ttl"],
+        0,
+    );
+    assert!(stdout(&routed).contains("cache_source=cold_start"));
+
+    let doctor = run(&project, &cache_root, &["agent", "doctor"], 0);
+    assert!(stdout(&doctor).contains("enforce_ttl=true"));
+    assert!(stdout(&doctor).contains("INFO cache_age role=engineer-a"));
+}
+
+#[test]
+fn ttl_enforcement_keeps_fresh_cache_warm_when_enabled() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("repo-ttl-fresh");
+    let cache_root = temp.path().join("cache-root");
+    prepare_project(&project);
+
+    run(
+        &project,
+        &cache_root,
+        &["agent", "cache", "--enable-disk"],
+        0,
+    );
+    set_enforce_ttl(&project, true);
+    run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "write fresh ttl cache"],
+        0,
+    );
+
+    let routed = run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "fresh ttl"],
+        0,
+    );
+    assert!(stdout(&routed).contains("cache_source=disk_warm"));
+}
+
+#[test]
+fn stale_ttl_is_ignored_when_enforcement_disabled() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("repo-ttl-disabled");
+    let cache_root = temp.path().join("cache-root");
+    prepare_project(&project);
+
+    run(
+        &project,
+        &cache_root,
+        &["agent", "cache", "--enable-disk"],
+        0,
+    );
+    run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "write ignored ttl cache"],
+        0,
+    );
+    set_last_used_at_ms(&cache_root, &project, "engineer-a", 0);
+
+    let routed = run(
+        &project,
+        &cache_root,
+        &["agent", "route", "engineer-a", "ignored stale ttl"],
+        0,
+    );
+    assert!(stdout(&routed).contains("cache_source=disk_warm"));
 }
 
 #[test]

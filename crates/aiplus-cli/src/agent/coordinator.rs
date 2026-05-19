@@ -30,20 +30,31 @@ pub struct CoordinatorPlan {
     pub score: CoordinatorScore,
     pub tier: CoordinatorTier,
     pub fire_consultant: bool,
-    pub staffing_roles: Vec<&'static str>,
+    pub staffing_roles: Vec<String>,
+    pub forced_by_risk: Vec<String>,
+    pub auto_summoned: Vec<String>,
 }
 
 pub fn plan_task(task: &str) -> CoordinatorPlan {
     let score = score_task(task);
     let tier = classify_tier(score.complexity, score.risk, score.requires_code_change);
     let fire_consultant = matches!(tier, CoordinatorTier::Medium | CoordinatorTier::Heavy);
-    let staffing_roles = staffing_roles(tier, score.design_impact);
+    let mut staffing_roles = staffing_roles(tier, score.design_impact);
+    let forced_by_risk = apply_risk_forcing(&mut staffing_roles, score.risk);
     CoordinatorPlan {
         score,
         tier,
         fire_consultant,
         staffing_roles,
+        forced_by_risk,
+        auto_summoned: Vec::new(),
     }
+}
+
+pub fn plan_task_for_project(project_root: &Path, task: &str) -> Result<CoordinatorPlan> {
+    let mut plan = plan_task(task);
+    apply_auto_summon(project_root, task, &mut plan)?;
+    Ok(plan)
 }
 
 pub fn score_task(task: &str) -> CoordinatorScore {
@@ -248,26 +259,106 @@ pub fn classify_tier(complexity: u8, risk: f32, requires_code_change: bool) -> C
     }
 }
 
-pub fn staffing_roles(tier: CoordinatorTier, design_impact: bool) -> Vec<&'static str> {
+pub fn staffing_roles(tier: CoordinatorTier, design_impact: bool) -> Vec<String> {
     match tier {
         CoordinatorTier::LightNoCode => Vec::new(),
-        CoordinatorTier::LightCode => vec!["engineer-a"],
+        CoordinatorTier::LightCode => str_vec(&["engineer-a"]),
         CoordinatorTier::Medium => {
             if design_impact {
-                vec!["architect", "engineer-a", "reviewer"]
+                str_vec(&["architect", "engineer-a", "reviewer"])
             } else {
-                vec!["engineer-a", "reviewer"]
+                str_vec(&["engineer-a", "reviewer"])
             }
         }
-        CoordinatorTier::Heavy => vec![
+        CoordinatorTier::Heavy => str_vec(&[
             "pm",
             "architect",
             "engineer-a",
             "engineer-b",
             "reviewer",
             "qa",
-        ],
+        ]),
     }
+}
+
+pub fn apply_risk_forcing(staffing_roles: &mut Vec<String>, risk: f32) -> Vec<String> {
+    let mut forced = Vec::new();
+    if risk >= 0.70 {
+        forced.push("reviewer".to_string());
+        if !contains_role(staffing_roles, "reviewer") {
+            staffing_roles.push("reviewer".to_string());
+        }
+    }
+    if risk >= 0.85 {
+        forced.push("qa".to_string());
+        if !contains_role(staffing_roles, "qa") {
+            staffing_roles.push("qa".to_string());
+        }
+    }
+    forced
+}
+
+fn apply_auto_summon(project_root: &Path, task: &str, plan: &mut CoordinatorPlan) -> Result<()> {
+    let state = load_team_config(project_root)?;
+    let task_lower = task.to_ascii_lowercase();
+    let cap = cluster_cap(plan.tier);
+    let mut candidates = Vec::new();
+
+    for config in state.agents.values() {
+        let Some(autosummon) = config.autosummon.as_ref() else {
+            continue;
+        };
+        if autosummon.keywords.is_empty()
+            || config.stub
+            || contains_role(&plan.staffing_roles, &config.role)
+        {
+            continue;
+        }
+
+        let matches: Vec<&String> = autosummon
+            .keywords
+            .iter()
+            .filter(|keyword| task_lower.contains(&keyword.to_ascii_lowercase()))
+            .collect();
+        let matched = if autosummon.match_mode.eq_ignore_ascii_case("all") {
+            matches.len() == autosummon.keywords.len()
+        } else {
+            !matches.is_empty()
+        };
+        if matched {
+            candidates.push((autosummon.priority, config.role.clone()));
+        }
+    }
+
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    for (_, role) in candidates {
+        if plan.staffing_roles.len() >= cap {
+            break;
+        }
+        if contains_role(&plan.staffing_roles, &role) {
+            continue;
+        }
+        plan.staffing_roles.push(role.clone());
+        plan.auto_summoned.push(role);
+    }
+    Ok(())
+}
+
+fn cluster_cap(tier: CoordinatorTier) -> usize {
+    match tier {
+        CoordinatorTier::LightNoCode => 2,
+        CoordinatorTier::LightCode => 3,
+        CoordinatorTier::Medium => 5,
+        CoordinatorTier::Heavy => 8,
+    }
+}
+
+fn contains_role(roles: &[String], role: &str) -> bool {
+    roles.iter().any(|candidate| candidate == role)
+}
+
+fn str_vec(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
 }
 
 pub fn thresholds_match_design() -> bool {
@@ -309,14 +400,14 @@ mod tests {
         assert_eq!(plan.tier, CoordinatorTier::Heavy);
         assert_eq!(
             plan.staffing_roles,
-            vec![
+            str_vec(&[
                 "pm",
                 "architect",
                 "engineer-a",
                 "engineer-b",
                 "reviewer",
                 "qa"
-            ]
+            ])
         );
         assert!(plan.fire_consultant);
     }
@@ -325,4 +416,39 @@ mod tests {
     fn thresholds_self_check_matches_design() {
         assert!(thresholds_match_design());
     }
+
+    #[test]
+    fn risk_forcing_records_threshold_roles_and_dedupes_staffing() {
+        let mut light = str_vec(&["engineer-a"]);
+        let forced = apply_risk_forcing(&mut light, 0.85);
+        assert_eq!(light, str_vec(&["engineer-a", "reviewer", "qa"]));
+        assert_eq!(forced, str_vec(&["reviewer", "qa"]));
+
+        let mut medium = str_vec(&["engineer-a", "reviewer"]);
+        let forced = apply_risk_forcing(&mut medium, 0.85);
+        assert_eq!(medium, str_vec(&["engineer-a", "reviewer", "qa"]));
+        assert_eq!(forced, str_vec(&["reviewer", "qa"]));
+
+        let mut heavy = str_vec(&[
+            "pm",
+            "architect",
+            "engineer-a",
+            "engineer-b",
+            "reviewer",
+            "qa",
+        ]);
+        let forced = apply_risk_forcing(&mut heavy, 0.85);
+        assert_eq!(forced, str_vec(&["reviewer", "qa"]));
+    }
+
+    #[test]
+    fn risk_forcing_does_not_fire_below_boundary() {
+        let mut light = str_vec(&["engineer-a"]);
+        let forced = apply_risk_forcing(&mut light, 0.50);
+        assert_eq!(light, str_vec(&["engineer-a"]));
+        assert!(forced.is_empty());
+    }
 }
+use crate::agent::core::load_team_config;
+use anyhow::Result;
+use std::path::Path;

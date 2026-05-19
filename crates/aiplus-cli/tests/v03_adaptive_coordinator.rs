@@ -94,6 +94,16 @@ fn dispatch_metric_roles(target: &Path) -> Vec<String> {
         .collect()
 }
 
+fn coordinator_decisions(target: &Path) -> Vec<Value> {
+    let path = target.join(".aiplus/agents/dispatch-log.jsonl");
+    fs::read_to_string(path)
+        .expect("dispatch log exists")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("dispatch JSON"))
+        .filter(|value| value.get("event").and_then(Value::as_str) == Some("coordinator_decision"))
+        .collect()
+}
+
 #[test]
 fn d5_payment_task_staffs_heavy_team() {
     let temp = tempfile::tempdir().unwrap();
@@ -115,8 +125,18 @@ fn d5_payment_task_staffs_heavy_team() {
         "HEAVY tasks must fire consultant:\n{route}"
     );
     assert!(
-        route.contains("Staffing roles: [pm,architect,engineer-a,engineer-b,reviewer,qa]"),
+        route.contains(
+            "Staffing roles: [pm,architect,engineer-a,engineer-b,reviewer,qa,security-reviewer]"
+        ),
         "HEAVY staffing mismatch:\n{route}"
+    );
+    assert!(
+        route.contains("Forced by risk: [reviewer,qa]"),
+        "risk-forced roles should be visible:\n{route}"
+    );
+    assert!(
+        route.contains("Auto-summoned experts: [security-reviewer]"),
+        "payment task should auto-summon security reviewer:\n{route}"
     );
     for role in [
         "pm",
@@ -125,6 +145,7 @@ fn d5_payment_task_staffs_heavy_team() {
         "engineer-b",
         "reviewer",
         "qa",
+        "security-reviewer",
     ] {
         assert!(
             route.contains(&format!("Routing task to {role}:")),
@@ -142,7 +163,8 @@ fn d5_payment_task_staffs_heavy_team() {
             "engineer-b",
             "pm",
             "qa",
-            "reviewer"
+            "reviewer",
+            "security-reviewer"
         ]
     );
 
@@ -156,7 +178,8 @@ fn d5_payment_task_staffs_heavy_team() {
             "engineer-b",
             "pm",
             "qa",
-            "reviewer"
+            "reviewer",
+            "security-reviewer"
         ]
     );
 
@@ -168,5 +191,23 @@ fn d5_payment_task_staffs_heavy_team() {
     assert!(
         doctor.contains("PASS coordinator tier thresholds match DESIGN.md §9.2"),
         "agent doctor should validate coordinator thresholds:\n{doctor}"
+    );
+
+    let decisions = coordinator_decisions(target);
+    assert_eq!(decisions.len(), 1, "expected one coordinator decision");
+    assert_eq!(
+        decisions[0].get("forced_by_risk").and_then(Value::as_array),
+        Some(&vec![
+            Value::String("reviewer".to_string()),
+            Value::String("qa".to_string())
+        ])
+    );
+    assert_eq!(
+        decisions[0].get("ttl_expired").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        decisions[0].get("auto_summoned").and_then(Value::as_array),
+        Some(&vec![Value::String("security-reviewer".to_string())])
     );
 }

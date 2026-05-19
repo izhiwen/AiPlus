@@ -26,3 +26,8 @@ write_team_memory = false
 [invocation]
 chinese_aliases = ["技术写作", "技术文档", "文档专家", "写文档", "TechWriter"]
 english_aliases = ["tech-writer", "writer", "documentation", "docs-specialist", "technical-writer"]
+
+[autosummon]
+keywords = ["docs", "documentation", "readme", "guide", "manual", "onboarding", "copy", "release notes", "spec", "tutorial", "文档", "说明", "指南", "README"]
+match_mode = "any"
+priority = 60

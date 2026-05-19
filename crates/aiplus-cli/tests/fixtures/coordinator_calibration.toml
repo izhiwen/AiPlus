@@ -112,3 +112,73 @@ expected_complexity = 4
 expected_risk_max = 0.80
 expected_tier = "HEAVY"
 notes = "risk boundary: key/token risk alone forces heavy tier"
+
+[[task]]
+input = "write secure payment API docs"
+expected_complexity = 5
+expected_risk_max = 0.95
+expected_tier = "HEAVY"
+notes = "v0.3.1 autosummon calibration: security + docs terms"
+
+[[task]]
+input = "describe git status"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "v0.3.1 autosummon negative: no expert keywords"
+
+[[task]]
+input = "update README onboarding guide"
+expected_complexity = 2
+expected_risk_max = 0.45
+expected_tier = "LIGHT_CODE"
+notes = "v0.3.1 tech-writer keyword task remains light code"
+
+[[task]]
+input = "create prompt RAG model evaluation notes"
+expected_complexity = 2
+expected_risk_max = 0.45
+expected_tier = "LIGHT_CODE"
+notes = "v0.3.1 ai-integration keywords without heavy risk"
+
+[[task]]
+input = "fix secure token typo"
+expected_complexity = 2
+expected_risk_max = 0.80
+expected_tier = "HEAVY"
+notes = "v0.3.1 risk-forced reviewer boundary with small code shape"
+
+[[task]]
+input = "update payment copy"
+expected_complexity = 5
+expected_risk_max = 0.95
+expected_tier = "HEAVY"
+notes = "v0.3.1 payment risk still drives heavy tier"
+
+[[task]]
+input = "summarize documentation guide"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "v0.3.1 docs keyword read-only remains no-code"
+
+[[task]]
+input = "implement AI agent prompt routing"
+expected_complexity = 3
+expected_risk_max = 0.45
+expected_tier = "MEDIUM"
+notes = "v0.3.1 ai-integration keywords on medium implementation task"
+
+[[task]]
+input = "inspect credential rotation policy"
+expected_complexity = 1
+expected_risk_max = 0.25
+expected_tier = "LIGHT_NO_CODE"
+notes = "v0.3.1 credential keyword is autosummon-only, not scorer risk"
+
+[[task]]
+input = "patch auth token validation tests"
+expected_complexity = 5
+expected_risk_max = 0.85
+expected_tier = "HEAVY"
+notes = "v0.3.1 security risk remains heavy and risk-forced"

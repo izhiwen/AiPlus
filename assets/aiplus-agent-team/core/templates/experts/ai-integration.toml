@@ -27,6 +27,11 @@ write_team_memory = false
 chinese_aliases = ["AI集成", "AI集成专家", "模型集成", "Prompt工程师", "大模型集成"]
 english_aliases = ["ai-integration", "ai-integrator", "llm-specialist", "prompt-engineer", "model-integration"]
 
+[autosummon]
+keywords = ["llm", "ai", "model", "prompt", "rag", "embedding", "openai", "anthropic", "claude", "codex", "agent", "token budget", "大模型", "模型", "提示词", "智能体"]
+match_mode = "any"
+priority = 70
+
 # S5: this expert literally exists to evaluate AI integrations —
 # needs anthropic + openai to probe model behavior during reviews.
 [secret_needs]

@@ -20,6 +20,8 @@ pub struct AgentConfig {
     pub memory: Option<MemorySection>,
     #[serde(rename = "invocation")]
     pub invocation: Option<InvocationSection>,
+    #[serde(rename = "autosummon", default)]
+    pub autosummon: Option<AutosummonSection>,
     /// S5: secret-broker aliases this role needs to do its job.
     /// Used by `agent route` (S7) to auto-inject broker env vars
     /// and by `aiplus doctor` (S6) to flag missing aliases at
@@ -103,6 +105,21 @@ pub struct InvocationSection {
     pub chinese_aliases: Vec<String>,
     #[serde(default)]
     pub english_aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[allow(dead_code)]
+pub struct AutosummonSection {
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default = "default_autosummon_match_mode")]
+    pub match_mode: String,
+    #[serde(default)]
+    pub priority: i32,
+}
+
+fn default_autosummon_match_mode() -> String {
+    "any".to_string()
 }
 
 /// S5: per-role declaration of secret-broker aliases needed for
@@ -468,6 +485,7 @@ impl AgentConfig {
             workspace: None,
             memory: None,
             invocation: None,
+            autosummon: None,
             secret_needs: None,
             role: role.to_string(),
             display_name: role.to_string(),
