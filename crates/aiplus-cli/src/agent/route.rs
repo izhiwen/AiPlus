@@ -216,26 +216,7 @@ fn run_adaptive_route(project_root: &Path, task: &str, approved: &BTreeSet<Strin
         "Execute step: dispatching {} staffed role(s) with batch {batch_id}",
         plan.staffing_roles.len()
     );
-    let pool = Arc::new(Mutex::new(WorktreePool::default()));
-    for (idx, role) in plan.staffing_roles.iter().enumerate() {
-        let config = get_role_config_for_project(project_root, role)?;
-        let role_task = coordinator_role_task(role, idx + 1, plan.staffing_roles.len(), task);
-        route_known_role(
-            project_root,
-            role,
-            None,
-            &role_task,
-            config,
-            Some(&batch_id),
-            if idx == 0 {
-                DispatchKind::Primary
-            } else {
-                DispatchKind::Sidecar
-            },
-            Some(Arc::clone(&pool)),
-            false,
-        )?;
-    }
+    coordinator_batch(project_root, task, &plan.staffing_roles, &batch_id)?;
     println!(
         "Adaptive coordinator dispatch complete: tier={}",
         plan.tier.as_str()
@@ -610,6 +591,7 @@ fn record_workflow_phase(
 enum DispatchKind {
     Primary,
     Sidecar,
+    CoordinatorPeer,
 }
 
 impl DispatchKind {
@@ -617,6 +599,7 @@ impl DispatchKind {
         match self {
             DispatchKind::Primary => "primary",
             DispatchKind::Sidecar => "sidecar",
+            DispatchKind::CoordinatorPeer => "coordinator_peer",
         }
     }
 }
@@ -706,6 +689,69 @@ fn route_batch(
     Ok(())
 }
 
+fn coordinator_batch(
+    project_root: &Path,
+    task: &str,
+    staffing_roles: &[String],
+    batch_id: &str,
+) -> Result<()> {
+    println!(
+        "Coordinator batch {batch_id}: peers=[{}]",
+        staffing_roles.join(",")
+    );
+
+    let pool = Arc::new(Mutex::new(WorktreePool::default()));
+    let total = staffing_roles.len();
+    let mut handles = Vec::new();
+
+    for (idx, role) in staffing_roles.iter().enumerate() {
+        let project_root = project_root.to_path_buf();
+        let role = role.clone();
+        let role_task = coordinator_role_task(&role, idx + 1, total, task);
+        let batch_id = batch_id.to_string();
+        let pool = Arc::clone(&pool);
+        handles.push((
+            role.clone(),
+            thread::spawn(move || {
+                let config = get_role_config_for_project(&project_root, &role)?;
+                route_known_role(
+                    &project_root,
+                    &role,
+                    None,
+                    &role_task,
+                    config,
+                    Some(&batch_id),
+                    DispatchKind::CoordinatorPeer,
+                    Some(pool),
+                    false,
+                )
+            }),
+        ));
+    }
+
+    let mut failures = Vec::new();
+    for (role, handle) in handles {
+        match handle.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => failures.push(format!("{role}: {e}")),
+            Err(_) => failures.push(format!("{role}: worker panicked")),
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    println!(
+        "Coordinator batch {batch_id} completed with partial failure(s): {}",
+        failures.join("; ")
+    );
+    Err(anyhow!(
+        "coordinator batch partial failure: {}",
+        failures.join("; ")
+    ))
+}
+
 fn sidecar_task(role: &str, task: &str) -> String {
     match role {
         "reviewer" => format!(
@@ -732,6 +778,29 @@ fn route_known_role(
     let started = Instant::now();
     maybe_delay_for_perf_fixture(role);
     println!("Routing task to {}: {}", role, task);
+    if let Some(reason) = perf_fixture_failure(role) {
+        let _ = state::record_dispatch_with_outcome(
+            project_root,
+            role,
+            task,
+            "aiplus agent route",
+            state::DispatchOutcome::Fail {
+                reason: "perf_fixture_failure",
+                detail: &reason,
+            },
+        );
+        record_dispatch_metric(
+            project_root,
+            batch_id,
+            role,
+            kind,
+            "fail",
+            "fixture_failed",
+            false,
+            started.elapsed(),
+        );
+        return Err(anyhow!("{reason}"));
+    }
     let cache_source =
         match cache::lookup_disk_snapshot(project_root, role, config.warm_bench_ttl_seconds) {
             Ok(source) => source,
@@ -747,7 +816,7 @@ fn route_known_role(
         println!("  cache_source={}", cache_source.as_str());
     }
     let mut cache_invalidated = false;
-    if kind == DispatchKind::Primary {
+    if matches!(kind, DispatchKind::Primary | DispatchKind::CoordinatorPeer) {
         if let Ok(cache) = cache::global_cache().lock() {
             cache.invalidate(role, cache::InvalidationReason::RoleRouteCalled);
             cache_invalidated = true;
@@ -883,6 +952,18 @@ fn maybe_delay_for_perf_fixture(role: &str) {
     if ms > 0 {
         thread::sleep(Duration::from_millis(ms));
     }
+}
+
+fn perf_fixture_failure(role: &str) -> Option<String> {
+    let raw = std::env::var("AIPLUS_PERF1_FAIL_ROLE")
+        .or_else(|_| std::env::var("AIPLUS_COORDINATOR_FAIL_ROLE"))
+        .unwrap_or_default();
+    let matched = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .any(|value| value == role);
+    matched.then(|| format!("perf fixture requested failure for role {role}"))
 }
 
 fn record_dispatch_metric(
