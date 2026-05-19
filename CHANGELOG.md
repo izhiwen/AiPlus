@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+## 0.6.7
+
+### Features — Agent discoverability via MCP
+
+- **Three new MCP tools registered** so the user's agent (Claude Code
+  / Codex / OpenCode, configured via `aiplus mcp-register`) can
+  discover and invoke recent v0.6.5 / v0.6.6 features without manual
+  user invocation:
+  - **`agent_token_cost`** — wraps `aiplus agent token-cost`. Args:
+    `window` (optional `"1h"|"8h"|"24h"`), `by_role` (optional bool),
+    `top_n` (optional int). Returns structured JSON the agent can
+    reason over (tokens, USD, top tasks, by-role detail). The agent
+    can now proactively check burn before authorizing expensive
+    dispatches.
+  - **`agent_audit_verify_log`** — wraps `aiplus agent audit
+    verify-log`. Returns `{verdict: PASS|FAIL, first_bad_line, reason}`.
+    The agent can periodically verify the dispatch log's hash chain.
+  - **`agent_route_score_only`** — wraps `aiplus agent route
+    --score-only "<task>"`. Returns the coordinator's would-staffing
+    decision (complexity, risk, tier, staffing_roles, forced_by_risk,
+    auto_summoned) without spending any tokens. The agent can
+    pre-flight a task before committing to dispatch.
+- The 11 existing MCP tools (`agent_route` / `agent_status` /
+  `agent_set_team` / etc.) are unchanged. New tools are pure
+  additions.
+
+### Internal
+
+- `crates/aiplus-cli/src/mcp_server.rs`: 3 new tool JSON definitions
+  + 3 new subprocess-dispatch functions following the established
+  pattern of the 11 existing tools.
+- `crates/aiplus-cli/tests/agent_autoflow_mcp.rs`: new live MCP
+  integration test that starts `aiplus mcp-serve`, sends JSON-RPC
+  `tools/list` (verifies 3 new tools listed), sends `tools/call`
+  for each (verifies happy path), and sends invalid args (verifies
+  `isError=true` reply).
+- Test growth: 569 → 574 workspace tests.
+- `install.sh` fallback bumped to `v0.6.7` (parity test).
+
+### What this enables (downstream)
+
+- The agent's tool inventory grows by 3 entries the next time
+  `aiplus mcp-register` is run against a configured runtime. No
+  config edits needed in `~/.codex/` / `~/.claude/` / `~/.config/opencode/`.
+- The agent decides when to call these on its own per its prompt
+  heuristics. Owner observes during continued dogfood whether the
+  agent uses them or ignores them; that signal informs whether to
+  also do Option B (SKILL.md guidance) and Option C (`aiplus install`
+  opt-in prompts).
+
+### Migration notes
+
+- No breaking CLI changes.
+- Existing MCP integrations re-fetch the tool list per session, so
+  the new tools become available automatically.
+
 ## 0.6.6
 
 ### Features
