@@ -1,10 +1,9 @@
 # AiPlus
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 [中文 README](README.zh-CN.md)
 
-![AiPlus turns a single AI coding agent into a coordinated, role-based team. The hero shows the project lobby with the full 17-role roster, a copyable one-line install command, the seven-stage pipeline ribbon (remember decisions, dispatch, team, handoff, status, self-correct, audit), and local-first credibility chips: latest tag v0.7.10, 100% local, no telemetry, Apache-2.0.](docs/screenshots/readme-hero-en.webp)
+![AiPlus turns a single AI coding agent into a coordinated, role-based team. The hero shows the project lobby with the full 17-role roster, a copyable one-line install command, the seven-stage pipeline ribbon (remember decisions, dispatch, team, handoff, status, self-correct, audit), and local-first credibility chips: latest tag v0.7.23, 100% local, no telemetry, no telemetry.](docs/screenshots/readme-hero-en.webp)
 
 **Turn your AI coding helper into a coordinated team.**
 
@@ -54,16 +53,16 @@ stage labels below are the same in both READMEs.
 ## Capabilities
 
 Seven small Rust modules, one companion template, and a permanent role-based team. Each
-module also ships as a standalone GitHub repo so you can read or adopt it on its own;
+每个模块单独维护：
 `aiplus install` also installs them locally to `.aiplus/modules/aiplus-<name>/`.
 
 ### Modules
 
-- **[Agent Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)** — the agent stops
+- ****Agent Memory**** — the agent stops
   forgetting. Project conventions, naming rules, and architecture decisions live as local
   JSONL in `.aiplus/memory/`, passed through 12 redaction rules before write so you can
   record preferences without leaking secrets.
-- **[Compact Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)** — save tokens
+- ****Compact Reminder**** — save tokens
   on long conversations. Long sessions leak tokens at both ends: forget `/compact` and the
   agent re-reads an ever-growing history every turn; `/compact` at the wrong moment and the
   next session burns its first 20% re-explaining settled decisions. This module signals the
@@ -72,7 +71,7 @@ module also ships as a standalone GitHub repo so you can read or adopt it on its
   rebuilding context.
 
   ![Diagram animation of the handoff/compact flow: a long session's context bar grows toward a token threshold, AiPlus saves a checksum-verified handoff capsule at the right moment, and the next session resumes lean so tokens go to new work instead of rebuilding context.](docs/screenshots/handoff-en.webp)
-- **[Agent Key](https://github.com/izhiwen/AiPlus-Agent-Key)** — stop re-pasting keys every
+- ****Agent Key**** — stop re-pasting keys every
   session. Free, zero-config by default: each key lives in your OS keyring (macOS Keychain /
   Linux Secret Service / Windows Credential Manager) and never touches disk. Set an alias
   once per machine:
@@ -90,12 +89,12 @@ module also ships as a standalone GitHub repo so you can read or adopt it on its
   Values are not printed by default and never enter git. Opt in to a Bitwarden Secrets
   Manager backend (`export AIPLUS_SECRET_PROVIDER=bws`) for multi-machine or team sharing;
   the same alias interface applies, and it requires a paid subscription.
-- **[Auto Team Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)** — the
+- ****Auto Team Consultant**** — the
   agent stops ignoring what matters. A virtual team (five expert members plus your project's
   user persona, all at the same table) is consulted before every important plan. The
   coordinator scales consultation by complexity and risk, so you get review-team value
   without paying for it on every commit.
-- **[Agent Team](https://github.com/izhiwen/AiPlus-Agent-Team)** — replace single-agent role
+- ****Agent Team**** — replace single-agent role
   drift with a permanent crew. Each role has its own persona, workspace, and memory
   namespace. The coordinator routes tasks to the right role, saves conversation records, and
   cleans up stale workspaces. The team ships with:
@@ -112,11 +111,11 @@ module also ships as a standalone GitHub repo so you can read or adopt it on its
     iterations stay fast without lowering the quality bar.
 
   (See the full 17-role roster below.)
-- **[Agent Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)** — the agent stops
+- ****Agent Velocity**** — the agent stops
   guessing at hours. Every estimate and actual completion time is logged as local JSONL.
   Human-time bias is detected automatically; later estimates use AI-native p50 / p90 numbers
   calibrated against your own history.
-- **[Token Cost](https://github.com/izhiwen/AiPlus-Token-Cost)** — `aiplus agent token-cost`
+- ****Token Cost**** — `aiplus agent token-cost`
   reads the dispatch log and reports token use and USD cost over 1h / 8h / 24h windows, plus
   the most expensive tasks. Pricing comes from a community-maintained per-model table with an
   offline fallback and local override; also runnable as standalone `aiplus-token-cost`.
@@ -129,11 +128,11 @@ parsing CLI output, or answering from training data. Say "implement X" and the f
 
 ### Companion template
 
-- **[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** — the seven
+- ****AiPlus-Work-with-Me**** — the seven
   modules above are all *project-local*. Work-with-Me is a **user-level profile pack** layered
   on top: collaboration style, project map, and tool preferences — fill once,
   inherited across every project. It is **not** installed by `aiplus install`; it is an
-  explicit fork-and-personalize opt-in. Fork it, fill the placeholders (`USER.md` /
+  explicit opt-in. Copy it, fill the placeholders (`USER.md` /
   `sync/projects.toml` / `secret-aliases.tsv`), then run
   `aiplus profile install AiPlus-Work-with-Me --user --yes` once. Private profiles live under
   `~/.config/aiplus/profiles/` and are never packaged into a public repo.
@@ -207,11 +206,11 @@ substrate:
 - **Software engineers** — anyone coding with Claude Code / Codex / OpenCode. `aiplus install`
   installs the default 17-role SWE team (12 core + 2 review-bench + 3 experts).
 - **Applied-economics researchers** — papers, replication packages, LLM-as-measurement.
-  `aiplus add aieconlab` installs **[AdamSmith: AiEconLab (AEL)](https://github.com/izhiwen/AiEconLab)**, a
+  `aiplus add aieconlab` installs **AdamSmith: AiEconLab (AEL)**, a
   bundled opt-in module with economics plan-time review roles and expert review.
 - **AI-agent researchers** — agent benchmarking, experiment design, replication, and paper
   writing. `aiplus add agentsciencelab` installs
-  **[AgentScienceLab (ASL)](https://github.com/izhiwen/AgentScienceLab)**, a bundled opt-in
+  **AgentScienceLab (ASL)**, a bundled opt-in
   module. Neither AEL nor ASL is installed by default.
 
 These audiences share the seven substrate modules: `aiplus-agent-memory` /
@@ -279,38 +278,9 @@ Once you're in, you don't need to memorize commands. Just ask the agent in plain
 *Optional: to set up only one runtime, run `aiplus install claude-code` (also `codex`,
 `opencode`, `all`). To update later, run `aiplus update`.*
 
-Bundled modules:
-
-- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
-- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
-- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
-- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key)
-- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
-- [AiPlus-Token-Cost](https://github.com/izhiwen/AiPlus-Token-Cost)
-
-Optional and companion work:
-
-- [AdamSmith: AiEconLab (AEL)](https://github.com/izhiwen/AiEconLab) — opt-in via `aiplus add aieconlab`;
-  not installed by default.
-- [AgentScienceLab (ASL)](https://github.com/izhiwen/AgentScienceLab) — opt-in via
-  `aiplus add agentsciencelab`; not installed by default.
-- [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me) — a separate companion
-  template for private cross-project preferences.
-
-### For developers
-
-- Pre-built binaries: [latest release](https://github.com/izhiwen/AiPlus/releases/latest) —
-  Apple Silicon macOS (`aiplus-aarch64-apple-darwin.tar.gz`) and Intel Windows
-  (`aiplus-x86_64-pc-windows-msvc.zip`), with a `checksums.txt` for verification. Intel Mac,
-  Linux, and Windows ARM build from source.
-- Daily commands: [docs/cli-reference.md](docs/cli-reference.md)
-- Architecture and on-disk layout: [docs/architecture.md](docs/architecture.md)
-- Changelog: [CHANGELOG.md](https://github.com/izhiwen/AiPlus/blob/main/CHANGELOG.md)
-
 ### Status
 
-Latest release: **`v0.7.10`**, available from
+Latest release: **`v0.7.23`**, available from
 [Releases](https://github.com/izhiwen/AiPlus/releases/latest) (pre-built binaries cover Apple
 Silicon macOS and Intel Windows, with published checksums). Active development continues on
 `main`; `main` may include updates newer than the latest tag — shipped capabilities are defined
@@ -321,5 +291,5 @@ the latest tagged release when clearly marked.
 
 ### License
 
-[Apache-2.0](LICENSE)
+Source available. [License](LICENSE).
 
