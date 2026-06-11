@@ -5,7 +5,7 @@
 
 [English README](README.md)
 
-![AiPlus：把单个 AI coding agent 升级成一支协同团队。图中是项目 lobby 的真实 17 角色名册（12 核心角色 + 2 评审席 + 3 专家），下方是一行可复制的安装命令，以及贯穿七个阶段的工作流条带：记住决策 → 派活 → 团队协作 → 安全交接 → 状态报告 → 自我纠偏 → 可审计。底部是凭据徽章：最新 tag v0.7.10、100% 本地、无遥测、Apache-2.0。](docs/screenshots/readme-hero-zh.png)
+![AiPlus：把单个 AI coding agent 升级成一支协同团队。图中是项目 lobby 的真实 17 角色名册（12 核心角色 + 2 评审席 + 3 专家），下方是一行可复制的安装命令，以及贯穿七个阶段的工作流条带：记住决策 → 派活 → 团队协作 → 安全交接 → 状态报告 → 自我纠偏 → 可审计。底部是凭据徽章：最新 tag v0.7.10、100% 本地、无遥测、Apache-2.0。](docs/screenshots/readme-hero-zh.webp)
 
 **把单个 AI coding helper，升级成一支协同团队。**
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
 
 每一个 AiPlus session 都把工作推过七个阶段。每个阶段都由某个具体模块驱动，整条链路全程本地、可查、防篡改。下面的双语阶段标签在两份 README 中完全一致。
 
-![AiPlus 七阶段流水线流程图：记住决策（Agent Memory）→ 派活（Agent Team）→ 团队协作（Agent Team）→ 安全交接（Compact Reminder）→ 状态报告（Agent Team）→ 自我纠偏（Self-Correct Framework）→ 可审计（Agent Team，防篡改哈希链 dispatch log）。各阶段以箭头相连，每个阶段都标注了驱动它的模块。](docs/screenshots/pipeline-zh.png)
+![AiPlus 七阶段流水线流程图：记住决策（Agent Memory）→ 派活（Agent Team）→ 团队协作（Agent Team）→ 安全交接（Compact Reminder）→ 状态报告（Agent Team）→ 自我纠偏（Self-Correct Framework）→ 可审计（Agent Team，防篡改哈希链 dispatch log）。各阶段以箭头相连，每个阶段都标注了驱动它的模块。](docs/screenshots/pipeline-zh.webp)
 
 | 阶段 | 做什么 | 由谁驱动 |
 |------|--------|----------|
@@ -52,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
 - **[Agent Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)** —— Agent 不再失忆。项目约定、命名规则、架构决定，作为本地 JSONL 存在 `.aiplus/memory/`。写入前会过 12 条 redaction 规则剥敏感串，所以你可以放心记偏好，不用担心泄漏。
 - **[Compact Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)** —— **长对话省 token**。长 Claude Code / Codex / OpenCode session 会两头漏 token：忘了 `/compact`、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 头 20% 全花在重新解释已经决定过的事上。本模块在 token 阈值 + 任务切点双信号下提示恰当的 compact 时机，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
 
-  ![安全交接 / compact 流程的图解动画：长会话的上下文条逐渐填满逼近 token 阈值，AiPlus 在恰当时机保存一个 checksum 校验过的交接 capsule，下一个 session 精简续接，让 token 花在新工作上而不是重建上下文。](docs/screenshots/handoff-zh.gif)
+  ![安全交接 / compact 流程的图解动画：长会话的上下文条逐渐填满逼近 token 阈值，AiPlus 在恰当时机保存一个 checksum 校验过的交接 capsule，下一个 session 精简续接，让 token 花在新工作上而不是重建上下文。](docs/screenshots/handoff-zh.webp)
 - **[Agent Key](https://github.com/izhiwen/AiPlus-Agent-Key)** —— **不再每个 session 重配 key**。**免费、零配置默认**：每个 key 直接存在你机器的 OS keyring 里（macOS Keychain / Linux Secret Service / Windows Credential Manager），从不落盘。每台机器一次性：
 
   ```bash
@@ -86,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
 
 `aiplus install` 默认装上 17 个在役角色的 SWE 团队 —— **12 核心角色 + 2 评审席 + 3 按需功能专家**，另有 5 个在规划中 —— 全部可作为 subagent 路由。完整 persona 文档在 [`.aiplus/agents/personas/`](.aiplus/agents/personas/)。
 
-![一张路由示意图：左侧是自然语言请求（例如「修一下这个 bug」「评审这个 PR」「安全 / 权限检查」「这个大概要多久？」），流向 CEO；CEO 按风险给每个任务定级 LIGHT、MEDIUM 或 HEAVY 并分配匹配角色。LIGHT 交给单个工程师，跳过 architect、reviewer、qa；MEDIUM 引入 2-3 个匹配风险轴的角色；HEAVY 跑完整评审席，含 advisor。说「帮我实现某功能」时，第一步先触发 agent_route_score_only 预览配人，确认后才开始干活。](docs/screenshots/routing-zh.png)
+![一张路由示意图：左侧是自然语言请求（例如「修一下这个 bug」「评审这个 PR」「安全 / 权限检查」「这个大概要多久？」），流向 CEO；CEO 按风险给每个任务定级 LIGHT、MEDIUM 或 HEAVY 并分配匹配角色。LIGHT 交给单个工程师，跳过 architect、reviewer、qa；MEDIUM 引入 2-3 个匹配风险轴的角色；HEAVY 跑完整评审席，含 advisor。说「帮我实现某功能」时，第一步先触发 agent_route_score_only 预览配人，确认后才开始干活。](docs/screenshots/routing-zh.webp)
 
 **12 核心角色**
 
@@ -116,9 +116,9 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
 
 CEO 给进来的任务定级 LIGHT / MEDIUM / HEAVY：LIGHT 任务跳过 Architect/Reviewer/QA，MEDIUM 任务咨询匹配风险轴的 2–3 个角色，HEAVY 任务跑全表，含 Advisor。
 
-![Lobby 选角色胶片：运行 aiplus，角色名册按核心团队 / 评审席 / 按需专家分组出现；输入编号选择角色（这里是 ceo），会话随即绑定到该角色——记忆载入，但不授予任何权限。](docs/screenshots/lobby-filmstrip-zh.png)
+![Lobby 选角色胶片：运行 aiplus，角色名册按核心团队 / 评审席 / 按需专家分组出现；输入编号选择角色（这里是 ceo），会话随即绑定到该角色——记忆载入，但不授予任何权限。](docs/screenshots/lobby-filmstrip-zh.webp)
 
-![派活流程的图解动画：任务进来，CEO 角色给它评级并用 agent_route_score_only 预览配人，把工作扇出给匹配的角色（engineer-a、reviewer、qa）在并行车道推进，再扇入成一份 Owner 把关的状态报告，附大白话「小白版」摘要。](docs/screenshots/dispatch-zh.gif)
+![派活流程的图解动画：任务进来，CEO 角色给它评级并用 agent_route_score_only 预览配人，把工作扇出给匹配的角色（engineer-a、reviewer、qa）在并行车道推进，再扇入成一份 Owner 把关的状态报告，附大白话「小白版」摘要。](docs/screenshots/dispatch-zh.webp)
 
 ---
 
@@ -148,7 +148,7 @@ AiPlus 先服务软件工程师，同时支持 opt-in 研究模块，底座（su
 
 这些受众共用七个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity` / `aiplus-token-cost`。
 
-![一张分层示意图。底部是共享的项目本地 substrate 模块底座（记忆、团队、key、velocity 等），由 aiplus install 安装。其上是三条受众车道：默认安装的软件工程团队，以及通过 aiplus add 选装的应用经济学（AdamSmith: AiEconLab）和 AI agent 研究（AgentScienceLab）实验室包。整个栈之上漂浮着一层用户级 Work-with-Me profile：填一次、所有项目都继承；它是 opt-in 的，存在 ~/.config/aiplus 下，永远不会被打包进公共仓库。](docs/screenshots/substrate-zh.png)
+![一张分层示意图。底部是共享的项目本地 substrate 模块底座（记忆、团队、key、velocity 等），由 aiplus install 安装。其上是三条受众车道：默认安装的软件工程团队，以及通过 aiplus add 选装的应用经济学（AdamSmith: AiEconLab）和 AI agent 研究（AgentScienceLab）实验室包。整个栈之上漂浮着一层用户级 Work-with-Me profile：填一次、所有项目都继承；它是 opt-in 的，存在 ~/.config/aiplus 下，永远不会被打包进公共仓库。](docs/screenshots/substrate-zh.webp)
 
 ### 安全边界
 
