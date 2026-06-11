@@ -1,11 +1,9 @@
 # AiPlus
 
-[![CI](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml/badge.svg)](https://github.com/izhiwen/AiPlus/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 [English README](README.md)
 
-![AiPlus：把单个 AI coding agent 升级成一支协同团队。图中是项目 lobby 的真实 17 角色名册（12 核心角色 + 2 评审席 + 3 专家），下方是一行可复制的安装命令，以及贯穿七个阶段的工作流条带：记住决策 → 派活 → 团队协作 → 安全交接 → 状态报告 → 自我纠偏 → 可审计。底部是凭据徽章：最新 tag v0.7.10、100% 本地、无遥测、Apache-2.0。](docs/screenshots/readme-hero-zh.webp)
+![AiPlus：把单个 AI coding agent 升级成一支协同团队。图中是项目 lobby 的真实 17 角色名册（12 核心角色 + 2 评审席 + 3 专家），下方是一行可复制的安装命令，以及贯穿七个阶段的工作流条带：记住决策 → 派活 → 团队协作 → 安全交接 → 状态报告 → 自我纠偏 → 可审计。底部是凭据徽章：最新 tag v0.7.23、100% 本地、无遥测。](docs/screenshots/readme-hero-zh.webp)
 
 **把单个 AI coding helper，升级成一支协同团队。**
 
@@ -45,15 +43,15 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
 
 ## Capabilities
 
-七个项目本地的小 Rust 模块，加一个 companion 模板，再加一支常驻角色团队。每个模块也作为独立 GitHub repo 发布，方便单独查看或单独采用；同时 `aiplus install` 会自动把它们装到 `.aiplus/modules/aiplus-<name>/`。
+七个项目本地的小 Rust 模块，加一个 companion 模板，再加一支常驻角色团队。每个模块单独维护； `aiplus install` 会自动把它们装到 `.aiplus/modules/aiplus-<name>/`。
 
 ### 模块
 
-- **[Agent Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)** —— Agent 不再失忆。项目约定、命名规则、架构决定，作为本地 JSONL 存在 `.aiplus/memory/`。写入前会过 12 条 redaction 规则剥敏感串，所以你可以放心记偏好，不用担心泄漏。
-- **[Compact Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)** —— **长对话省 token**。长 Claude Code / Codex / OpenCode session 会两头漏 token：忘了 `/compact`、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 头 20% 全花在重新解释已经决定过的事上。本模块在 token 阈值 + 任务切点双信号下提示恰当的 compact 时机，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
+- ****Agent Memory**** —— Agent 不再失忆。项目约定、命名规则、架构决定，作为本地 JSONL 存在 `.aiplus/memory/`。写入前会过 12 条 redaction 规则剥敏感串，所以你可以放心记偏好，不用担心泄漏。
+- ****Compact Reminder**** —— **长对话省 token**。长 Claude Code / Codex / OpenCode session 会两头漏 token：忘了 `/compact`、agent 每轮都得重读越来越大的历史；`/compact` 时机不对又会丢任务状态、下一个 session 头 20% 全花在重新解释已经决定过的事上。本模块在 token 阈值 + 任务切点双信号下提示恰当的 compact 时机，自动准备结构化交接，并用 checksum 校验过的 capsule 自动续上 —— **让 token 花在新工作上，而不是重建上下文**。
 
   ![安全交接 / compact 流程的图解动画：长会话的上下文条逐渐填满逼近 token 阈值，AiPlus 在恰当时机保存一个 checksum 校验过的交接 capsule，下一个 session 精简续接，让 token 花在新工作上而不是重建上下文。](docs/screenshots/handoff-zh.webp)
-- **[Agent Key](https://github.com/izhiwen/AiPlus-Agent-Key)** —— **不再每个 session 重配 key**。**免费、零配置默认**：每个 key 直接存在你机器的 OS keyring 里（macOS Keychain / Linux Secret Service / Windows Credential Manager），从不落盘。每台机器一次性：
+- ****Agent Key**** —— **不再每个 session 重配 key**。**免费、零配置默认**：每个 key 直接存在你机器的 OS keyring 里（macOS Keychain / Linux Secret Service / Windows Credential Manager），从不落盘。每台机器一次性：
 
   ```bash
   aiplus secret-broker set --alias openai --auto-prompt
@@ -66,21 +64,21 @@ curl -fsSL https://raw.githubusercontent.com/izhiwen/AiPlus/main/install.sh | ba
   ```
 
   值默认不打印、绝不进 git。需要多机同步或团队共享 → opt-in 切到 Bitwarden Secrets Manager 后端（`export AIPLUS_SECRET_PROVIDER=bws`），同样 alias 接口，需要付费订阅。
-- **[Auto Team Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)** —— Agent 不再忽略关键事项。**一个虚拟团队**（5 位专家成员 + 你项目的用户 persona，**坐同一桌**）会在每次重要 plan 之前被咨询。Coordinator 按复杂度和风险决定咨询规模，让你拿到真实评审团队的价值，但不在每次提交都付成本。
-- **[Agent Team](https://github.com/izhiwen/AiPlus-Agent-Team)** —— 用常驻团队取代单 Agent 的**角色漂移**。每个角色都有独立人设、工作区和内存命名空间。Coordinator 把任务路由给正确角色，保存对话记录，清理过时工作区。团队自带：
+- ****Auto Team Consultant**** —— Agent 不再忽略关键事项。**一个虚拟团队**（5 位专家成员 + 你项目的用户 persona，**坐同一桌**）会在每次重要 plan 之前被咨询。Coordinator 按复杂度和风险决定咨询规模，让你拿到真实评审团队的价值，但不在每次提交都付成本。
+- ****Agent Team**** —— 用常驻团队取代单 Agent 的**角色漂移**。每个角色都有独立人设、工作区和内存命名空间。Coordinator 把任务路由给正确角色，保存对话记录，清理过时工作区。团队自带：
   - **Session 绑定的角色激活和 lobby 选角色** —— 开新 session 时选好需要的角色，也可以直接运行 `aiplus` 进入项目 lobby 选择角色或续接 session；已安装的 runtime instructions 会加载对应 persona 和内存。AiPlus 不声明可以在一个已经绑定角色的 session 里自由切换角色。
   - **理解意图的安全门** —— 做任何危险操作之前（删文件、发布改动、跑受保护的命令），Coordinator 会先理解你到底想做什么，而不只是匹配你打的字眼。改个说法、加引号已经骗不过它了。
   - **评审和 QA 并行** —— review 步骤和 QA 步骤同时跑，每个角色的工作区在任务之间保持就绪，不再每次从头建，迭代更快，质量门槛不变。
 
   （完整 17 角色名册见下。）
-- **[Agent Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)** —— Agent 不再瞎报工时。每次估时和实际完成时间记成本地 JSONL。Human-time bias 自动检测。后续估时用基于你自己历史校准过的 AI-native p50 / p90 数字。
-- **[Token Cost](https://github.com/izhiwen/AiPlus-Token-Cost)** —— `aiplus agent token-cost` 读取 dispatch log，按 1 小时 / 8 小时 / 24 小时统计 token 消耗和 USD 成本，并列出最贵 task。定价来自社区维护的 per-model 表，带离线兜底和本地 override；也可直接跑 standalone `aiplus-token-cost`。
+- ****Agent Velocity**** —— Agent 不再瞎报工时。每次估时和实际完成时间记成本地 JSONL。Human-time bias 自动检测。后续估时用基于你自己历史校准过的 AI-native p50 / p90 数字。
+- ****Token Cost**** —— `aiplus agent token-cost` 读取 dispatch log，按 1 小时 / 8 小时 / 24 小时统计 token 消耗和 USD 成本，并列出最贵 task。定价来自社区维护的 per-model 表，带离线兜底和本地 override；也可直接跑 standalone `aiplus-token-cost`。
 
 另外还有 **自然语言工具发现**：`aiplus install` 会写入项目本地 skill 和 preamble，让 Codex / Claude Code / OpenCode 在用户自然问成本、计划、审计、派单、团队状态时优先调用 AiPlus 的 `agent_*` MCP 工具，而不是绕去 shell grep、解析 CLI 输出，或只背训练数据。用户说 "implement X" 时，第一步应是 `agent_route_score_only`，不是直接背 checklist。
 
 ### Companion 模板
 
-- **[AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me)** —— 上面七个模块都是 *项目本地* 的，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、工具偏好 —— 填一次，所有项目都继承。它 **不会** 被 `aiplus install` 自动装上 —— 是显式 fork-and-personalize 的 opt-in。fork 它、填占位符（`USER.md` / `sync/projects.toml` / `secret-aliases.tsv`），然后 `aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。私有 profile 存在 `~/.config/aiplus/profiles/`，**永远不会**被打包进公共仓库。
+- ****AiPlus-Work-with-Me**** —— 上面七个模块都是 *项目本地* 的，AiPlus-Work-with-Me 是叠在它们之上的 **用户级 profile 包**：协作风格、项目地图、工具偏好 —— 填一次，所有项目都继承。它 **不会** 被 `aiplus install` 自动装上 —— 是显式 opt-in。复制它、填占位符（`USER.md` / `sync/projects.toml` / `secret-aliases.tsv`），然后 `aiplus profile install AiPlus-Work-with-Me --user --yes` 一次装完。私有 profile 存在 `~/.config/aiplus/profiles/`，**永远不会**被打包进公共仓库。
 
 ### 17 角色团队
 
@@ -143,8 +141,8 @@ CEO 给进来的任务定级 LIGHT / MEDIUM / HEAVY：LIGHT 任务跳过 Archite
 AiPlus 先服务软件工程师，同时支持 opt-in 研究模块，底座（substrate）共享：
 
 - **软件工程师** —— 用 Claude Code / Codex / OpenCode 写代码的。`aiplus install` 默认装 17 个在役角色的 SWE 团队（12 核心 + 2 评审席 + 3 专家）。
-- **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 [**AdamSmith: AiEconLab (AEL)**](https://github.com/izhiwen/AiEconLab)，这是 bundled opt-in module，提供面向经济学 plan-time review 的研究角色和专家评审。
-- **AI agent 研究者** —— 做 agent benchmark、实验设计、复现实验和论文写作。`aiplus add agentsciencelab` 装上 [**AgentScienceLab (ASL)**](https://github.com/izhiwen/AgentScienceLab)，这是 bundled opt-in module。AEL 和 ASL 都不会随默认安装自动装上。
+- **应用经济学研究者** —— 写论文、做 replication package、跑 LLM-as-measurement。`aiplus add aieconlab` 装上 **AdamSmith: AiEconLab (AEL)**，这是 bundled opt-in module，提供面向经济学 plan-time review 的研究角色和专家评审。
+- **AI agent 研究者** —— 做 agent benchmark、实验设计、复现实验和论文写作。`aiplus add agentsciencelab` 装上 **AgentScienceLab (ASL)**，这是 bundled opt-in module。AEL 和 ASL 都不会随默认安装自动装上。
 
 这些受众共用七个 substrate 模块：`aiplus-agent-memory` / `aiplus-compact-reminder` / `aiplus-auto-team-consultant` / `aiplus-agent-team` / `aiplus-agent-key` / `aiplus-agent-velocity` / `aiplus-token-cost`。
 
@@ -195,36 +193,13 @@ aiplus
 
 *可选：只想装一个 runtime，运行 `aiplus install claude-code`（也可 `codex`、`opencode`、`all`）。以后更新，运行 `aiplus update`。*
 
-七个独立子模块（bundled）：
-
-- [AiPlus-Agent-Memory](https://github.com/izhiwen/AiPlus-Agent-Memory)
-- [AiPlus-Compact-Reminder](https://github.com/izhiwen/AiPlus-Compact-Reminder)
-- [AiPlus-Auto-Team-Consultant](https://github.com/izhiwen/AiPlus-Auto-Team-Consultant)
-- [AiPlus-Agent-Team](https://github.com/izhiwen/AiPlus-Agent-Team)
-- [AiPlus-Agent-Key](https://github.com/izhiwen/AiPlus-Agent-Key)
-- [AiPlus-Agent-Velocity](https://github.com/izhiwen/AiPlus-Agent-Velocity)
-- [AiPlus-Token-Cost](https://github.com/izhiwen/AiPlus-Token-Cost)
-
-可选与 companion 工作：
-
-- [AdamSmith: AiEconLab (AEL)](https://github.com/izhiwen/AiEconLab) —— 通过 `aiplus add aieconlab` 安装的 opt-in 应用经济学研究模块，不会随默认安装自动装上。
-- [AgentScienceLab (ASL)](https://github.com/izhiwen/AgentScienceLab) —— 通过 `aiplus add agentsciencelab` 安装的 opt-in module，不会随默认安装自动装上。
-- [AiPlus-Work-with-Me](https://github.com/izhiwen/AiPlus-Work-with-Me) —— 独立的 companion 模板，存私有的跨项目偏好。
-
-### 给开发者
-
-- 预编译二进制：[latest release](https://github.com/izhiwen/AiPlus/releases/latest) —— 覆盖 Apple Silicon macOS（`aiplus-aarch64-apple-darwin.tar.gz`）和 Intel Windows（`aiplus-x86_64-pc-windows-msvc.zip`），并附 `checksums.txt` 供校验。Intel Mac、Linux、Windows ARM 请从源码构建。
-- 日常命令：[docs/cli-reference.md](docs/cli-reference.md)
-- 架构与磁盘布局：[docs/architecture.md](docs/architecture.md)
-- 更新日志：[CHANGELOG.md](https://github.com/izhiwen/AiPlus/blob/main/CHANGELOG.md)
-
 ### 状态
 
-最新发布：**`v0.7.10`**，可从 [Releases](https://github.com/izhiwen/AiPlus/releases/latest) 获取（预编译二进制覆盖 Apple Silicon macOS 和 Intel Windows，并发布 checksums）。`main` 分支持续活跃开发；`main` 可能包含比最新 tag 更新的内容 —— 已发布能力以最新 tag 和 release notes 为准。README 里某些细节，在明确标注时，可能描述比最新 tag 更新的工作。
+最新发布：**`v0.7.23`**，可从 [Releases](https://github.com/izhiwen/AiPlus/releases/latest) 获取（预编译二进制覆盖 Apple Silicon macOS 和 Intel Windows，并发布 checksums）。`main` 分支持续活跃开发；`main` 可能包含比最新 tag 更新的内容 —— 已发布能力以最新 tag 和 release notes 为准。README 里某些细节，在明确标注时，可能描述比最新 tag 更新的工作。
 
 如果它帮你省了时间，欢迎 [在 GitHub 上给 AiPlus 点个 Star](https://github.com/izhiwen/AiPlus)。
 
 ### License
 
-[Apache-2.0](LICENSE)
+Source available. [License](LICENSE).
 
