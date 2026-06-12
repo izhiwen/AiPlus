@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.7.30
+
+### Added
+- Mother Persona Skeleton v0.1: 6 governance modules (T9)
+- Reviewer/QA governance modules: R1-R6 verification patterns (T10)
+- CQO + Performance-Auditor personas
+- CEO-3 COO lane for execution dispatch
+- Domain & Permissions for all 20 personas
+- Layer 2 pruned_tools per-agent tool allowlists
+- Auto-lane detection (AIPLUS_CEO_LANE)
+- Release decoupling: AiPlus-Source / AiPlus independent pipelines
+- model + duration_ms fields in dispatch log
+- Quality-first compact strategy: 5K + 40%
+
+### Fixed
+- Release pipeline: 7 consecutive fixes
+- Worktree pool cross-process visibility
+- PR #393 hash drift bug
+- 22 orphan worktree directories cleaned
+
 ## 0.7.23
 
 > **📦 Release Notes — v0.7.23**
